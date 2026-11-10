@@ -1,0 +1,87 @@
+# French translations for pachud.
+# This file is distributed under the same license as the pachud package.
+# Machine-written: please review with a native speaker.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: pachud\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-11-10 06:25+0000\n"
+"PO-Revision-Date: 2026-11-10 00:00+0000\n"
+"Last-Translator: \n"
+"Language-Team: French\n"
+"Language: fr\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+#: src/src_audio.c
+msgid "Volume — muted"
+msgstr "Volume — muet"
+
+#: src/src_audio.c
+msgid "Volume"
+msgstr "Volume"
+
+#: src/src_backlight.c
+msgid "Brightness"
+msgstr "Luminosité"
+
+#: src/src_mem.c
+#, c-format
+msgid "Memory pressure — %ld MB available"
+msgstr "Pression mémoire — %ld Mo disponibles"
+
+#: src/src_net.c
+msgid "Offline"
+msgstr "Hors ligne"
+
+#: src/src_net.c
+msgid "network"
+msgstr "réseau"
+
+#: src/src_net.c
+#, c-format
+msgid "Online — %s"
+msgstr "En ligne — %s"
+
+#: src/src_power.c
+#, c-format
+msgid "Battery critical — %d%%"
+msgstr "Batterie critique — %d%%"
+
+#: src/src_power.c
+#, c-format
+msgid "Battery low — %d%%"
+msgstr "Batterie faible — %d%%"
+
+#: src/src_power.c
+msgid "Charger connected"
+msgstr "Chargeur branché"
+
+#: src/src_power.c
+msgid "Charger disconnected"
+msgstr "Chargeur débranché"
+
+#: src/src_probe.c
+#, c-format
+msgid "Network slow — %d ms"
+msgstr "Réseau lent — %d ms"
+
+#: src/src_probe.c
+#, c-format
+msgid "Network not answering — no reply from %s"
+msgstr "Le réseau ne répond pas — aucune réponse de %s"
+
+#: src/src_probe.c
+msgid "Network back to normal"
+msgstr "Réseau revenu à la normale"
+
+#: src/timer.c
+msgid "Alarm"
+msgstr "Alarme"
+
+#: src/timer.c
+msgid "Timer done"
+msgstr "Minuteur terminé"

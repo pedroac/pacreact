@@ -1,0 +1,87 @@
+# Chinese (Simplified) translations for pachud.
+# This file is distributed under the same license as the pachud package.
+# Machine-written: please review with a native speaker.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: pachud\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-11-10 06:25+0000\n"
+"PO-Revision-Date: 2026-11-10 00:00+0000\n"
+"Last-Translator: \n"
+"Language-Team: Chinese (Simplified)\n"
+"Language: zh_CN\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+#: src/src_audio.c
+msgid "Volume — muted"
+msgstr "音量 — 静音"
+
+#: src/src_audio.c
+msgid "Volume"
+msgstr "音量"
+
+#: src/src_backlight.c
+msgid "Brightness"
+msgstr "亮度"
+
+#: src/src_mem.c
+#, c-format
+msgid "Memory pressure — %ld MB available"
+msgstr "内存压力 — 可用 %ld MB"
+
+#: src/src_net.c
+msgid "Offline"
+msgstr "离线"
+
+#: src/src_net.c
+msgid "network"
+msgstr "网络"
+
+#: src/src_net.c
+#, c-format
+msgid "Online — %s"
+msgstr "在线 — %s"
+
+#: src/src_power.c
+#, c-format
+msgid "Battery critical — %d%%"
+msgstr "电量严重不足 — %d%%"
+
+#: src/src_power.c
+#, c-format
+msgid "Battery low — %d%%"
+msgstr "电量低 — %d%%"
+
+#: src/src_power.c
+msgid "Charger connected"
+msgstr "已连接充电器"
+
+#: src/src_power.c
+msgid "Charger disconnected"
+msgstr "已断开充电器"
+
+#: src/src_probe.c
+#, c-format
+msgid "Network slow — %d ms"
+msgstr "网络缓慢 — %d 毫秒"
+
+#: src/src_probe.c
+#, c-format
+msgid "Network not answering — no reply from %s"
+msgstr "网络无响应 — %s 无回应"
+
+#: src/src_probe.c
+msgid "Network back to normal"
+msgstr "网络已恢复正常"
+
+#: src/timer.c
+msgid "Alarm"
+msgstr "闹钟"
+
+#: src/timer.c
+msgid "Timer done"
+msgstr "计时结束"

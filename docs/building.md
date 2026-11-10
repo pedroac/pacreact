@@ -36,7 +36,19 @@ Installs the binary, `pachud.service` (to `$(PREFIX)/lib/systemd/user`, override
 
 ## Tests
 
-`make test` covers the logic that does not need hardware: battery and charger decisions with uevent parsing, duration and alarm-time parsing, and the slowdown decision logic.
+`make test` builds and runs unit tests that need no display, hardware or network:
+
+| Suite | Covers |
+|---|---|
+| `power` | battery and charger decisions, uevent parsing |
+| `timer` | duration/alarm/recurrence parsing and scheduling, the IPC commands, the state file (including malformed lines), firing, rescheduling and missed alarms |
+| `probe` | slowdown alert and recovery thresholds |
+| `audio` | the PulseAudio client: handshake packets, framing across partial reads, the sink-info parser (using a frame captured from a real server), truncated and malformed replies, reconnect triggers, server path selection |
+| `hud` | the HUD queue (dedupe, preemption by sliders, replacement, removal, overflow, close reasons) with a fake clock, and the card text helpers (markup stripping, word wrap, ellipsis) |
+| `ipc` | the real unix socket: round trips, error replies, single-instance detection, stale sockets, silent clients |
+| `notify` | notification timeouts from urgency and requested expiry (skipped with `NOTIFY=0`) |
+
+Several suites `#include` the source file under test so that its static internals are reachable, and stub the display, the HUD and the loop. `tests/manual/mutation_check.sh` checks the tests themselves: it breaks the code in 14 specific ways and requires the matching test to fail each time.
 
 The rest was checked by running the daemon on a real Wayland session, with isolated environments so nothing else was affected: a private session bus for notifications (`dbus-run-session`) and a private network namespace for network and probe behaviour (`unshare -Urn`).
 

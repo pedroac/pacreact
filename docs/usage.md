@@ -64,13 +64,16 @@ systemctl --user stop mako.service
 make install PREFIX=$HOME/.local UNITDIR=$HOME/.config/systemd/user
 systemctl --user daemon-reload
 systemctl --user enable --now pachud.service
+dbus-send --session --dest=org.freedesktop.DBus /org/freedesktop/DBus org.freedesktop.DBus.ReloadConfig
 ```
 
-Check that it took over: `notify-send hello` should show a pachud card, and `busctl --user call org.freedesktop.Notifications /org/freedesktop/Notifications org.freedesktop.Notifications GetServerInformation` should answer `pachud`.
+The last line matters when `~/.local/share/dbus-1/services` did not exist before: a session bus that was already running does not watch a directory it never saw, so without the reload D-Bus keeps activating mako whenever pachud is down (a new login picks the directory up on its own).
+
+Check that it took over: `notify-send hello` should show a pachud card, and `busctl --user call org.freedesktop.Notifications /org/freedesktop/Notifications org.freedesktop.Notifications GetServerInformation` should answer `pachud`. To check the activation path too, stop pachud (`systemctl --user stop pachud.service`), send another notification, and confirm that `systemctl --user is-active pachud.service` is `active` again and mako's is not.
 
 For the unit to start, `WAYLAND_DISPLAY` must be in the systemd user environment (most Hyprland setups run `dbus-update-activation-environment --systemd WAYLAND_DISPLAY`).
 
-To go back to mako: `systemctl --user disable --now pachud.service`, then remove `~/.local/share/dbus-1/services/org.pachud.Notifications.service`.
+To go back to mako: `systemctl --user disable --now pachud.service`, remove `~/.local/share/dbus-1/services/org.pachud.Notifications.service`, reload the bus configuration as above, and start mako (`systemctl --user start mako.service`, or just send a notification and let D-Bus start it).
 
 ## Notifications: what is supported
 

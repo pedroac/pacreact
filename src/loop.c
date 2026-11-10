@@ -4,7 +4,11 @@
 #include <sys/epoll.h>
 #include <unistd.h>
 
-typedef struct { LoopFn fn; void *ctx; } Handler;
+#ifdef LOOP_TRACE  /* development aid: log which fd woke the daemon (make CFLAGS="-O2 -DLOOP_TRACE") */
+#include <stdio.h>
+#endif
+
+typedef struct { LoopFn fn; void *ctx; int fd; } Handler;
 
 static int epfd = -1;
 
@@ -18,6 +22,10 @@ int loop_add(int fd, uint32_t events, LoopFn fn, void *ctx) {
     if (!h) return -1;
     h->fn = fn;
     h->ctx = ctx;
+    h->fd = fd;
+#ifdef LOOP_TRACE
+    fprintf(stderr, "registered fd=%d\n", fd);
+#endif
     struct epoll_event ev = { .events = events, .data.ptr = h };
     return epoll_ctl(epfd, EPOLL_CTL_ADD, fd, &ev);
 }
@@ -32,6 +40,9 @@ int loop_wait(int timeout_ms) {
     if (n < 0) return errno == EINTR ? 0 : -1;
     for (int i = 0; i < n; i++) {
         Handler *h = evs[i].data.ptr;
+#ifdef LOOP_TRACE
+        fprintf(stderr, "wake fd=%d events=0x%x\n", h->fd, evs[i].events);
+#endif
         h->fn(h->ctx, evs[i].events);
     }
     return 0;

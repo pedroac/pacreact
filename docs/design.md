@@ -2,7 +2,7 @@
 
 ## Staying asleep
 
-There is one `epoll` loop (`src/loop.c`). Every event source registers file descriptors with it and the process blocks in `epoll_wait`. The only timeout it ever passes is the remaining life of the HUD on screen; with nothing showing it waits forever. Measured idle: zero context switches over several seconds.
+There is one `epoll` loop (`src/loop.c`). Every event source registers file descriptors with it and the process blocks in `epoll_wait`. The only timeout it ever passes is the remaining life of the HUD on screen; with nothing showing it waits forever. Measured on a real, busy Hyprland session: zero context switches over 15 s idle, 2.2 MB PSS and 1.1 MB private memory (the rest of the resident size is shared libraries). Start-up is the only busy moment: the audio handshake is four wakeups, and a machine under memory pressure raises its first alert right away. To see what wakes the daemon, build with `make CFLAGS="-O2 -DLOOP_TRACE"`, which logs the fd behind every wakeup to stderr.
 
 The Wayland layer surface and its shared-memory buffer are created when a HUD appears and destroyed when it disappears, so an idle daemon holds no surface and no buffers. The surface is on the overlay layer, takes no keyboard focus and has an empty input region.
 

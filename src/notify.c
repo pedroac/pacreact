@@ -36,6 +36,13 @@ static void emit_closed(uint32_t id, int reason) {
     if (bus) sd_bus_emit_signal(bus, PATH, IFACE, "NotificationClosed", "uu", id, (uint32_t)reason);
 }
 
+int notify_timeout_ms(int urgency, int32_t expire) {
+    int ms = urgency >= 2 ? CRITICAL_MS : urgency == 0 ? LOW_MS : NORMAL_MS;
+    if (expire > 0) ms = expire < MIN_MS ? MIN_MS : expire;
+    else if (expire == 0 && urgency < 2) ms = MAX_MS;  /* "never": as long as we dare */
+    return ms > MAX_MS ? MAX_MS : ms;
+}
+
 static int method_notify(sd_bus_message *m, void *ud, sd_bus_error *err) {
     (void)ud; (void)err;
     const char *app, *icon, *summary, *body;
@@ -78,10 +85,7 @@ static int method_notify(sd_bus_message *m, void *ud, sd_bus_error *err) {
     r = sd_bus_message_read(m, "i", &expire);
     if (r < 0) return r;
 
-    int ms = urgency >= 2 ? CRITICAL_MS : urgency == 0 ? LOW_MS : NORMAL_MS;
-    if (expire > 0) ms = expire < MIN_MS ? MIN_MS : expire;
-    else if (expire == 0 && urgency < 2) ms = MAX_MS;  /* "never": as long as we dare */
-    if (ms > MAX_MS) ms = MAX_MS;
+    int ms = notify_timeout_ms(urgency, expire);
 
     /* A replacement keeps its id; an id we no longer hold simply becomes a new card. */
     uint32_t id = replaces ? replaces : next_id++;

@@ -130,19 +130,23 @@ uninstall:
 
 .PHONY: all clean install uninstall pot update-po test FORCE
 
-# The tests build the logic files on their own, with stubs for the HUD and the loop.
-TEST_CC = $(CC) $(CFLAGS) -D_GNU_SOURCE -Wall -Ibuild -Isrc
+# The tests build the logic on its own, with stubs for the display, the HUD and the loop. Some
+# #include the source under test so that its static internals are reachable.
+TEST_CC = $(CC) $(CFLAGS) -D_GNU_SOURCE -Wall -Wextra -Ibuild -Isrc
+TESTS = power timer probe audio hud ipc
+ifeq ($(NOTIFY),1)
+TESTS += notify
+endif
 
-test: build/test_power build/test_timer build/test_probe
-	build/test_power
-	build/test_timer
-	build/test_probe
+TEST_SRC_power = src/src_power.c
+TEST_SRC_probe = src/src_probe.c
+TEST_SRC_ipc = src/ipc.c
+TEST_SRC_notify = src/notify.c
+TEST_LIBS_hud = $(shell pkg-config --libs cairo) -lm
+TEST_LIBS_notify = $(shell pkg-config --libs libsystemd 2>/dev/null)
 
-build/test_probe: tests/test_probe.c src/src_probe.c | build build/config.h
-	$(TEST_CC) $^ -o $@
+test: $(TESTS:%=build/test_%)
+	@set -e; for t in $^; do $$t; done
 
-build/test_power: tests/test_power.c src/src_power.c | build build/config.h
-	$(TEST_CC) $^ -o $@
-
-build/test_timer: tests/test_timer.c src/timer.c | build build/config.h
-	$(TEST_CC) $^ -o $@
+build/test_%: tests/test_%.c $(wildcard src/*.c src/*.h) | build build/config.h
+	$(TEST_CC) tests/test_$*.c $(TEST_SRC_$*) -o $@ $(TEST_LIBS_$*)

@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: pachud\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-10 06:25+0000\n"
+"POT-Creation-Date: 2026-11-10 09:24+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -16,6 +16,88 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=INTEGER; plural=EXPRESSION;\n"
+
+#: src/dnd.c
+#, c-format
+msgid "Do not disturb on for %s"
+msgstr ""
+
+#: src/dnd.c
+msgid "Do not disturb on"
+msgstr ""
+
+#: src/dnd.c
+#, c-format
+msgid "Do not disturb off — %d notification skipped"
+msgid_plural "Do not disturb off — %d notifications skipped"
+msgstr[0] ""
+msgstr[1] ""
+
+#: src/dnd.c
+msgid "Do not disturb off"
+msgstr ""
+
+#: src/dnd.c
+#, c-format
+msgid "bad duration \"%s\": use e.g. 30m, 1h"
+msgstr ""
+
+#: src/dnd.c
+msgid "dnd: use on [DURATION], off, toggle or status"
+msgstr ""
+
+#: src/hud.c
+msgid "Open"
+msgstr ""
+
+#: src/main.c
+msgid "pachud: daemon not running\n"
+msgstr ""
+
+#: src/main.c
+msgid "bad toast message"
+msgstr ""
+
+#: src/main.c
+msgid "level must be info, warn or crit"
+msgstr ""
+
+#: src/main.c
+msgid "bad slider message"
+msgstr ""
+
+#: src/main.c
+msgid "this build has no notification support"
+msgstr ""
+
+#: src/main.c
+msgid "unknown command"
+msgstr ""
+
+#: src/main.c
+msgid "pachud: already running\n"
+msgstr ""
+
+#: src/main.c
+msgid "pachud: cannot connect to a Wayland compositor with layer-shell\n"
+msgstr ""
+
+#: src/notify.c
+msgid "no such action on screen"
+msgstr ""
+
+#: src/notify.c
+msgid "notifications unavailable"
+msgstr ""
+
+#: src/src_audio.c
+msgid "Microphone — muted"
+msgstr ""
+
+#: src/src_audio.c
+msgid "Microphone"
+msgstr ""
 
 #: src/src_audio.c
 msgid "Volume — muted"
@@ -85,4 +167,82 @@ msgstr ""
 
 #: src/timer.c
 msgid "Timer done"
+msgstr ""
+
+#: src/timer.c
+msgid "too many timers"
+msgstr ""
+
+#: src/timer.c
+msgid "nothing to snooze"
+msgstr ""
+
+#: src/timer.c
+#, c-format
+msgid "bad duration \"%s\": use e.g. 5m, 10m"
+msgstr ""
+
+#: src/timer.c
+#, c-format
+msgid "Snoozed for %s"
+msgstr ""
+
+#: src/timer.c
+msgid "no such timer"
+msgstr ""
+
+#: src/timer.c
+msgid "only timers can be paused"
+msgstr ""
+
+#: src/timer.c
+msgid "already paused"
+msgstr ""
+
+#: src/timer.c
+msgid "not paused"
+msgstr ""
+
+#: src/timer.c
+msgid "bad duration: use e.g. 5m, 1h"
+msgstr ""
+
+#: src/timer.c
+msgid "too far ahead"
+msgstr ""
+
+#: src/timer.c
+msgid "timers unavailable"
+msgstr ""
+
+#: src/timer.c
+msgid "missing duration"
+msgstr ""
+
+#: src/timer.c
+msgid "missing time"
+msgstr ""
+
+#: src/timer.c
+#, c-format
+msgid ""
+"bad recurrence \"%s\": use daily, weekdays, weekends or e.g. mon,wed,fri"
+msgstr ""
+
+#: src/timer.c
+msgid "a dated alarm cannot repeat"
+msgstr ""
+
+#: src/timer.c
+msgid "that time has already passed"
+msgstr ""
+
+#: src/timer.c
+#, c-format
+msgid "bad duration \"%s\": use e.g. 90s, 5m, 1h30m"
+msgstr ""
+
+#: src/timer.c
+#, c-format
+msgid "bad time \"%s\": use HH:MM or YYYY-MM-DD HH:MM"
 msgstr ""

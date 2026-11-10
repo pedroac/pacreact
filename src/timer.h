@@ -15,6 +15,9 @@ bool timer_command(const char *cmd, char *args, char *reply, size_t n);
 long timer_parse_duration(const char *s);
 /* "HH:MM": the next such wall-clock time after now. Returns -1 if invalid. */
 time_t timer_parse_alarm(const char *s, time_t now);
+/* "YYYY-MM-DDTHH:MM" in local time. Returns -1 if invalid (including dates that do not exist,
+ * like February 30th) and -2 if it is not in the future. */
+time_t timer_parse_datetime(const char *s, time_t now);
 /* "daily", "weekdays", "weekends", or a list such as "mon,wed,fri". Returns a bitmask of
  * days (bit 0 = Sunday, like tm_wday), or -1 if invalid. */
 int timer_parse_recur(const char *s);

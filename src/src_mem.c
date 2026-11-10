@@ -1,6 +1,7 @@
 #include "hud.h"
 #include "i18n.h"
 #include "loop.h"
+#include "sound.h"
 #include "sources.h"
 #include <fcntl.h>
 #include <stdbool.h>
@@ -40,6 +41,7 @@ static void alert(Level level) {
     char msg[128];
     snprintf(msg, sizeof msg, _("Memory pressure — %ld MB available"), mem_available_mb(NULL));
     hud_toast(msg, level, 6000);
+    sound_play(SOUND_ALERT);
 }
 
 static void on_pressure(void *ctx, uint32_t ev) {

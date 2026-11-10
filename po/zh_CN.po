@@ -6,7 +6,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: pachud\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-10 06:25+0000\n"
+"POT-Creation-Date: 2026-11-10 09:24+0000\n"
 "PO-Revision-Date: 2026-11-10 00:00+0000\n"
 "Last-Translator: \n"
 "Language-Team: Chinese (Simplified)\n"
@@ -15,6 +15,86 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
+
+#: src/dnd.c
+#, c-format
+msgid "Do not disturb on for %s"
+msgstr "已开启勿扰模式，持续 %s"
+
+#: src/dnd.c
+msgid "Do not disturb on"
+msgstr "已开启勿扰模式"
+
+#: src/dnd.c
+#, c-format
+msgid "Do not disturb off — %d notification skipped"
+msgid_plural "Do not disturb off — %d notifications skipped"
+msgstr[0] "已关闭勿扰模式 — 跳过了 %d 条通知"
+
+#: src/dnd.c
+msgid "Do not disturb off"
+msgstr "已关闭勿扰模式"
+
+#: src/dnd.c
+#, c-format
+msgid "bad duration \"%s\": use e.g. 30m, 1h"
+msgstr "无效的时长 \"%s\"：例如 30m、1h"
+
+#: src/dnd.c
+msgid "dnd: use on [DURATION], off, toggle or status"
+msgstr "dnd：请使用 on [时长]、off、toggle 或 status"
+
+#: src/hud.c
+msgid "Open"
+msgstr "打开"
+
+#: src/main.c
+msgid "pachud: daemon not running\n"
+msgstr "pachud：守护进程未运行\n"
+
+#: src/main.c
+msgid "bad toast message"
+msgstr "无效的提示消息"
+
+#: src/main.c
+msgid "level must be info, warn or crit"
+msgstr "级别必须是 info、warn 或 crit"
+
+#: src/main.c
+msgid "bad slider message"
+msgstr "无效的滑块消息"
+
+#: src/main.c
+msgid "this build has no notification support"
+msgstr "此版本不支持通知"
+
+#: src/main.c
+msgid "unknown command"
+msgstr "未知命令"
+
+#: src/main.c
+msgid "pachud: already running\n"
+msgstr "pachud：已在运行\n"
+
+#: src/main.c
+msgid "pachud: cannot connect to a Wayland compositor with layer-shell\n"
+msgstr "pachud：无法连接到支持 layer-shell 的 Wayland 合成器\n"
+
+#: src/notify.c
+msgid "no such action on screen"
+msgstr "屏幕上没有这样的操作"
+
+#: src/notify.c
+msgid "notifications unavailable"
+msgstr "通知不可用"
+
+#: src/src_audio.c
+msgid "Microphone — muted"
+msgstr "麦克风 — 静音"
+
+#: src/src_audio.c
+msgid "Microphone"
+msgstr "麦克风"
 
 #: src/src_audio.c
 msgid "Volume — muted"
@@ -85,3 +165,81 @@ msgstr "闹钟"
 #: src/timer.c
 msgid "Timer done"
 msgstr "计时结束"
+
+#: src/timer.c
+msgid "too many timers"
+msgstr "计时器太多"
+
+#: src/timer.c
+msgid "nothing to snooze"
+msgstr "没有可推迟的项目"
+
+#: src/timer.c
+#, c-format
+msgid "bad duration \"%s\": use e.g. 5m, 10m"
+msgstr "无效的时长 \"%s\"：例如 5m、10m"
+
+#: src/timer.c
+#, c-format
+msgid "Snoozed for %s"
+msgstr "已推迟 %s"
+
+#: src/timer.c
+msgid "no such timer"
+msgstr "没有这个计时器"
+
+#: src/timer.c
+msgid "only timers can be paused"
+msgstr "只有计时器可以暂停"
+
+#: src/timer.c
+msgid "already paused"
+msgstr "已经暂停"
+
+#: src/timer.c
+msgid "not paused"
+msgstr "未暂停"
+
+#: src/timer.c
+msgid "bad duration: use e.g. 5m, 1h"
+msgstr "无效的时长：例如 5m、1h"
+
+#: src/timer.c
+msgid "too far ahead"
+msgstr "时间太遥远"
+
+#: src/timer.c
+msgid "timers unavailable"
+msgstr "计时器不可用"
+
+#: src/timer.c
+msgid "missing duration"
+msgstr "缺少时长"
+
+#: src/timer.c
+msgid "missing time"
+msgstr "缺少时间"
+
+#: src/timer.c
+#, c-format
+msgid ""
+"bad recurrence \"%s\": use daily, weekdays, weekends or e.g. mon,wed,fri"
+msgstr "无效的重复 \"%s\"：请使用 daily、weekdays、weekends 或 mon,wed,fri 等"
+
+#: src/timer.c
+msgid "a dated alarm cannot repeat"
+msgstr "带日期的闹钟不能重复"
+
+#: src/timer.c
+msgid "that time has already passed"
+msgstr "该时间已经过去"
+
+#: src/timer.c
+#, c-format
+msgid "bad duration \"%s\": use e.g. 90s, 5m, 1h30m"
+msgstr "无效的时长 \"%s\"：例如 90s、5m、1h30m"
+
+#: src/timer.c
+#, c-format
+msgid "bad time \"%s\": use HH:MM or YYYY-MM-DD HH:MM"
+msgstr "无效的时间 \"%s\"：请使用 HH:MM 或 YYYY-MM-DD HH:MM"

@@ -35,9 +35,10 @@
 #define RECONNECT_MAX_S 300  /* the server may be absent; don't hammer */
 
 enum { CMD_ERROR = 0, CMD_REPLY = 2, CMD_AUTH = 8, CMD_SET_CLIENT_NAME = 9,
-       CMD_GET_SINK_INFO = 21, CMD_SUBSCRIBE = 35, CMD_SUBSCRIBE_EVENT = 66 };
-enum { MASK_SINK = 0x1, MASK_SERVER = 0x80 };
-enum { FACILITY_MASK = 0xF, FACILITY_SINK = 0, FACILITY_SERVER = 7 };
+       CMD_GET_SINK_INFO = 21, CMD_GET_SOURCE_INFO = 23, CMD_SUBSCRIBE = 35,
+       CMD_SUBSCRIBE_EVENT = 66 };
+enum { MASK_SINK = 0x1, MASK_SOURCE = 0x2, MASK_SERVER = 0x80 };
+enum { FACILITY_MASK = 0xF, FACILITY_SINK = 0, FACILITY_SOURCE = 1, FACILITY_SERVER = 7 };
 
 typedef enum { S_DOWN, S_AUTH, S_NAME, S_SUBSCRIBE, S_READY } State;
 
@@ -45,8 +46,29 @@ static int sock = -1, debounce_fd = -1, reconnect_fd = -1;
 static State state = S_DOWN;
 static uint32_t next_tag;
 static int reconnect_s = RECONNECT_MIN_S;
-static bool info_pending, info_again, announce;
-static int last_pct = -1, last_muted = -1;
+/* What is watched: the default output and the default input, each with the same volume and
+ * mute fields in the server's reply. One request is outstanding at a time. */
+typedef enum { T_SINK, T_SOURCE, T_COUNT } TrackId;
+
+typedef struct {
+    const char *object;    /* the alias the server resolves to the current default device */
+    uint32_t command;
+    int last_pct, last_muted;
+    bool dirty;            /* an event arrived: ask once the burst settles */
+    bool want, want_announce;  /* a request is queued, and whether its answer may show a HUD */
+} Track;
+
+static Track tracks[T_COUNT] = {
+    [T_SINK] = { "@DEFAULT_SINK@", CMD_GET_SINK_INFO, -1, -1, false, false, false },
+    [T_SOURCE] = { "@DEFAULT_SOURCE@", CMD_GET_SOURCE_INFO, -1, -1, false, false, false },
+};
+static int pending = -1;   /* the track the outstanding request is for, or -1 */
+static bool announce;      /* whether the outstanding answer may show a HUD */
+
+static const char *label_for(TrackId t, bool muted) {
+    if (t == T_SOURCE) return muted ? _("Microphone — muted") : _("Microphone");
+    return muted ? _("Volume — muted") : _("Volume");
+}
 
 static uint8_t inbuf[DESCRIPTOR_LEN + MAX_FRAME];
 static size_t inlen;
@@ -166,7 +188,8 @@ static void disconnect(void) {
     }
     state = S_DOWN;
     inlen = 0;
-    info_pending = info_again = false;
+    pending = -1;
+    for (int t = 0; t < T_COUNT; t++) tracks[t].want = tracks[t].dirty = false;
     arm(reconnect_fd, reconnect_s * 1000L);
     reconnect_s = reconnect_s * 2 > RECONNECT_MAX_S ? RECONNECT_MAX_S : reconnect_s * 2;
 }
@@ -183,18 +206,34 @@ static bool server_path(struct sockaddr_un *a) {
     return snprintf(a->sun_path, sizeof a->sun_path, "%s/pulse/native", dir) < (int)sizeof a->sun_path;
 }
 
-static void request_sink_info(bool show) {
-    if (info_pending) { info_again = info_again || show; return; }
-    Out o;
-    command(&o, CMD_GET_SINK_INFO);
-    put_u32(&o, INVALID_INDEX);
-    put_str(&o, "@DEFAULT_SINK@");
-    if (!send_packet(&o)) { disconnect(); return; }
-    info_pending = true;
-    announce = show;
+/* Sends the next queued request, if none is outstanding. */
+static void request_next(void) {
+    if (pending >= 0 || state != S_READY) return;
+    for (int t = 0; t < T_COUNT; t++) {
+        Track *k = &tracks[t];
+        if (!k->want) continue;
+        k->want = false;
+        Out o;
+        command(&o, k->command);
+        put_u32(&o, INVALID_INDEX);
+        put_str(&o, k->object);
+        if (!send_packet(&o)) { disconnect(); return; }
+        pending = t;
+        announce = k->want_announce;
+        return;
+    }
 }
 
-static void handle_sink_info(In *in) {
+static void want_info(TrackId t, bool show) {
+    Track *k = &tracks[t];
+    k->want_announce = k->want ? (k->want_announce || show) : show;
+    k->want = true;
+    request_next();
+}
+
+/* A sink and a source reply start the same way: index, name, description, sample spec,
+ * channel map, owner module, then the volume and the mute flag, which is all that is read. */
+static void handle_info(TrackId t, In *in) {
     get_u32(in);      /* index */
     skip_string(in);  /* name, description */
     skip_string(in);
@@ -205,11 +244,12 @@ static void handle_sink_info(In *in) {
     bool muted = get_bool(in);
     if (in->bad) return;
 
+    Track *k = &tracks[t];
     int pct = (int)(((uint64_t)volume * 100 + VOLUME_NORM / 2) / VOLUME_NORM);
-    if (pct == last_pct && muted == last_muted) return;  /* e.g. a sink state change */
-    last_pct = pct;
-    last_muted = muted;
-    if (announce) hud_slider(muted ? _("Volume — muted") : _("Volume"), pct, muted);
+    if (pct == k->last_pct && muted == k->last_muted) return;  /* e.g. a device state change */
+    k->last_pct = pct;
+    k->last_muted = muted;
+    if (announce) hud_slider(label_for(t, muted), pct, muted);
 }
 
 static void on_reply(In *in) {
@@ -228,19 +268,21 @@ static void on_reply(In *in) {
     case S_NAME:
         state = S_SUBSCRIBE;
         command(&o, CMD_SUBSCRIBE);
-        put_u32(&o, MASK_SINK | MASK_SERVER);
+        put_u32(&o, MASK_SINK | MASK_SOURCE | MASK_SERVER);
         if (!send_packet(&o)) disconnect();
         break;
     case S_SUBSCRIBE:
         state = S_READY;
         reconnect_s = RECONNECT_MIN_S;
-        request_sink_info(false);  /* learn the current state; later changes compare against it */
+        want_info(T_SINK, false);  /* learn the current state; later changes compare against it */
+        want_info(T_SOURCE, false);
         break;
     case S_READY:
-        if (!info_pending) break;
-        info_pending = false;
-        handle_sink_info(in);
-        if (info_again) { info_again = false; request_sink_info(true); }
+        if (pending < 0) break;
+        int t = pending;
+        pending = -1;
+        handle_info(t, in);
+        request_next();
         break;
     case S_DOWN:
         break;
@@ -256,8 +298,9 @@ static void handle_frame(const uint8_t *payload, size_t len) {
     if (cmd == CMD_REPLY) {
         on_reply(&in);
     } else if (cmd == CMD_ERROR) {
-        if (state == S_READY) {  /* e.g. no default sink yet: not fatal */
-            info_pending = false;
+        if (state == S_READY) {  /* e.g. no default source yet: not fatal */
+            pending = -1;
+            request_next();
         } else {
             disconnect();
         }
@@ -265,8 +308,10 @@ static void handle_frame(const uint8_t *payload, size_t len) {
         uint32_t event = get_u32(&in);
         get_u32(&in);  /* index */
         uint32_t facility = event & FACILITY_MASK;
-        if (!in.bad && (facility == FACILITY_SINK || facility == FACILITY_SERVER))
-            arm(debounce_fd, DEBOUNCE_MS);
+        if (in.bad) return;
+        if (facility == FACILITY_SINK || facility == FACILITY_SERVER) tracks[T_SINK].dirty = true;
+        if (facility == FACILITY_SOURCE || facility == FACILITY_SERVER) tracks[T_SOURCE].dirty = true;
+        if (tracks[T_SINK].dirty || tracks[T_SOURCE].dirty) arm(debounce_fd, DEBOUNCE_MS);
     }
 }
 
@@ -325,7 +370,12 @@ static void connect_server(void) {
 static void on_debounce(void *ctx, uint32_t ev) {
     (void)ctx; (void)ev;
     uint64_t n;
-    if (read(debounce_fd, &n, sizeof n) > 0 && state == S_READY) request_sink_info(true);
+    if (read(debounce_fd, &n, sizeof n) <= 0 || state != S_READY) return;
+    for (int t = 0; t < T_COUNT; t++) {
+        if (!tracks[t].dirty) continue;
+        tracks[t].dirty = false;
+        want_info(t, true);
+    }
 }
 
 static void on_reconnect(void *ctx, uint32_t ev) {

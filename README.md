@@ -13,7 +13,7 @@ A tiny daemon that sleeps until something deserves your attention, then shows a 
 
 | Event | Source | Shown as |
 |---|---|---|
-| Volume, mute | PulseAudio native protocol (PulseAudio / PipeWire) | slider |
+| Volume, mute; microphone level, mute | PulseAudio native protocol (PulseAudio / PipeWire) | slider |
 | Brightness | sysfs notification on `/sys/class/backlight` | slider |
 | Battery low / critical, charger plugged | kernel uevents (`NETLINK_KOBJECT_UEVENT`) | alert |
 | Memory pressure | kernel PSI triggers (`/proc/pressure/memory`) | alert |
@@ -45,7 +45,10 @@ pachud                                   run the daemon
 pachud toast [-l info|warn|crit] [-t SECONDS] TEXT...
 pachud slider PERCENT LABEL...
 pachud timer 90s|5m|1h30m [LABEL...]
-pachud alarm [-r daily|weekdays|weekends|mon,wed,...] HH:MM [LABEL...]
+pachud alarm [-r daily|weekdays|weekends|mon,wed,...] [YYYY-MM-DD] HH:MM [LABEL...]
+pachud snooze [DURATION]
+pachud pause ID | resume ID | extend ID DURATION
+pachud dnd [on [DURATION]|off|toggle|status]
 pachud list | cancel ID|all
 pachud dismiss
 ```
@@ -56,6 +59,7 @@ Linux only, tested on **Arch Linux with Hyprland** (needs the `wlr-layer-shell` 
 
 ## Documentation
 
+- `man pachud` ([source](docs/pachud.1)): every command and variable in one page
 - [Usage](docs/usage.md): commands, environment variables, Hyprland binds, replacing mako
 - [Translations](docs/translations.md): languages, fonts, right-to-left, adding a language
 - [Building and installing](docs/building.md): dependencies, options, tests

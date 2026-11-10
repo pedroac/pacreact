@@ -27,7 +27,9 @@ ALL_LIBS := $(LDLIBS) $(shell pkg-config --libs $(PKGS))
 WL_PROTOCOLS = $(shell pkg-config --variable=pkgdatadir wayland-protocols)
 PROTOCOLS = protocol/wlr-layer-shell-unstable-v1.xml \
             $(WL_PROTOCOLS)/stable/xdg-shell/xdg-shell.xml \
-            $(WL_PROTOCOLS)/staging/alpha-modifier/alpha-modifier-v1.xml
+            $(WL_PROTOCOLS)/staging/alpha-modifier/alpha-modifier-v1.xml \
+            $(WL_PROTOCOLS)/staging/fractional-scale/fractional-scale-v1.xml \
+            $(WL_PROTOCOLS)/stable/viewporter/viewporter.xml
 
 PROTO_NAMES = $(basename $(notdir $(PROTOCOLS)))
 PROTO_HEADERS = $(PROTO_NAMES:%=build/%-client-protocol.h)
@@ -102,10 +104,12 @@ clean:
 	rm -rf build $(TARGET)
 
 UNITDIR ?= $(PREFIX)/lib/systemd/user
+MANDIR ?= $(PREFIX)/share/man
 DBUSDIR ?= $(PREFIX)/share/dbus-1/services
 
 install: all
 	install -Dm755 $(TARGET) $(DESTDIR)$(BINDIR)/$(TARGET)
+	install -Dm644 docs/pachud.1 $(DESTDIR)$(MANDIR)/man1/pachud.1
 	for lang in $(LINGUAS); do \
 		install -Dm644 build/locale/$$lang/LC_MESSAGES/$(TARGET).mo \
 			$(DESTDIR)$(LOCALEDIR)/$$lang/LC_MESSAGES/$(TARGET).mo; \
@@ -120,7 +124,7 @@ ifeq ($(NOTIFY),1)
 endif
 
 uninstall:
-	rm -f $(DESTDIR)$(BINDIR)/$(TARGET) $(DESTDIR)$(UNITDIR)/pachud.service \
+	rm -f $(DESTDIR)$(BINDIR)/$(TARGET) $(DESTDIR)$(MANDIR)/man1/pachud.1 $(DESTDIR)$(UNITDIR)/pachud.service \
 		$(DESTDIR)$(DBUSDIR)/org.pachud.Notifications.service
 	for lang in $(LINGUAS); do \
 		rm -f $(DESTDIR)$(LOCALEDIR)/$$lang/LC_MESSAGES/$(TARGET).mo; \
@@ -133,7 +137,10 @@ uninstall:
 # The tests build the logic on its own, with stubs for the display, the HUD and the loop. Some
 # #include the source under test so that its static internals are reachable.
 TEST_CC = $(CC) $(CFLAGS) -D_GNU_SOURCE -Wall -Wextra -Ibuild -Isrc
-TESTS = power timer probe audio hud ipc
+TESTS = power timer probe audio hud ipc sound dnd image icon scale display
+ifeq ($(I18N),1)
+TESTS += text
+endif
 ifeq ($(NOTIFY),1)
 TESTS += notify
 endif
@@ -141,12 +148,20 @@ endif
 TEST_SRC_power = src/src_power.c
 TEST_SRC_probe = src/src_probe.c
 TEST_SRC_ipc = src/ipc.c
-TEST_SRC_notify = src/notify.c
+TEST_SRC_sound = src/sound.c
+TEST_SRC_dnd = src/timer.c
+TEST_SRC_image = src/image.c
+TEST_SRC_icon = src/icon.c
+TEST_SRC_text = src/shape.c src/utf8.c
+TEST_SRC_display = $(PROTO_OBJS)
+TEST_SRC_notify = src/notify.c src/image.c src/icon.c
 TEST_LIBS_hud = $(shell pkg-config --libs cairo) -lm
+TEST_LIBS_text = $(shell pkg-config --cflags --libs cairo freetype2 harfbuzz fribidi) -lm
+TEST_LIBS_display = $(shell pkg-config --libs wayland-client cairo) -lm
 TEST_LIBS_notify = $(shell pkg-config --libs libsystemd 2>/dev/null)
 
 test: $(TESTS:%=build/test_%)
 	@set -e; for t in $^; do $$t; done
 
-build/test_%: tests/test_%.c $(wildcard src/*.c src/*.h) | build build/config.h
+build/test_%: tests/test_%.c $(wildcard src/*.c src/*.h) | build build/config.h $(PROTO_HEADERS) $(PROTO_OBJS)
 	$(TEST_CC) tests/test_$*.c $(TEST_SRC_$*) -o $@ $(TEST_LIBS_$*)

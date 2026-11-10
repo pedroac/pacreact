@@ -6,7 +6,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: pachud\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-10 06:25+0000\n"
+"POT-Creation-Date: 2026-11-10 09:24+0000\n"
 "PO-Revision-Date: 2026-11-10 00:00+0000\n"
 "Last-Translator: \n"
 "Language-Team: Dutch\n"
@@ -15,6 +15,89 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+#: src/dnd.c
+#, c-format
+msgid "Do not disturb on for %s"
+msgstr "Niet storen aan voor %s"
+
+#: src/dnd.c
+msgid "Do not disturb on"
+msgstr "Niet storen aan"
+
+#: src/dnd.c
+#, c-format
+msgid "Do not disturb off — %d notification skipped"
+msgid_plural "Do not disturb off — %d notifications skipped"
+msgstr[0] "Niet storen uit — %d melding overgeslagen"
+msgstr[1] "Niet storen uit — %d meldingen overgeslagen"
+
+#: src/dnd.c
+msgid "Do not disturb off"
+msgstr "Niet storen uit"
+
+#: src/dnd.c
+#, c-format
+msgid "bad duration \"%s\": use e.g. 30m, 1h"
+msgstr "ongeldige duur \"%s\": gebruik bijv. 30m, 1h"
+
+#: src/dnd.c
+msgid "dnd: use on [DURATION], off, toggle or status"
+msgstr "dnd: gebruik on [DUUR], off, toggle of status"
+
+#: src/hud.c
+msgid "Open"
+msgstr "Openen"
+
+#: src/main.c
+msgid "pachud: daemon not running\n"
+msgstr "pachud: daemon draait niet\n"
+
+#: src/main.c
+msgid "bad toast message"
+msgstr "ongeldig toastbericht"
+
+#: src/main.c
+msgid "level must be info, warn or crit"
+msgstr "niveau moet info, warn of crit zijn"
+
+#: src/main.c
+msgid "bad slider message"
+msgstr "ongeldig schuifbericht"
+
+#: src/main.c
+msgid "this build has no notification support"
+msgstr "deze build ondersteunt geen meldingen"
+
+#: src/main.c
+msgid "unknown command"
+msgstr "onbekende opdracht"
+
+#: src/main.c
+msgid "pachud: already running\n"
+msgstr "pachud: draait al\n"
+
+#: src/main.c
+msgid "pachud: cannot connect to a Wayland compositor with layer-shell\n"
+msgstr ""
+"pachud: kan geen verbinding maken met een Wayland-compositor met layer-"
+"shell\n"
+
+#: src/notify.c
+msgid "no such action on screen"
+msgstr "geen zo'n actie op het scherm"
+
+#: src/notify.c
+msgid "notifications unavailable"
+msgstr "meldingen niet beschikbaar"
+
+#: src/src_audio.c
+msgid "Microphone — muted"
+msgstr "Microfoon — gedempt"
+
+#: src/src_audio.c
+msgid "Microphone"
+msgstr "Microfoon"
 
 #: src/src_audio.c
 msgid "Volume — muted"
@@ -85,3 +168,83 @@ msgstr "Alarm"
 #: src/timer.c
 msgid "Timer done"
 msgstr "Timer afgelopen"
+
+#: src/timer.c
+msgid "too many timers"
+msgstr "te veel timers"
+
+#: src/timer.c
+msgid "nothing to snooze"
+msgstr "niets om uit te stellen"
+
+#: src/timer.c
+#, c-format
+msgid "bad duration \"%s\": use e.g. 5m, 10m"
+msgstr "ongeldige duur \"%s\": gebruik bijv. 5m, 10m"
+
+#: src/timer.c
+#, c-format
+msgid "Snoozed for %s"
+msgstr "Uitgesteld met %s"
+
+#: src/timer.c
+msgid "no such timer"
+msgstr "geen zo'n timer"
+
+#: src/timer.c
+msgid "only timers can be paused"
+msgstr "alleen timers kunnen worden gepauzeerd"
+
+#: src/timer.c
+msgid "already paused"
+msgstr "al gepauzeerd"
+
+#: src/timer.c
+msgid "not paused"
+msgstr "niet gepauzeerd"
+
+#: src/timer.c
+msgid "bad duration: use e.g. 5m, 1h"
+msgstr "ongeldige duur: gebruik bijv. 5m, 1h"
+
+#: src/timer.c
+msgid "too far ahead"
+msgstr "te ver in de toekomst"
+
+#: src/timer.c
+msgid "timers unavailable"
+msgstr "timers niet beschikbaar"
+
+#: src/timer.c
+msgid "missing duration"
+msgstr "duur ontbreekt"
+
+#: src/timer.c
+msgid "missing time"
+msgstr "tijd ontbreekt"
+
+#: src/timer.c
+#, c-format
+msgid ""
+"bad recurrence \"%s\": use daily, weekdays, weekends or e.g. mon,wed,fri"
+msgstr ""
+"ongeldige herhaling \"%s\": gebruik daily, weekdays, weekends of bijv. "
+"mon,wed,fri"
+
+#: src/timer.c
+msgid "a dated alarm cannot repeat"
+msgstr "een alarm met datum kan niet herhalen"
+
+#: src/timer.c
+msgid "that time has already passed"
+msgstr "dat tijdstip is al voorbij"
+
+#: src/timer.c
+#, c-format
+msgid "bad duration \"%s\": use e.g. 90s, 5m, 1h30m"
+msgstr "ongeldige duur \"%s\": gebruik bijv. 90s, 5m, 1h30m"
+
+#: src/timer.c
+#, c-format
+msgid "bad time \"%s\": use HH:MM or YYYY-MM-DD HH:MM"
+msgstr "ongeldige tijd \"%s\": gebruik HH:MM of YYYY-MM-DD HH:MM"

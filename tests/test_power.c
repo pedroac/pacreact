@@ -1,5 +1,6 @@
 /* Exercises the battery/charger decision logic and uevent parsing without a display. */
 #include "../src/hud.h"
+#include "../src/sound.h"
 #include <assert.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -19,6 +20,7 @@ void hud_toast(const char *text, Level level, int ms) {
     last_level = level;
     shown++;
 }
+void sound_play(SoundKind kind) { (void)kind; }
 int loop_add(int fd, unsigned ev, void *fn, void *ctx) { (void)fd; (void)ev; (void)fn; (void)ctx; return 0; }
 
 static size_t uevent(char *out, const char *props[]) {

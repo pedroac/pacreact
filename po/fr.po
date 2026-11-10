@@ -6,7 +6,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: pachud\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-10 06:25+0000\n"
+"POT-Creation-Date: 2026-11-10 09:24+0000\n"
 "PO-Revision-Date: 2026-11-10 00:00+0000\n"
 "Last-Translator: \n"
 "Language-Team: French\n"
@@ -15,6 +15,89 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+#: src/dnd.c
+#, c-format
+msgid "Do not disturb on for %s"
+msgstr "Ne pas déranger activé pour %s"
+
+#: src/dnd.c
+msgid "Do not disturb on"
+msgstr "Ne pas déranger activé"
+
+#: src/dnd.c
+#, c-format
+msgid "Do not disturb off — %d notification skipped"
+msgid_plural "Do not disturb off — %d notifications skipped"
+msgstr[0] "Ne pas déranger désactivé — %d notification ignorée"
+msgstr[1] "Ne pas déranger désactivé — %d notifications ignorées"
+
+#: src/dnd.c
+msgid "Do not disturb off"
+msgstr "Ne pas déranger désactivé"
+
+#: src/dnd.c
+#, c-format
+msgid "bad duration \"%s\": use e.g. 30m, 1h"
+msgstr "durée invalide \"%s\" : utilisez p. ex. 30m, 1h"
+
+#: src/dnd.c
+msgid "dnd: use on [DURATION], off, toggle or status"
+msgstr "dnd : utilisez on [DURÉE], off, toggle ou status"
+
+#: src/hud.c
+msgid "Open"
+msgstr "Ouvrir"
+
+#: src/main.c
+msgid "pachud: daemon not running\n"
+msgstr "pachud : le démon n'est pas lancé\n"
+
+#: src/main.c
+msgid "bad toast message"
+msgstr "message de toast invalide"
+
+#: src/main.c
+msgid "level must be info, warn or crit"
+msgstr "le niveau doit être info, warn ou crit"
+
+#: src/main.c
+msgid "bad slider message"
+msgstr "message de curseur invalide"
+
+#: src/main.c
+msgid "this build has no notification support"
+msgstr "cette version n'inclut pas les notifications"
+
+#: src/main.c
+msgid "unknown command"
+msgstr "commande inconnue"
+
+#: src/main.c
+msgid "pachud: already running\n"
+msgstr "pachud : déjà en cours d'exécution\n"
+
+#: src/main.c
+msgid "pachud: cannot connect to a Wayland compositor with layer-shell\n"
+msgstr ""
+"pachud : impossible de se connecter à un compositeur Wayland avec layer-"
+"shell\n"
+
+#: src/notify.c
+msgid "no such action on screen"
+msgstr "aucune action de ce type à l'écran"
+
+#: src/notify.c
+msgid "notifications unavailable"
+msgstr "notifications indisponibles"
+
+#: src/src_audio.c
+msgid "Microphone — muted"
+msgstr "Microphone — coupé"
+
+#: src/src_audio.c
+msgid "Microphone"
+msgstr "Microphone"
 
 #: src/src_audio.c
 msgid "Volume — muted"
@@ -85,3 +168,83 @@ msgstr "Alarme"
 #: src/timer.c
 msgid "Timer done"
 msgstr "Minuteur terminé"
+
+#: src/timer.c
+msgid "too many timers"
+msgstr "trop de minuteurs"
+
+#: src/timer.c
+msgid "nothing to snooze"
+msgstr "rien à reporter"
+
+#: src/timer.c
+#, c-format
+msgid "bad duration \"%s\": use e.g. 5m, 10m"
+msgstr "durée invalide \"%s\" : utilisez p. ex. 5m, 10m"
+
+#: src/timer.c
+#, c-format
+msgid "Snoozed for %s"
+msgstr "Reporté de %s"
+
+#: src/timer.c
+msgid "no such timer"
+msgstr "aucun minuteur de ce type"
+
+#: src/timer.c
+msgid "only timers can be paused"
+msgstr "seuls les minuteurs peuvent être mis en pause"
+
+#: src/timer.c
+msgid "already paused"
+msgstr "déjà en pause"
+
+#: src/timer.c
+msgid "not paused"
+msgstr "pas en pause"
+
+#: src/timer.c
+msgid "bad duration: use e.g. 5m, 1h"
+msgstr "durée invalide : utilisez p. ex. 5m, 1h"
+
+#: src/timer.c
+msgid "too far ahead"
+msgstr "trop loin dans le futur"
+
+#: src/timer.c
+msgid "timers unavailable"
+msgstr "minuteurs indisponibles"
+
+#: src/timer.c
+msgid "missing duration"
+msgstr "durée manquante"
+
+#: src/timer.c
+msgid "missing time"
+msgstr "heure manquante"
+
+#: src/timer.c
+#, c-format
+msgid ""
+"bad recurrence \"%s\": use daily, weekdays, weekends or e.g. mon,wed,fri"
+msgstr ""
+"répétition invalide \"%s\" : utilisez daily, weekdays, weekends ou p. ex. "
+"mon,wed,fri"
+
+#: src/timer.c
+msgid "a dated alarm cannot repeat"
+msgstr "une alarme datée ne peut pas se répéter"
+
+#: src/timer.c
+msgid "that time has already passed"
+msgstr "cette heure est déjà passée"
+
+#: src/timer.c
+#, c-format
+msgid "bad duration \"%s\": use e.g. 90s, 5m, 1h30m"
+msgstr "durée invalide \"%s\" : utilisez p. ex. 90s, 5m, 1h30m"
+
+#: src/timer.c
+#, c-format
+msgid "bad time \"%s\": use HH:MM or YYYY-MM-DD HH:MM"
+msgstr "heure invalide \"%s\" : utilisez HH:MM ou YYYY-MM-DD HH:MM"

@@ -4,8 +4,10 @@
 #include "../src/hud.h"
 #include "../src/loop.h"
 #include <assert.h>
+#include <poll.h>
 #include <stdio.h>
 #include <sys/socket.h>
+#include <sys/timerfd.h>
 
 static int slider_calls;
 static char slider_label[128];
@@ -71,8 +73,11 @@ static void connect_pair(State st) {
     peer = sv[1];
     state = st;
     inlen = 0;
-    info_pending = info_again = false;
-    last_pct = last_muted = -1;
+    pending = -1;
+    for (int t = 0; t < T_COUNT; t++) {
+        tracks[t].want = tracks[t].dirty = false;
+        tracks[t].last_pct = tracks[t].last_muted = -1;
+    }
     slider_calls = 0;
 }
 
@@ -123,14 +128,24 @@ static void test_handshake_packets(void) {
     feed_reply();  /* name accepted -> SUBSCRIBE sink|server */
     assert(state == S_SUBSCRIBE);
     n = read_packet(p, sizeof p);
-    assert(n == 15 && u32_at(p) == CMD_SUBSCRIBE && u32_at(p + 10) == (MASK_SINK | MASK_SERVER));
+    assert(n == 15 && u32_at(p) == CMD_SUBSCRIBE && u32_at(p + 10) == (MASK_SINK | MASK_SOURCE | MASK_SERVER));
 
     feed_reply();  /* subscribed -> ready, asks for the default sink silently */
-    assert(state == S_READY && info_pending && !announce);
+    assert(state == S_READY && pending == T_SINK && !announce);
     n = read_packet(p, sizeof p);
     assert(u32_at(p) == CMD_GET_SINK_INFO && u32_at(p + 10) == INVALID_INDEX);
     assert(p[15] == 't' && !strcmp((char *)p + 16, "@DEFAULT_SINK@"));
     assert(n == 15 + 1 + 15);
+
+    /* Once the output is known, the input is asked for (one request at a time) */
+    Buf8 reply = sink_info(9172, '0');
+    In in = { reply.b + 10, reply.b + reply.n, false };
+    on_reply(&in);
+    assert(pending == T_SOURCE && !announce);
+    n = read_packet(p, sizeof p);
+    assert(u32_at(p) == CMD_GET_SOURCE_INFO && u32_at(p + 10) == INVALID_INDEX);
+    assert(p[15] == 't' && !strcmp((char *)p + 16, "@DEFAULT_SOURCE@"));
+    assert(slider_calls == 0);                     /* learning the state is silent */
     drop_pair();
 }
 
@@ -138,16 +153,16 @@ static void test_sink_info_parsing(void) {
     connect_pair(S_READY);
 
     /* The captured frame: 9172 on both channels, muted = 14%. Learning it is silent. */
-    info_pending = true;
+    pending = T_SINK;
     announce = false;
     Buf8 reply = sink_info(9172, '1');
     In in = { reply.b + 10, reply.b + reply.n, false };
     on_reply(&in);
-    assert(!info_pending && slider_calls == 0);
-    assert(last_pct == 14 && last_muted == 1);
+    assert(pending == -1 && slider_calls == 0);
+    assert(tracks[T_SINK].last_pct == 14 && tracks[T_SINK].last_muted == 1);
 
     /* The same state again changes nothing, even when announcing (a sink state change). */
-    info_pending = true;
+    pending = T_SINK;
     announce = true;
     in = (In){ reply.b + 10, reply.b + reply.n, false };
     on_reply(&in);
@@ -155,14 +170,14 @@ static void test_sink_info_parsing(void) {
 
     /* Unmuted at 25%. */
     reply = sink_info(0x4000, '0');
-    info_pending = true;
+    pending = T_SINK;
     in = (In){ reply.b + 10, reply.b + reply.n, false };
     on_reply(&in);
     assert(slider_calls == 1 && !strcmp(slider_label, "Volume") && slider_pct == 25 && !slider_dim);
 
     /* Muting at the same level is a change. */
     reply = sink_info(0x4000, '1');
-    info_pending = true;
+    pending = T_SINK;
     in = (In){ reply.b + 10, reply.b + reply.n, false };
     on_reply(&in);
     assert(slider_calls == 2 && !strcmp(slider_label, "Volume — muted") && slider_pct == 25 && slider_dim);
@@ -172,13 +187,129 @@ static void test_sink_info_parsing(void) {
         { 0, 0 }, { 0x8000, 50 }, { 0x10000, 100 }, { 0x13333, 120 }, { 0x1, 0 }, { 0x7FFF, 50 },
     };
     for (size_t i = 0; i < sizeof cases / sizeof *cases; i++) {
-        last_pct = -1;
+        tracks[T_SINK].last_pct = -1;
         reply = sink_info(cases[i].raw, '0');
-        info_pending = true;
+        pending = T_SINK;
         in = (In){ reply.b + 10, reply.b + reply.n, false };
         on_reply(&in);
         assert(slider_pct == cases[i].pct);
     }
+    drop_pair();
+}
+
+static void test_microphone_track(void) {
+    connect_pair(S_READY);
+    announce = true;
+
+    /* A source reply has the same layout; it is labelled as the microphone */
+    pending = T_SOURCE;
+    Buf8 reply = sink_info(0x8000, '0');
+    In in = { reply.b + 10, reply.b + reply.n, false };
+    on_reply(&in);
+    assert(slider_calls == 1 && !strcmp(slider_label, "Microphone") && slider_pct == 50 && !slider_dim);
+    assert(tracks[T_SOURCE].last_pct == 50 && tracks[T_SINK].last_pct == -1);   /* kept apart */
+
+    pending = T_SOURCE;
+    reply = sink_info(0x8000, '1');
+    in = (In){ reply.b + 10, reply.b + reply.n, false };
+    on_reply(&in);
+    assert(slider_calls == 2 && !strcmp(slider_label, "Microphone — muted") && slider_dim);
+
+    /* The same input state again: nothing, while the output has its own memory */
+    pending = T_SOURCE;
+    in = (In){ reply.b + 10, reply.b + reply.n, false };
+    on_reply(&in);
+    assert(slider_calls == 2);
+    pending = T_SINK;
+    in = (In){ reply.b + 10, reply.b + reply.n, false };
+    on_reply(&in);
+    assert(slider_calls == 3 && !strcmp(slider_label, "Volume — muted"));
+    drop_pair();
+}
+
+static void test_request_queue(void) {
+    connect_pair(S_READY);
+    uint8_t p[256];
+
+    /* Two wanted at once: the first goes out, the second waits for its answer */
+    want_info(T_SINK, true);
+    want_info(T_SOURCE, true);
+    assert(pending == T_SINK && tracks[T_SOURCE].want && announce);
+    read_packet(p, sizeof p);
+    assert(u32_at(p) == CMD_GET_SINK_INFO);
+    assert(recv(peer, p, sizeof p, MSG_DONTWAIT) < 0);          /* nothing else was sent yet */
+
+    Buf8 reply = sink_info(0x4000, '0');
+    In in = { reply.b + 10, reply.b + reply.n, false };
+    on_reply(&in);
+    assert(pending == T_SOURCE && !tracks[T_SOURCE].want);
+    read_packet(p, sizeof p);
+    assert(u32_at(p) == CMD_GET_SOURCE_INFO);
+
+    /* A request for a track already waiting is not sent twice, and "announce" is not lost: a
+     * silent request merged with an announcing one still announces */
+    tracks[T_SINK].want = false;
+    want_info(T_SINK, false);
+    want_info(T_SINK, true);
+    want_info(T_SINK, false);
+    assert(tracks[T_SINK].want && tracks[T_SINK].want_announce);
+
+    /* An error for the outstanding request (e.g. no default input) moves on, it is not fatal */
+    uint8_t err[15] = { 'L', 0, 0, 0, 0, 'L', 0, 0, 0, 2, 'L', 0, 0, 0, 3 };
+    handle_frame(err, sizeof err);
+    assert(state == S_READY && sock >= 0 && pending == T_SINK);   /* the waiting sink request went out */
+    read_packet(p, sizeof p);
+    assert(u32_at(p) == CMD_GET_SINK_INFO);
+    drop_pair();
+}
+
+static void event_frame(uint32_t event) {
+    uint8_t f[20];
+    uint32_t cmd = htonl(CMD_SUBSCRIBE_EVENT), tag = htonl(0xFFFFFFFFu), ev = htonl(event), idx = htonl(7);
+    size_t n = 0;
+    f[n++] = 'L'; memcpy(f + n, &cmd, 4); n += 4;
+    f[n++] = 'L'; memcpy(f + n, &tag, 4); n += 4;
+    f[n++] = 'L'; memcpy(f + n, &ev, 4); n += 4;
+    f[n++] = 'L'; memcpy(f + n, &idx, 4); n += 4;
+    handle_frame(f, n);
+}
+
+static void test_events(void) {
+    connect_pair(S_READY);
+    uint8_t p[256];
+
+    /* Output events dirty the output only; input events the input only */
+    event_frame(0x10 | FACILITY_SINK);
+    assert(tracks[T_SINK].dirty && !tracks[T_SOURCE].dirty);
+    tracks[T_SINK].dirty = false;
+    event_frame(0x10 | FACILITY_SOURCE);
+    assert(!tracks[T_SINK].dirty && tracks[T_SOURCE].dirty);
+    tracks[T_SOURCE].dirty = false;
+
+    /* A server event (the default device changed) concerns both */
+    event_frame(0x10 | FACILITY_SERVER);
+    assert(tracks[T_SINK].dirty && tracks[T_SOURCE].dirty);
+    tracks[T_SINK].dirty = tracks[T_SOURCE].dirty = false;
+
+    /* Anything else (clients, cards, streams) is none of our business */
+    event_frame(0x10 | 5);
+    event_frame(0x00 | 2);
+    assert(!tracks[T_SINK].dirty && !tracks[T_SOURCE].dirty);
+
+    /* After the debounce, what is dirty is requested and announced */
+    event_frame(0x10 | FACILITY_SERVER);
+    debounce_fd = timerfd_create(CLOCK_MONOTONIC, TFD_CLOEXEC | TFD_NONBLOCK);
+    assert(debounce_fd >= 0);
+    arm(debounce_fd, 1);
+    struct pollfd pf = { .fd = debounce_fd, .events = POLLIN };
+    assert(poll(&pf, 1, 1000) == 1);
+    on_debounce(NULL, 0);
+    assert(pending == T_SINK && announce && tracks[T_SOURCE].want && tracks[T_SOURCE].want_announce);
+    assert(!tracks[T_SINK].dirty && !tracks[T_SOURCE].dirty);
+    read_packet(p, sizeof p);
+    assert(u32_at(p) == CMD_GET_SINK_INFO);
+    close(debounce_fd);
+    debounce_fd = -1;
     drop_pair();
 }
 
@@ -189,7 +320,7 @@ static void test_loudest_channel(void) {
     uint32_t louder = htonl(0x8000);
     size_t vol2 = reply.n - 5 - 1 - 4;  /* before: mute (1) and the monitor 'L'+u32 (5) */
     memcpy(reply.b + vol2, &louder, 4);
-    info_pending = true;
+    pending = T_SINK;
     announce = true;
     In in = { reply.b + 10, reply.b + reply.n, false };
     on_reply(&in);
@@ -203,9 +334,9 @@ static void test_malformed_replies(void) {
 
     /* Every truncation of a valid reply must be rejected without announcing anything. */
     for (size_t cut = 10; cut < reply.n - 5; cut++) {
-        info_pending = true;
+        pending = T_SINK;
         announce = true;
-        last_pct = last_muted = -1;
+        tracks[T_SINK].last_pct = tracks[T_SINK].last_muted = -1;
         In in = { reply.b + 10, reply.b + cut, false };
         on_reply(&in);
         assert(slider_calls == 0);
@@ -214,14 +345,14 @@ static void test_malformed_replies(void) {
     /* A wrong tag where a number belongs. */
     reply = sink_info(9172, '1');
     reply.b[10] = 'x';
-    info_pending = true;
+    pending = T_SINK;
     In in = { reply.b + 10, reply.b + reply.n, false };
     on_reply(&in);
     assert(slider_calls == 0);
 
     /* A boolean that is neither. */
     reply = sink_info(9172, '?');
-    info_pending = true;
+    pending = T_SINK;
     in = (In){ reply.b + 10, reply.b + reply.n, false };
     on_reply(&in);
     assert(slider_calls == 0);
@@ -230,7 +361,7 @@ static void test_malformed_replies(void) {
 
 static void test_framing(void) {
     connect_pair(S_READY);
-    info_pending = true;
+    pending = T_SINK;
     announce = true;
     Buf8 payload = sink_info(0x8000, '0');
     Buf8 frame = framed(&payload);
@@ -247,8 +378,8 @@ static void test_framing(void) {
     assert(slider_calls == 1 && slider_pct == 50 && inlen == 0);
 
     /* Two frames in one read, and an audio-channel frame in between that must be ignored. */
-    last_pct = -1;
-    info_pending = true;
+    tracks[T_SINK].last_pct = -1;
+    pending = T_SINK;
     Buf8 two = {0};
     raw(&two, frame.b, frame.n);
     uint32_t len = htonl(4), ch = htonl(7), zero = 0;  /* a data frame on channel 7 */
@@ -289,9 +420,9 @@ static void test_bad_connections(void) {
     drop_pair();
 
     connect_pair(S_READY);
-    info_pending = true;
+    pending = T_SINK;
     handle_frame(err, sizeof err);
-    assert(state == S_READY && !info_pending && sock >= 0);
+    assert(state == S_READY && pending == -1 && sock >= 0);
     drop_pair();
 }
 
@@ -316,6 +447,9 @@ static void test_server_path(void) {
 int main(void) {
     test_handshake_packets();
     test_sink_info_parsing();
+    test_microphone_track();
+    test_request_queue();
+    test_events();
     test_loudest_channel();
     test_malformed_replies();
     test_framing();

@@ -1,13 +1,17 @@
 #include "display.h"
 #include "hud.h"
+#include "i18n.h"
+#include "dnd.h"
 #include "ipc.h"
 #include "loop.h"
+#include "sound.h"
 #include "text.h"
 #ifndef NO_NOTIFY
 #include "notify.h"
 #endif
 #include "sources.h"
 #include "timer.h"
+#include "version.h"
 #include <stdbool.h>
 #include <sys/epoll.h>
 #include <signal.h>
@@ -19,14 +23,21 @@
 
 #define DEFAULT_TIMEOUT_MS 3000
 
+static const char usage_text[] =
+"usage: pachud                      run the daemon\n"
+    "       pachud toast [-l info|warn|crit] [-t SECONDS] TEXT...\n"
+    "       pachud slider PERCENT LABEL...\n"
+    "       pachud timer DURATION [LABEL...]   e.g. 90s, 5m, 1h30m\n"
+    "       pachud alarm [-r daily|weekdays|weekends|mon,wed,...] [YYYY-MM-DD] HH:MM [LABEL...]\n"
+    "       pachud snooze [DURATION]           re-arm the last timer/alarm that went off\n"
+    "       pachud pause ID | resume ID | extend ID DURATION   (timers)\n"
+    "       pachud list | cancel ID|all\n"
+    "       pachud dismiss                     close the HUD on screen\n"
+    "       pachud dnd [on [DURATION]|off|toggle|status]\n"
+    "       pachud action [N]                  invoke action N of the notification on screen\n";
+
 static int usage(void) {
-    fputs("usage: pachud                      run the daemon\n"
-          "       pachud toast [-l info|warn|crit] [-t SECONDS] TEXT...\n"
-          "       pachud slider PERCENT LABEL...\n"
-          "       pachud timer DURATION [LABEL...]   e.g. 90s, 5m, 1h30m\n"
-          "       pachud alarm [-r daily|weekdays|weekends|mon,wed,...] HH:MM [LABEL...]\n"
-          "       pachud list | cancel ID|all\n"
-          "       pachud dismiss                     close the HUD on screen\n", stderr);
+    fputs(usage_text, stderr);
     return 2;
 }
 
@@ -49,7 +60,7 @@ static int client_toast(int argc, char **argv) {
         n += snprintf(msg + n, sizeof msg - n, "%s%s", argv[i], i + 1 < argc ? " " : "");
 
     int r = ipc_send(msg);
-    if (r < 0) fputs("pachud: daemon not running\n", stderr);
+    if (r < 0) fputs(_("pachud: daemon not running\n"), stderr);
     return r != 0;
 }
 
@@ -63,21 +74,42 @@ static int client_generic(int argc, char **argv, int min_args) {
     for (int i = 3; i < argc && n < (int)sizeof msg - 1; i++)
         n += snprintf(msg + n, sizeof msg - n, "%s%s", argv[i], i + 1 < argc ? " " : "");
     int r = ipc_send(msg);
-    if (r < 0) fputs("pachud: daemon not running\n", stderr);
+    if (r < 0) fputs(_("pachud: daemon not running\n"), stderr);
     return r != 0;
 }
 
-/* pachud alarm [-r RECUR] HH:MM [LABEL...]: the daemon takes the recurrence as "HH:MM@RECUR". */
+static bool looks_like_date(const char *s) {  /* YYYY-MM-DD */
+    return strlen(s) == 10 && s[4] == '-' && s[7] == '-';
+}
+
+/* pachud alarm [-r RECUR] [YYYY-MM-DD] HH:MM [LABEL...]. The daemon takes one field: "HH:MM",
+ * "HH:MM@RECUR" or "YYYY-MM-DDTHH:MM". */
 static int client_alarm(int argc, char **argv) {
-    if (argc < 5 || strcmp(argv[2], "-r")) return client_generic(argc, argv, 1);
+    int i = 2;
+    const char *recur = NULL;
+    if (i + 1 < argc && !strcmp(argv[i], "-r")) { recur = argv[i + 1]; i += 2; }
+    if (i >= argc) return usage();
+
     char spec[64];
-    snprintf(spec, sizeof spec, "%s@%s", argv[4], argv[3]);
-    char *nargv[argc];
-    nargv[0] = argv[0];
-    nargv[1] = argv[1];
-    nargv[2] = spec;
-    for (int i = 5; i < argc; i++) nargv[i - 2] = argv[i];
-    return client_generic(argc - 2, nargv, 1);
+    if (looks_like_date(argv[i]) && i + 1 < argc) {
+        snprintf(spec, sizeof spec, "%sT%s", argv[i], argv[i + 1]);
+        i += 2;
+    } else {
+        snprintf(spec, sizeof spec, "%s", argv[i]);
+        i++;
+    }
+    if (recur) {
+        size_t len = strlen(spec);
+        snprintf(spec + len, sizeof spec - len, "@%s", recur);
+    }
+
+    char *nargv[argc + 1];
+    int n = 0;
+    nargv[n++] = argv[0];
+    nargv[n++] = argv[1];
+    nargv[n++] = spec;
+    for (; i < argc; i++) nargv[n++] = argv[i];
+    return client_generic(n, nargv, 1);
 }
 
 static void handle(char *msg, char *reply, size_t n) {
@@ -86,19 +118,29 @@ static void handle(char *msg, char *reply, size_t n) {
         char *lvl = strtok_r(NULL, "\t", &save), *ms = strtok_r(NULL, "\t", &save);
         char *text = save;
         Level level = LEVEL_INFO;
-        if (!lvl || !ms || !*text) { snprintf(reply, n, "bad toast message"); return; }
+        if (!lvl || !ms || !*text) { snprintf(reply, n, "%s", _("bad toast message")); return; }
         if (!strcmp(lvl, "warn")) level = LEVEL_WARN;
         else if (!strcmp(lvl, "crit")) level = LEVEL_CRIT;
-        else if (strcmp(lvl, "info")) { snprintf(reply, n, "level must be info, warn or crit"); return; }
+        else if (strcmp(lvl, "info")) { snprintf(reply, n, "%s", _("level must be info, warn or crit")); return; }
         hud_toast(text, level, atoi(ms));
         snprintf(reply, n, "ok");
         return;
     }
     if (cmd && !strcmp(cmd, "slider")) {
         char *pct = strtok_r(NULL, "\t", &save), *label = save;
-        if (!pct || !*label) { snprintf(reply, n, "bad slider message"); return; }
+        if (!pct || !*label) { snprintf(reply, n, "%s", _("bad slider message")); return; }
         hud_slider(label, atoi(pct), false);
         snprintf(reply, n, "ok");
+        return;
+    }
+    if (cmd && !strcmp(cmd, "action")) {
+#ifndef NO_NOTIFY
+        char *which = strtok_r(NULL, "\t", &save);
+        int number = which ? atoi(which) : 1;
+        if (notify_invoke_action(number < 1 ? 1 : number, reply, n)) return;
+#else
+        snprintf(reply, n, "%s", _("this build has no notification support"));
+#endif
         return;
     }
     if (cmd && !strcmp(cmd, "dismiss")) {
@@ -106,8 +148,9 @@ static void handle(char *msg, char *reply, size_t n) {
         snprintf(reply, n, "ok");
         return;
     }
+    if (cmd && dnd_command(cmd, save ? save : (char *)"", reply, n)) return;
     if (cmd && timer_command(cmd, save ? save : (char *)"", reply, n)) return;
-    snprintf(reply, n, "unknown command");
+    snprintf(reply, n, "%s", _("unknown command"));
 }
 
 static bool quit, wl_readable;
@@ -142,12 +185,13 @@ static int run_daemon(void) {
 
     static int lfd;
     lfd = ipc_listen();
-    if (lfd == -2) { fputs("pachud: already running\n", stderr); return 1; }
+    if (lfd == -2) { fputs(_("pachud: already running\n"), stderr); return 1; }
     if (lfd < 0) { perror("pachud: socket"); return 1; }
 
     text_init();
+    sound_init();
     Display *dpy = display_open();
-    if (!dpy) { fputs("pachud: cannot connect to a Wayland compositor with layer-shell\n", stderr); return 1; }
+    if (!dpy) { fputs(_("pachud: cannot connect to a Wayland compositor with layer-shell\n"), stderr); return 1; }
     hud_init(dpy);
 
     if (loop_init() < 0) { perror("pachud: epoll"); return 1; }
@@ -164,6 +208,7 @@ static int run_daemon(void) {
     notify_init();
 #endif
     timer_init();
+    dnd_init();
 
     while (!quit) {
         if (display_before_poll(dpy) < 0) break;
@@ -180,11 +225,23 @@ static int run_daemon(void) {
 
 int main(int argc, char **argv) {
     if (argc == 1) return run_daemon();
+    if (!strcmp(argv[1], "-h") || !strcmp(argv[1], "--help")) {
+        fputs(usage_text, stdout);
+        return 0;
+    }
+    if (!strcmp(argv[1], "-V") || !strcmp(argv[1], "--version")) {
+        puts("pachud " PACHUD_VERSION);
+        return 0;
+    }
     if (!strcmp(argv[1], "toast")) return client_toast(argc, argv);
     if (!strcmp(argv[1], "slider")) return client_generic(argc, argv, 2);
     if (!strcmp(argv[1], "alarm")) return client_alarm(argc, argv);
-    if (!strcmp(argv[1], "timer") || !strcmp(argv[1], "cancel"))
+    if (!strcmp(argv[1], "timer") || !strcmp(argv[1], "cancel") || !strcmp(argv[1], "pause") ||
+        !strcmp(argv[1], "resume"))
         return client_generic(argc, argv, 1);
-    if (!strcmp(argv[1], "list") || !strcmp(argv[1], "dismiss")) return client_generic(argc, argv, 0);
+    if (!strcmp(argv[1], "extend")) return client_generic(argc, argv, 2);
+    if (!strcmp(argv[1], "list") || !strcmp(argv[1], "dismiss") || !strcmp(argv[1], "dnd") ||
+        !strcmp(argv[1], "snooze") || !strcmp(argv[1], "action"))
+        return client_generic(argc, argv, 0);
     return usage();
 }

@@ -22,6 +22,7 @@ static int hides;
 Buf *display_buf(Display *d, int w, int h, cairo_t **cr) { (void)d; (void)w; (void)h; (void)cr; return NULL; }
 void display_present(Display *d, Buf *b, cairo_t *cr) { (void)d; (void)b; (void)cr; }
 void display_hide(Display *d) { (void)d; hides++; }
+void display_on_rescale(Display *d, void (*fn)(void)) { (void)d; (void)fn; }
 
 /* Ten units per byte: easy to reason about when wrapping. */
 bool text_rtl(void) { return false; }
@@ -46,6 +47,12 @@ static void on_closed(uint32_t id, int reason) {
     events[nevents].id = id;
     events[nevents].reason = reason;
     nevents++;
+}
+
+static void card(uint32_t id, const char *summary, const char *body, Level level, int ms) {
+    HudCard c = { .id = id, .summary = summary, .body = body, .icon_path = "", .level = level,
+                  .timeout_ms = ms };
+    hud_card(&c);
 }
 
 static void reset(void) {
@@ -134,14 +141,14 @@ static void test_alert_preempts_ephemeral(void) {
 static void test_cards(void) {
     reset();
     hud_on_closed(on_closed);
-    hud_card(1, "first", "body", "", LEVEL_INFO, 1000);
-    hud_card(2, "second", "body", "", LEVEL_INFO, 1000);
+    card(1, "first", "body", LEVEL_INFO, 1000);
+    card(2, "second", "body", LEVEL_INFO, 1000);
     assert(cur.id == 1 && queued == 1);            /* cards queue, they do not replace */
 
-    hud_card(2, "second v2", "", "", LEVEL_INFO, 1000);   /* replaced while waiting */
+    card(2, "second v2", "", LEVEL_INFO, 1000);   /* replaced while waiting */
     assert(queued == 1 && !strcmp(queue[0].text, "second v2"));
 
-    hud_card(1, "first v2", "", "", LEVEL_INFO, 1000);    /* replaced while shown */
+    card(1, "first v2", "", LEVEL_INFO, 1000);    /* replaced while shown */
     assert(cur.id == 1 && !strcmp(cur.text, "first v2") && queued == 1 && nevents == 0);
 
     advance_to_expiry();                           /* expiry is reported, with the reason */
@@ -158,9 +165,9 @@ static void test_cards(void) {
 static void test_remove(void) {
     reset();
     hud_on_closed(on_closed);
-    hud_card(1, "a", "", "", LEVEL_INFO, 1000);
-    hud_card(2, "b", "", "", LEVEL_INFO, 1000);
-    hud_card(3, "c", "", "", LEVEL_INFO, 1000);
+    card(1, "a", "", LEVEL_INFO, 1000);
+    card(2, "b", "", LEVEL_INFO, 1000);
+    card(3, "c", "", LEVEL_INFO, 1000);
 
     assert(hud_remove(2) && queued == 1);          /* queued: gone, silently */
     assert(hud_remove(1) && cur.id == 3);          /* shown: the next one takes over */
@@ -172,11 +179,11 @@ static void test_remove(void) {
 static void test_queue_overflow(void) {
     reset();
     hud_on_closed(on_closed);
-    hud_card(1, "shown", "", "", LEVEL_INFO, 1000);
-    for (uint32_t id = 2; id <= 1 + QUEUE_MAX; id++) hud_card(id, "waiting", "", "", LEVEL_INFO, 1000);
+    card(1, "shown", "", LEVEL_INFO, 1000);
+    for (uint32_t id = 2; id <= 1 + QUEUE_MAX; id++) card(id, "waiting", "", LEVEL_INFO, 1000);
     assert(queued == QUEUE_MAX && nevents == 0);
 
-    hud_card(100, "one too many", "", "", LEVEL_INFO, 1000);
+    card(100, "one too many", "", LEVEL_INFO, 1000);
     assert(queued == QUEUE_MAX && nevents == 1);
     assert(events[0].id == 100 && events[0].reason == HUD_CLOSED_OTHER);
 
@@ -185,6 +192,77 @@ static void test_queue_overflow(void) {
     hud_slider("Volume", 10, false);
     assert(queued == QUEUE_MAX && queue[0].id == 1);
     assert(nevents == 1 && events[0].id == 1 + QUEUE_MAX && events[0].reason == HUD_CLOSED_OTHER);
+}
+
+static void card_with_actions(uint32_t id, const char *const *actions, int n) {
+    HudCard c = { .id = id, .summary = "mail", .body = "from bob", .icon_path = "", .level = LEVEL_INFO,
+                  .timeout_ms = 1000, .actions = actions, .n_actions = n };
+    hud_card(&c);
+}
+
+static void test_actions(void) {
+    uint32_t id = 0;
+    reset();
+    hud_on_closed(on_closed);
+
+    /* Nothing on screen, or a card without actions: no action to invoke */
+    assert(hud_action_key(1, &id) == NULL);
+    card(1, "plain", "", LEVEL_INFO, 1000);
+    assert(cur.nact == 0 && hud_action_key(1, &id) == NULL);
+
+    /* Actions are offered by number, in the order the app sent them */
+    reset();
+    card_with_actions(2, (const char *[]){ "reply", "Reply", "archive", "Archive" }, 4);
+    assert(cur.nact == 2);
+    assert(!strcmp(hud_action_key(1, &id), "reply") && id == 2);
+    assert(!strcmp(hud_action_key(2, &id), "archive"));
+    assert(hud_action_key(0, &id) == NULL && hud_action_key(3, &id) == NULL && hud_action_key(-1, &id) == NULL);
+    assert(!strcmp(cur.act_label[1], "Archive"));
+
+    /* "default" is how apps say "the user clicked the notification": not shown as a button when
+     * there are real ones... */
+    reset();
+    card_with_actions(3, (const char *[]){ "default", "", "open", "Open it", "mute", "Mute" }, 6);
+    assert(cur.nact == 2 && !strcmp(hud_action_key(1, &id), "open") && !strcmp(hud_action_key(2, &id), "mute"));
+
+    /* ...but it is offered when it is all the card has (an empty label gets a generic one) */
+    reset();
+    card_with_actions(4, (const char *[]){ "default", "" }, 2);
+    assert(cur.nact == 1 && !strcmp(hud_action_key(1, &id), "default") && !strcmp(cur.act_label[0], "Open"));
+    reset();
+    card_with_actions(5, (const char *[]){ "default", "Go" }, 2);
+    assert(!strcmp(cur.act_label[0], "Go"));
+
+    /* No more than three are shown; an odd trailing string is ignored; labels stay on one line */
+    reset();
+    card_with_actions(6, (const char *[]){ "a", "A", "b", "B", "c", "C", "d", "D", "dangling" }, 9);
+    assert(cur.nact == HUD_MAX_ACTIONS && hud_action_key(4, &id) == NULL);
+    reset();
+    card_with_actions(7, (const char *[]){ "k", "two\nlines\tand tab" }, 2);
+    assert(!strcmp(cur.act_label[0], "two lines and tab"));
+
+    /* Only the card on screen counts: a queued card's actions are not available yet */
+    reset();
+    card_with_actions(8, (const char *[]){ "first", "First" }, 2);
+    card_with_actions(9, (const char *[]){ "second", "Second" }, 2);
+    assert(!strcmp(hud_action_key(1, &id), "first") && id == 8);
+    hud_dismiss();
+    assert(!strcmp(hud_action_key(1, &id), "second") && id == 9);
+
+    /* Raw icon pixels are kept only for the card that has them */
+    reset();
+    static uint8_t pixels[IMAGE_BYTES];
+    memset(pixels, 0x7F, sizeof pixels);
+    HudCard with = { .id = 10, .summary = "pic", .body = "", .icon_path = "", .image = pixels,
+                     .level = LEVEL_INFO, .timeout_ms = 1000 };
+    hud_card(&with);
+    assert(cur.has_image && cur.image[0] == 0x7F && cur.image[IMAGE_BYTES - 1] == 0x7F);
+    card(11, "no pic", "", LEVEL_INFO, 1000);            /* queued behind it, without the image */
+    assert(queued == 1 && !queue[0].has_image);
+    hud_toast("ephemeral", LEVEL_INFO, 100);             /* pushes the picture card back and shows later */
+    assert(queued == 2 && queue[0].has_image && queue[0].image[IMAGE_BYTES - 1] == 0x7F);
+    advance_to_expiry();
+    assert(cur.has_image && cur.image[100] == 0x7F);    /* and it comes back intact */
 }
 
 /* ---- card text helpers ---- */
@@ -251,8 +329,38 @@ static void test_ellipsize(void) {
         assert(!((*p & 0xC0) == 0x80 && (p == (const unsigned char *)out || p[-1] < 0x80)));
 }
 
+static void test_toast_line(void) {
+    char out[512], text[512];
+    toast_line("short", out, sizeof out);
+    assert(!strcmp(out, "short"));
+    toast_line("two\nlines\tand tab", out, sizeof out);
+    assert(!strcmp(out, "two lines and tab"));
+
+    /* 10 units per byte, 720 available: 69 bytes plus the 3-byte ellipsis fit */
+    memset(text, 'a', 100);
+    text[100] = '\0';
+    toast_line(text, out, sizeof out);
+    assert(strlen(out) == 72 && !strcmp(out + 69, "…") && out[68] == 'a');
+    assert(text_width(out, (int)strlen(out), FONT_SIZE, false) <= MAX_TEXT_W);
+
+    /* exactly at the limit is left alone */
+    memset(text, 'b', 72);
+    text[72] = '\0';
+    toast_line(text, out, sizeof out);
+    assert(!strcmp(out, text));
+
+    /* multi-byte text is never cut inside a character, even from a very long string */
+    char wide[512] = "";
+    for (int i = 0; i < 120; i++) strcat(wide, "é");
+    toast_line(wide, out, sizeof out);
+    assert(strlen(out) % 2 == 1 && !strcmp(out + strlen(out) - 3, "…"));   /* é is 2 bytes, … is 3 */
+    for (const unsigned char *p = (const unsigned char *)out; *p; p++)
+        assert(!((*p & 0xC0) == 0x80 && p[-1] < 0x80));
+}
+
 int main(void) {
     hud_init(NULL);
+    test_toast_line();
     test_toast_expiry();
     test_alert_queue_and_dedupe();
     test_slider_interrupts_alert();
@@ -260,6 +368,7 @@ int main(void) {
     test_cards();
     test_remove();
     test_queue_overflow();
+    test_actions();
     test_strip_markup();
     test_wrap();
     test_ellipsize();

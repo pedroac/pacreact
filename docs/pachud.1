@@ -1,0 +1,193 @@
+.TH PACHUD 1 "2026-11-10" "pachud 0.1" "User Commands"
+.SH NAME
+pachud \- event-driven HUDs and notification daemon for Wayland
+.SH SYNOPSIS
+.B pachud
+.br
+.B pachud
+.I command
+[\fIargument\fR ...]
+.br
+.B pachud
+.RB [ \-h " | " \-\-help " | " \-V " | " \-\-version ]
+.SH DESCRIPTION
+.B pachud
+sleeps until something deserves attention, then shows a small floating HUD on a Wayland compositor
+that implements wlr-layer-shell.
+It reacts to volume and brightness changes, low battery, memory pressure, network state changes,
+timers and alarms, and desktop notifications, and it replaces the notification daemon (mako, dunst, ...).
+.PP
+Run without arguments it is the daemon.
+With a command it is a client of the running daemon, which it reaches through the socket
+.IR $XDG_RUNTIME_DIR/pachud.sock .
+HUDs cannot be clicked: they are closed and acted on with these commands, typically from compositor keybinds.
+.PP
+Alerts (warning and critical toasts, timers, battery and memory alerts, every notification card)
+are queued and never lost.
+Sliders and informational toasts take the screen briefly and the alert they interrupted comes back.
+.SH COMMANDS
+.TP
+.BR toast " [" \-l " " info | warn | crit "] [" \-t " \fISECONDS\fR] \fITEXT\fR..."
+Show a one-line message.
+.B warn
+and
+.B crit
+are alerts and queue.
+.TP
+.BI slider " PERCENT LABEL" ...
+Show a level bar.
+.TP
+.BI timer " DURATION " [ LABEL "...]"
+Start a timer.
+.I DURATION
+is made of numbers with a unit, such as
+.BR 90s ", " 5m ", " 1h30m
+(units
+.BR s ", " m ", " h ", " d ;
+at most 30 days).
+A unit is required.
+Prints the new id.
+.TP
+.BR alarm " [" \-r " \fIRECUR\fR] [\fIYYYY-MM-DD\fR] \fIHH:MM\fR [\fILABEL\fR...]"
+Set an alarm for the next such wall-clock time, today or tomorrow, or, with a date, for that moment.
+.I RECUR
+is
+.BR daily ", " weekdays ", " weekends
+or a list such as
+.BR mon,wed,fri .
+A recurring alarm stays scheduled after it fires.
+A dated alarm cannot repeat.
+.TP
+.BR snooze " [\fIDURATION\fR]"
+Re-arm the timer or alarm that last went off as a new one-shot (default 5m, same label).
+.TP
+.BI pause " ID"
+Freeze a timer's remaining time.
+.TQ
+.BI resume " ID"
+Continue a paused timer.
+.TQ
+.BI extend " ID DURATION"
+Add time to a timer or alarm (to the time left, if paused).
+.TP
+.B list
+Show timers and alarms with their ids, time left and recurrence.
+.TP
+.BR cancel " \fIID\fR | " all
+Cancel one or all.
+.TP
+.B dismiss
+Close what is on screen and show the next queued item.
+.TP
+.BR dnd " [" on " [\fIDURATION\fR] | " off " | " toggle " | " status ]
+Do not disturb.
+While on, notification cards below critical urgency are not shown and make no sound; they are counted
+and the total is reported when it is switched off.
+Timers, alarms, battery and memory alerts and sliders are not affected.
+The state is kept in memory only.
+.TP
+.BR action " [\fIN\fR]"
+Invoke action
+.I N
+(default 1) of the notification card on screen: the application is told, and the card is closed.
+Cards list their actions as numbered hints, for example
+.BR "[1] Reply  [2] Archive" .
+.PP
+Commands exit with status 0 on success, 1 if the daemon refused the request (the reason is printed to
+standard error) or cannot be reached, and 2 for a usage error.
+.SH ENVIRONMENT
+.TP
+.B PACHUD_OUTPUT
+Show HUDs on this monitor (for example
+.BR DP-1 ).
+Unset lets the compositor choose.
+An unknown name is reported once, with the names that exist.
+.TP
+.B PACHUD_SCALE
+Pin the render scale, 1 to 4, fractions allowed.
+By default the compositor's preferred scale is followed, per monitor.
+.TP
+.B PACHUD_FADE_MS
+Fade duration in milliseconds (default 120).
+.B 0
+disables the fade.
+.TP
+.B PACHUD_PROBE_HOST
+An IPv4 address to ping for the network slowdown alert.
+Without it no probe is made.
+.TP
+.B PACHUD_PROBE_INTERVAL
+Seconds between probes, 5 to 3600 (default 30).
+.TP
+.B PACHUD_SOUND
+.B 0
+turns all sound off.
+.TP
+.B PACHUD_PLAYER
+Program started with a sound file as its only argument (default
+.BR pw-play ,
+else
+.BR paplay ).
+.TP
+.BR PACHUD_ALARM_SOUND ", " PACHUD_NOTIFY_SOUND ", " PACHUD_ALERT_SOUND
+Sound for timers and alarms (default
+.BR alarm-clock-elapsed ),
+for notification cards, and for battery and memory alerts (both off by default):
+an absolute file path or a name from the freedesktop sound theme.
+Empty or
+.B 0
+means silent.
+.TP
+.B LANGUAGE ", " LANG ", " LC_MESSAGES
+Select the language of the HUD messages.
+.TP
+.B PULSE_SERVER
+A
+.B unix:
+socket of the sound server to use instead of the default.
+.TP
+.B XDG_STATE_HOME
+Where timers are saved.
+.SH FILES
+.TP
+.I $XDG_RUNTIME_DIR/pachud.sock
+The daemon's command socket.
+.TP
+.I $XDG_STATE_HOME/pachud/timers
+Timers and alarms, restored when the daemon starts (default
+.IR ~/.local/state/pachud/timers ).
+Ones that came due while the daemon was not running fire once.
+.TP
+.I ~/.config/gtk-3.0/settings.ini
+The icon theme to look notification icons up in, tried before hicolor and Adwaita.
+.SH NOTIFICATIONS
+pachud implements the
+.B org.freedesktop.Notifications
+service, so only one notification daemon can run at a time.
+It supports summary and body (tags removed), urgency, replacement by id, sound hints, actions,
+and icons as raw pixels, as PNG paths or as icon-theme names (PNG only).
+.PP
+Cards stay up 3 s (low urgency), 6 s (normal) or 15 s (critical); an explicit timeout is honoured between
+1.5 and 30 s.
+.SH EXAMPLES
+.nf
+pachud timer 5m tea
+pachud alarm \-r weekdays 07:30 gym
+pachud alarm 2026\-12\-25 07:30 present
+pachud snooze 10m
+pachud dnd on 1h
+pachud action 2
+.fi
+.PP
+In Hyprland, for instance:
+.nf
+hl.bind("SUPER + Escape", hl.dsp.exec_cmd("pachud dismiss"))
+.fi
+.SH SEE ALSO
+.BR pw\-play (1),
+.BR paplay (1),
+.BR notify\-send (1)
+.SH BUGS
+Battery, charger and backlight events have only been exercised on a desktop machine without a battery
+or backlight.
+TCP sound servers are not supported.

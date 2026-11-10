@@ -6,7 +6,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: pachud\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-10 06:25+0000\n"
+"POT-Creation-Date: 2026-11-10 09:24+0000\n"
 "PO-Revision-Date: 2026-11-10 00:00+0000\n"
 "Last-Translator: \n"
 "Language-Team: Russian\n"
@@ -16,6 +16,88 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && "
 "n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);\n"
+
+#: src/dnd.c
+#, c-format
+msgid "Do not disturb on for %s"
+msgstr "Не беспокоить включено на %s"
+
+#: src/dnd.c
+msgid "Do not disturb on"
+msgstr "Не беспокоить включено"
+
+#: src/dnd.c
+#, c-format
+msgid "Do not disturb off — %d notification skipped"
+msgid_plural "Do not disturb off — %d notifications skipped"
+msgstr[0] "Не беспокоить выключено — пропущено %d уведомление"
+msgstr[1] "Не беспокоить выключено — пропущено %d уведомления"
+msgstr[2] "Не беспокоить выключено — пропущено %d уведомлений"
+
+#: src/dnd.c
+msgid "Do not disturb off"
+msgstr "Не беспокоить выключено"
+
+#: src/dnd.c
+#, c-format
+msgid "bad duration \"%s\": use e.g. 30m, 1h"
+msgstr "неверная длительность \"%s\": например, 30m, 1h"
+
+#: src/dnd.c
+msgid "dnd: use on [DURATION], off, toggle or status"
+msgstr "dnd: используйте on [ДЛИТЕЛЬНОСТЬ], off, toggle или status"
+
+#: src/hud.c
+msgid "Open"
+msgstr "Открыть"
+
+#: src/main.c
+msgid "pachud: daemon not running\n"
+msgstr "pachud: демон не запущен\n"
+
+#: src/main.c
+msgid "bad toast message"
+msgstr "неверное сообщение toast"
+
+#: src/main.c
+msgid "level must be info, warn or crit"
+msgstr "уровень должен быть info, warn или crit"
+
+#: src/main.c
+msgid "bad slider message"
+msgstr "неверное сообщение ползунка"
+
+#: src/main.c
+msgid "this build has no notification support"
+msgstr "эта сборка не поддерживает уведомления"
+
+#: src/main.c
+msgid "unknown command"
+msgstr "неизвестная команда"
+
+#: src/main.c
+msgid "pachud: already running\n"
+msgstr "pachud: уже запущен\n"
+
+#: src/main.c
+msgid "pachud: cannot connect to a Wayland compositor with layer-shell\n"
+msgstr "pachud: не удаётся подключиться к композитору Wayland с layer-shell\n"
+
+#: src/notify.c
+msgid "no such action on screen"
+msgstr "на экране нет такого действия"
+
+#: src/notify.c
+msgid "notifications unavailable"
+msgstr "уведомления недоступны"
+
+#: src/src_audio.c
+msgid "Microphone — muted"
+msgstr "Микрофон — выключен"
+
+#: src/src_audio.c
+msgid "Microphone"
+msgstr "Микрофон"
 
 #: src/src_audio.c
 msgid "Volume — muted"
@@ -86,3 +168,83 @@ msgstr "Будильник"
 #: src/timer.c
 msgid "Timer done"
 msgstr "Таймер сработал"
+
+#: src/timer.c
+msgid "too many timers"
+msgstr "слишком много таймеров"
+
+#: src/timer.c
+msgid "nothing to snooze"
+msgstr "нечего откладывать"
+
+#: src/timer.c
+#, c-format
+msgid "bad duration \"%s\": use e.g. 5m, 10m"
+msgstr "неверная длительность \"%s\": например, 5m, 10m"
+
+#: src/timer.c
+#, c-format
+msgid "Snoozed for %s"
+msgstr "Отложено на %s"
+
+#: src/timer.c
+msgid "no such timer"
+msgstr "нет такого таймера"
+
+#: src/timer.c
+msgid "only timers can be paused"
+msgstr "приостановить можно только таймеры"
+
+#: src/timer.c
+msgid "already paused"
+msgstr "уже приостановлен"
+
+#: src/timer.c
+msgid "not paused"
+msgstr "не приостановлен"
+
+#: src/timer.c
+msgid "bad duration: use e.g. 5m, 1h"
+msgstr "неверная длительность: например, 5m, 1h"
+
+#: src/timer.c
+msgid "too far ahead"
+msgstr "слишком далеко в будущем"
+
+#: src/timer.c
+msgid "timers unavailable"
+msgstr "таймеры недоступны"
+
+#: src/timer.c
+msgid "missing duration"
+msgstr "не указана длительность"
+
+#: src/timer.c
+msgid "missing time"
+msgstr "не указано время"
+
+#: src/timer.c
+#, c-format
+msgid ""
+"bad recurrence \"%s\": use daily, weekdays, weekends or e.g. mon,wed,fri"
+msgstr ""
+"неверное повторение \"%s\": используйте daily, weekdays, weekends или, "
+"например, mon,wed,fri"
+
+#: src/timer.c
+msgid "a dated alarm cannot repeat"
+msgstr "будильник с датой не может повторяться"
+
+#: src/timer.c
+msgid "that time has already passed"
+msgstr "это время уже прошло"
+
+#: src/timer.c
+#, c-format
+msgid "bad duration \"%s\": use e.g. 90s, 5m, 1h30m"
+msgstr "неверная длительность \"%s\": например, 90s, 5m, 1h30m"
+
+#: src/timer.c
+#, c-format
+msgid "bad time \"%s\": use HH:MM or YYYY-MM-DD HH:MM"
+msgstr "неверное время \"%s\": используйте HH:MM или YYYY-MM-DD HH:MM"

@@ -1,6 +1,8 @@
 #include "hud.h"
+#include "i18n.h"
 #include "text.h"
 #include <math.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <string.h>
 #include <strings.h>
@@ -15,6 +17,8 @@
 #define CARD_BODY_LINES 4
 #define CARD_BODY_SIZE 13
 #define CARD_SUMMARY_SIZE 15
+#define ACTION_SIZE 12
+#define ACTION_GAP 6
 
 static long long deadline_ms;
 static bool visible;
@@ -57,19 +61,32 @@ static void paint_bg(cairo_t *cr, int w, int h) {
     cairo_clip(cr);
 }
 
-void hud_init(Display *d) { dpy = d; }
+static void on_rescale(void);
 
-static void draw_toast(const char *text, Level level) {
+void hud_init(Display *d) {
+    dpy = d;
+    if (d) display_on_rescale(d, on_rescale);
+}
+
+static void ellipsize(const char *in, double w, double size, bool bold, char *out, size_t n);
+
+/* One line of at most MAX_TEXT_W: newlines become spaces and what does not fit ends in "…". */
+static void toast_line(const char *text, char *out, size_t n) {
     char line[512];
     snprintf(line, sizeof line, "%s", text);
     for (char *p = line; *p; p++)
         if (*p == '\n' || *p == '\t') *p = ' ';
+    ellipsize(line, MAX_TEXT_W, FONT_SIZE, false, out, n);
+}
+
+static void draw_toast(const char *text, Level level) {
+    char line[512];
+    toast_line(text, line, sizeof line);
 
     /* The buffer must be sized up front, so measure first. */
     double ascent, height;
     text_extents(line, FONT_SIZE, false, &ascent, &height);
     double tw = text_width(line, (int)strlen(line), FONT_SIZE, false);
-    if (tw > MAX_TEXT_W) tw = MAX_TEXT_W;
     int w = (int)ceil(tw) + 2 * PAD + BAR, h = (int)ceil(height) + 2 * PAD;
 
     cairo_t *cr;
@@ -146,6 +163,11 @@ typedef struct {
     char text[256];   /* toast text, slider label or card summary */
     char body[512];
     char icon[256];
+    int nact;
+    char act_key[HUD_MAX_ACTIONS][64];
+    char act_label[HUD_MAX_ACTIONS][64];
+    bool has_image;
+    uint8_t image[IMAGE_BYTES];  /* last: copies stop before it unless has_image */
 } Item;
 
 #define QUEUE_MAX 8
@@ -154,6 +176,19 @@ typedef struct {
 
 static Item cur, queue[QUEUE_MAX];
 static int queued;
+
+/* Items carry a 16 KB icon buffer that most of them do not use, so copies leave it out. */
+static void item_copy(Item *dst, const Item *src) {
+    size_t n = offsetof(Item, image);
+    if (src->has_image) n = sizeof *src;
+    memcpy(dst, src, n);
+}
+
+static void queue_remove_at(int i) {
+    for (; i + 1 < queued; i++) item_copy(&queue[i], &queue[i + 1]);
+    queued--;
+}
+
 static HudClosedFn closed_cb;
 
 /* ---- notification cards ---- */
@@ -233,7 +268,7 @@ static void ellipsize(const char *in, double w, double size, bool bold, char *ou
     while (len > 0) {
         len--;
         while (len > 0 && ((unsigned char)out[len] & 0xC0) == 0x80) len--;
-        char t[300];
+        char t[560];
         snprintf(t, sizeof t, "%.*s…", (int)len, out);
         if (text_width(t, (int)strlen(t), size, bold) <= w) { snprintf(out, n, "%s", t); return; }
     }
@@ -259,7 +294,10 @@ static void draw_card(const Item *it) {
     snprintf(summary, sizeof summary, "%s", it->text);
     for (char *p = summary; *p; p++)
         if (*p == '\n' || *p == '\t') *p = ' ';
-    cairo_surface_t *icon = load_icon(it->icon);
+    cairo_surface_t *icon = it->has_image
+        ? cairo_image_surface_create_for_data((unsigned char *)it->image, CAIRO_FORMAT_ARGB32,
+                                              IMAGE_PX, IMAGE_PX, IMAGE_PX * 4)
+        : load_icon(it->icon);
 
     double x0 = BAR + PAD + (icon ? CARD_ICON + 12 : 0), tw = CARD_W - x0 - PAD;
 
@@ -273,7 +311,22 @@ static void draw_card(const Item *it) {
     bool truncated;
     int nl = wrap(body, tw, CARD_BODY_SIZE, lines, CARD_BODY_LINES, &truncated);
 
-    double content = sheight + (nl ? 4 + nl * bheight : 0);
+    /* A hint line for the actions: pachud cannot be clicked, so each is invoked by number */
+    char actions[256] = "";
+    double aasc = 0, aheight = 0, actions_w = 0;
+    if (it->nact) {
+        int len = 0;
+        for (int i = 0; i < it->nact && len < (int)sizeof actions; i++)
+            len += snprintf(actions + len, sizeof actions - len, "%s[%d] %s", i ? "   " : "", i + 1,
+                            it->act_label[i]);
+        char fit[256];
+        ellipsize(actions, tw, ACTION_SIZE, false, fit, sizeof fit);
+        snprintf(actions, sizeof actions, "%s", fit);
+        text_extents(actions, ACTION_SIZE, false, &aasc, &aheight);
+        actions_w = text_width(actions, (int)strlen(actions), ACTION_SIZE, false);
+    }
+
+    double content = sheight + (nl ? 4 + nl * bheight : 0) + (it->nact ? ACTION_GAP + aheight : 0);
     if (icon && content < CARD_ICON) content = CARD_ICON;
     int h = (int)ceil(content) + 2 * PAD;
 
@@ -312,6 +365,11 @@ static void draw_card(const Item *it) {
         text_draw(cr, tmp, mirror(x0, lw, CARD_W), PAD + sheight + 4 + i * bheight + basc,
                   CARD_BODY_SIZE, false);
     }
+    if (it->nact) {
+        cairo_set_source_rgb(cr, rgb[0], rgb[1], rgb[2]);
+        double y = PAD + sheight + (nl ? 4 + nl * bheight : 0) + ACTION_GAP + aasc;
+        text_draw(cr, actions, mirror(x0, actions_w, CARD_W), y, ACTION_SIZE, false);
+    }
     display_present(dpy, buf, cr);
 }
 
@@ -321,11 +379,20 @@ static void closed(const Item *it, int reason) {
     if (it->id && closed_cb && reason) closed_cb(it->id, reason);
 }
 
-static void start(const Item *it) {
-    cur = *it;
+static void draw_item(const Item *it) {
     if (it->slider) draw_slider(it->text, it->percent, it->dim);
     else if (it->card) draw_card(it);
     else draw_toast(it->text, it->level);
+}
+
+/* The compositor wants a different scale: draw what is on screen again, timers untouched. */
+static void on_rescale(void) {
+    if (visible) draw_item(&cur);
+}
+
+static void start(const Item *it) {
+    item_copy(&cur, it);
+    draw_item(it);
     visible = true;
     deadline_ms = now_ms() + it->ms;
 }
@@ -334,8 +401,9 @@ static void start(const Item *it) {
 static void advance(int reason) {
     closed(&cur, reason);
     if (queued) {
-        Item next = queue[0];
-        memmove(queue, queue + 1, --queued * sizeof *queue);
+        static Item next;
+        item_copy(&next, &queue[0]);
+        queue_remove_at(0);
         start(&next);
     } else {
         display_hide(dpy);
@@ -351,21 +419,21 @@ static bool queued_text(const char *text) {
 
 static void push_front(const Item *it) {
     if (queued == QUEUE_MAX) closed(&queue[--queued], HUD_CLOSED_OTHER);
-    memmove(queue + 1, queue, queued * sizeof *queue);
-    queue[0] = *it;
+    for (int i = queued; i > 0; i--) item_copy(&queue[i], &queue[i - 1]);
+    item_copy(&queue[0], it);
     queued++;
 }
 
 static void enqueue(const Item *it) {
     if (queued == QUEUE_MAX) closed(it, HUD_CLOSED_OTHER);
-    else queue[queued++] = *it;
+    else item_copy(&queue[queued++], it);
 }
 
 static void submit(const Item *it) {
     if (it->id) {  /* a replacement for a card we already hold */
         if (visible && cur.id == it->id) { start(it); return; }
         for (int i = 0; i < queued; i++)
-            if (queue[i].id == it->id) { queue[i] = *it; return; }
+            if (queue[i].id == it->id) { item_copy(&queue[i], it); return; }
     }
 
     if (!visible) {
@@ -376,7 +444,8 @@ static void submit(const Item *it) {
         else if (it->card || !queued_text(it->text)) enqueue(it);
     } else {
         if (is_alert(&cur)) {
-            Item resumed = cur;
+            static Item resumed;
+            item_copy(&resumed, &cur);
             long long left = deadline_ms - now_ms();
             resumed.ms = left > MIN_RESUME_MS ? (int)left : MIN_RESUME_MS;
             push_front(&resumed);
@@ -386,24 +455,71 @@ static void submit(const Item *it) {
 }
 
 void hud_toast(const char *text, Level level, int timeout_ms) {
-    Item it = { .level = level, .ms = timeout_ms };
+    static Item it;
+    memset(&it, 0, offsetof(Item, image));
+    it.level = level;
+    it.ms = timeout_ms;
     snprintf(it.text, sizeof it.text, "%s", text);
     submit(&it);
 }
 
 void hud_slider(const char *label, int percent, bool dim) {
-    Item it = { .slider = true, .dim = dim, .ms = SLIDER_MS, .percent = percent };
+    static Item it;
+    memset(&it, 0, offsetof(Item, image));
+    it.slider = true;
+    it.dim = dim;
+    it.ms = SLIDER_MS;
+    it.percent = percent;
     snprintf(it.text, sizeof it.text, "%s", label);
     submit(&it);
 }
 
-void hud_card(uint32_t id, const char *summary, const char *body, const char *icon_path,
-              Level level, int timeout_ms) {
-    Item it = { .card = true, .id = id, .level = level, .ms = timeout_ms };
-    snprintf(it.text, sizeof it.text, "%s", summary);
-    snprintf(it.body, sizeof it.body, "%s", body);
-    snprintf(it.icon, sizeof it.icon, "%s", icon_path);
+static void add_action(Item *it, const char *key, const char *label) {
+    snprintf(it->act_key[it->nact], sizeof it->act_key[0], "%s", key);
+    snprintf(it->act_label[it->nact], sizeof it->act_label[0], "%s", label);
+    for (char *p = it->act_label[it->nact]; *p; p++)
+        if (*p == '\n' || *p == '\t') *p = ' ';
+    it->nact++;
+}
+
+/* Which of a notification's actions the card offers: all but "default" (which apps use for
+ * "the user clicked the notification"), unless that is all there is. */
+static void set_actions(Item *it, const char *const *a, int n) {
+    it->nact = 0;
+    for (int i = 0; a && i + 1 < n && it->nact < HUD_MAX_ACTIONS; i += 2)
+        if (strcmp(a[i], "default") != 0) add_action(it, a[i], a[i + 1]);
+    if (it->nact) return;
+    for (int i = 0; a && i + 1 < n; i += 2) {
+        if (!strcmp(a[i], "default")) {
+            add_action(it, a[i], *a[i + 1] ? a[i + 1] : _("Open"));
+            return;
+        }
+    }
+}
+
+void hud_card(const HudCard *c) {
+    static Item it;  /* reused for every card instead of living on the stack */
+    memset(&it, 0, offsetof(Item, image));
+    it.has_image = false;
+    it.card = true;
+    it.id = c->id;
+    it.level = c->level;
+    it.ms = c->timeout_ms;
+    snprintf(it.text, sizeof it.text, "%s", c->summary);
+    snprintf(it.body, sizeof it.body, "%s", c->body);
+    snprintf(it.icon, sizeof it.icon, "%s", c->icon_path ? c->icon_path : "");
+    if (c->image) {
+        it.has_image = true;
+        memcpy(it.image, c->image, IMAGE_BYTES);
+    }
+    set_actions(&it, c->actions, c->n_actions);
     submit(&it);
+}
+
+const char *hud_action_key(int n, uint32_t *id) {
+    if (!visible || !cur.card || n < 1 || n > cur.nact) return NULL;
+    *id = cur.id;
+    return cur.act_key[n - 1];
 }
 
 void hud_on_closed(HudClosedFn fn) { closed_cb = fn; }
@@ -413,7 +529,7 @@ bool hud_remove(uint32_t id) {
     if (visible && cur.id == id) { advance(0); return true; }
     for (int i = 0; i < queued; i++) {
         if (queue[i].id == id) {
-            memmove(queue + i, queue + i + 1, (--queued - i) * sizeof *queue);
+            queue_remove_at(i);
             return true;
         }
     }

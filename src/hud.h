@@ -2,6 +2,7 @@
 #define HUD_H
 
 #include "display.h"
+#include "image.h"
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -13,11 +14,28 @@ void hud_toast(const char *text, Level level, int timeout_ms);
 /* Shows (or replaces) a labelled level bar. Values above 100 are shown but the bar stays
  * full; dim greys it out (muted). */
 void hud_slider(const char *label, int percent, bool dim);
-/* A notification card: summary, wrapped body, optional PNG icon (absolute path). A card with
- * the id of one already on screen or queued replaces it in place. Cards queue rather than
- * replace each other. */
-void hud_card(uint32_t id, const char *summary, const char *body, const char *icon_path,
-              Level level, int timeout_ms);
+#define HUD_MAX_ACTIONS 3
+
+/* A notification card: summary, wrapped body, an optional icon (raw pixels, else a PNG path)
+ * and optional actions. A card with the id of one already on screen or queued replaces it in
+ * place. Cards queue rather than replace each other. Every string is copied. */
+typedef struct {
+    uint32_t id;
+    const char *summary, *body;
+    const char *icon_path;        /* absolute path to a PNG, or "" */
+    const uint8_t *image;         /* IMAGE_BYTES of premultiplied ARGB32, or NULL; wins over icon_path */
+    Level level;
+    int timeout_ms;
+    const char *const *actions;   /* key, label, key, label, ... */
+    int n_actions;                /* the number of strings in `actions`: two per action */
+} HudCard;
+
+void hud_card(const HudCard *card);
+
+/* The key of the n-th (1-based) action shown on the card on screen, or NULL if the card has
+ * no such action. Also gives the card's notification id. The key stays valid until the HUD
+ * changes. The "default" action is only offered when it is the card's only one. */
+const char *hud_action_key(int n, uint32_t *id);
 
 /* Reasons passed to the closed callback, matching the notification spec. */
 enum { HUD_CLOSED_EXPIRED = 1, HUD_CLOSED_DISMISSED = 2, HUD_CLOSED_OTHER = 4 };

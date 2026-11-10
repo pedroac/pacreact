@@ -1,6 +1,7 @@
 #include "hud.h"
 #include "i18n.h"
 #include "loop.h"
+#include "sound.h"
 #include "sources.h"
 #include <dirent.h>
 #include <linux/netlink.h>
@@ -35,10 +36,12 @@ void battery_update(int capacity, bool discharging) {
         critical = warned = true;
         snprintf(msg, sizeof msg, _("Battery critical — %d%%"), capacity);
         hud_toast(msg, LEVEL_CRIT, ALERT_MS);
+        sound_play(SOUND_ALERT);
     } else if (capacity <= WARN_PCT && !warned) {
         warned = true;
         snprintf(msg, sizeof msg, _("Battery low — %d%%"), capacity);
         hud_toast(msg, LEVEL_WARN, ALERT_MS);
+        sound_play(SOUND_ALERT);
     }
 }
 

@@ -17,7 +17,7 @@ The fade uses the `wp_alpha_modifier_v1` protocol: pachud only changes the surfa
 | Network (`src_net.c`) | rtnetlink link and route events, debounced 1 s, then one route dump to see whether a main-table default route exists. | none |
 | Probe (`src_probe.c`) | Opt-in unprivileged ICMP echo (`SOCK_DGRAM`), only while online. | 1 wakeup per interval, only if enabled |
 | Backlight (`src_backlight.c`) | `EPOLLPRI` on the sysfs `brightness` attribute, which the kernel signals with `sysfs_notify`. | none |
-| Audio (`src_audio.c`) | A small client of the PulseAudio native protocol on the server's unix socket: subscribe to sink and server events, then read the default sink's volume and mute state after a 40 ms debounce. Reconnects with backoff (5 s up to 5 min) if the server is absent or restarts. | none |
+| Audio (`src_audio.c`) | A small client of the PulseAudio native protocol on the server's unix socket: subscribe to sink, source and server events, then read the default output's and default input's volume and mute state (one request at a time) after a 40 ms debounce. Reconnects with backoff (5 s up to 5 min) if the server is absent or restarts. | none |
 | Timers (`timer.c`) | One `CLOCK_REALTIME` `timerfd`, absolute, re-armed to the earliest deadline, with `TFD_TIMER_CANCEL_ON_SET` so clock changes are noticed. | none |
 | Notifications (`notify.c`) | sd-bus: the bus fd is just another fd in the loop. | none |
 
@@ -26,9 +26,9 @@ Volume is the one source that is not kernel-native: the level lives in the sound
 ## Platform and limits
 
 - Linux with a compositor that implements `wlr-layer-shell`.
-- Text: fonts are loaded from known file paths (Noto, DejaVu, Liberation, Noto CJK), not through fontconfig, and the font is chosen per string from its script. Arabic and Hebrew are shaped and reordered with HarfBuzz and FriBidi; Indic and Thai text is routed to the same path but needs a font file that covers it, which is not bundled in the lookup list. Strings of 160 bytes or more are not shaped. See [Translations](translations.md).
-- Integer HiDPI scale only (`PACHUD_SCALE`); no fractional scaling.
-- The output is chosen by the compositor (usually the focused one). There is no monitor option.
+- Text: fonts are loaded from known file paths (Noto, DejaVu, Liberation, Noto CJK), not through fontconfig, and the font is chosen per string from its script. Arabic and Hebrew are shaped and reordered with HarfBuzz and FriBidi; Devanagari, Bengali, Gurmukhi, Gujarati, Tamil, Telugu, Kannada, Malayalam, Sinhala and Thai each have their own Noto font, and text that mixes them with Latin is cut into runs, each drawn with its own font (a script font often lacks Latin letters). Other complex scripts (Khmer, Myanmar, Lao, Tibetan, ...) are routed to the DejaVu font, which does not cover them. Runs, and strings, of 160 bytes or more are not shaped. See [Translations](translations.md).
+- Scaling follows the compositor through `wp_fractional_scale_v1` and `wp_viewporter`: buffers are rendered at `ceil(size x scale)` pixels and presented at their logical size, so text stays sharp at 1.25x, 1.5x and so on. If the preferred scale changes while a HUD is up (it moved to another monitor), the HUD is drawn again once. Without those protocols it falls back to the nearest whole scale. `PACHUD_SCALE` pins the scale. Verified: the protocol exchange and the viewport geometry (identical on-screen size at 1x, 1.5x and 2x buffers, in a nested headless compositor, `tests/manual/scale_test.sh`) and the event handling (a unit test). Not verified: a compositor actually running at a fractional scale, because no headless compositor available here could be set to one.
+- The output is chosen by the compositor (usually the focused one) unless `PACHUD_OUTPUT` names one. Checked with two virtual outputs in a nested headless compositor (`tests/manual/output_test.sh`).
 - Alarm and timer deadlines are wall-clock time. A large clock step (for example an NTP correction right after boot) shifts them by the same amount.
 - Paths exercised only in isolation, not on real hardware, because the development machine is a desktop: battery uevents, charger events, and the backlight notification. (PSI memory triggers were seen firing on real pressure.)
-- No actions, buttons or `image-data` in notifications.
+- Notification actions are keyboard-driven (`pachud action N`), not clickable, because the HUD has no input region.

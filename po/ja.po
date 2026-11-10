@@ -6,7 +6,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: pachud\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-10 06:25+0000\n"
+"POT-Creation-Date: 2026-11-10 09:24+0000\n"
 "PO-Revision-Date: 2026-11-10 00:00+0000\n"
 "Last-Translator: \n"
 "Language-Team: Japanese\n"
@@ -15,6 +15,86 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
+
+#: src/dnd.c
+#, c-format
+msgid "Do not disturb on for %s"
+msgstr "サイレントモードを %s 間オンにしました"
+
+#: src/dnd.c
+msgid "Do not disturb on"
+msgstr "サイレントモードをオンにしました"
+
+#: src/dnd.c
+#, c-format
+msgid "Do not disturb off — %d notification skipped"
+msgid_plural "Do not disturb off — %d notifications skipped"
+msgstr[0] "サイレントモードをオフにしました — %d 件の通知をスキップしました"
+
+#: src/dnd.c
+msgid "Do not disturb off"
+msgstr "サイレントモードをオフにしました"
+
+#: src/dnd.c
+#, c-format
+msgid "bad duration \"%s\": use e.g. 30m, 1h"
+msgstr "無効な時間 \"%s\": 例: 30m, 1h"
+
+#: src/dnd.c
+msgid "dnd: use on [DURATION], off, toggle or status"
+msgstr "dnd: on [時間], off, toggle, status のいずれかを指定してください"
+
+#: src/hud.c
+msgid "Open"
+msgstr "開く"
+
+#: src/main.c
+msgid "pachud: daemon not running\n"
+msgstr "pachud: デーモンが起動していません\n"
+
+#: src/main.c
+msgid "bad toast message"
+msgstr "無効なトースト メッセージ"
+
+#: src/main.c
+msgid "level must be info, warn or crit"
+msgstr "レベルは info, warn, crit のいずれかです"
+
+#: src/main.c
+msgid "bad slider message"
+msgstr "無効なスライダー メッセージ"
+
+#: src/main.c
+msgid "this build has no notification support"
+msgstr "このビルドは通知に対応していません"
+
+#: src/main.c
+msgid "unknown command"
+msgstr "不明なコマンド"
+
+#: src/main.c
+msgid "pachud: already running\n"
+msgstr "pachud: すでに実行中です\n"
+
+#: src/main.c
+msgid "pachud: cannot connect to a Wayland compositor with layer-shell\n"
+msgstr "pachud: layer-shell 対応の Wayland コンポジターに接続できません\n"
+
+#: src/notify.c
+msgid "no such action on screen"
+msgstr "画面にそのアクションはありません"
+
+#: src/notify.c
+msgid "notifications unavailable"
+msgstr "通知は利用できません"
+
+#: src/src_audio.c
+msgid "Microphone — muted"
+msgstr "マイク — ミュート"
+
+#: src/src_audio.c
+msgid "Microphone"
+msgstr "マイク"
 
 #: src/src_audio.c
 msgid "Volume — muted"
@@ -85,3 +165,83 @@ msgstr "アラーム"
 #: src/timer.c
 msgid "Timer done"
 msgstr "タイマー終了"
+
+#: src/timer.c
+msgid "too many timers"
+msgstr "タイマーが多すぎます"
+
+#: src/timer.c
+msgid "nothing to snooze"
+msgstr "スヌーズするものがありません"
+
+#: src/timer.c
+#, c-format
+msgid "bad duration \"%s\": use e.g. 5m, 10m"
+msgstr "無効な時間 \"%s\": 例: 5m, 10m"
+
+#: src/timer.c
+#, c-format
+msgid "Snoozed for %s"
+msgstr "%s スヌーズしました"
+
+#: src/timer.c
+msgid "no such timer"
+msgstr "そのタイマーはありません"
+
+#: src/timer.c
+msgid "only timers can be paused"
+msgstr "一時停止できるのはタイマーだけです"
+
+#: src/timer.c
+msgid "already paused"
+msgstr "すでに一時停止中です"
+
+#: src/timer.c
+msgid "not paused"
+msgstr "一時停止していません"
+
+#: src/timer.c
+msgid "bad duration: use e.g. 5m, 1h"
+msgstr "無効な時間: 例: 5m, 1h"
+
+#: src/timer.c
+msgid "too far ahead"
+msgstr "先すぎる日時です"
+
+#: src/timer.c
+msgid "timers unavailable"
+msgstr "タイマーは利用できません"
+
+#: src/timer.c
+msgid "missing duration"
+msgstr "時間が指定されていません"
+
+#: src/timer.c
+msgid "missing time"
+msgstr "時刻が指定されていません"
+
+#: src/timer.c
+#, c-format
+msgid ""
+"bad recurrence \"%s\": use daily, weekdays, weekends or e.g. mon,wed,fri"
+msgstr ""
+"無効な繰り返し \"%s\": daily, weekdays, weekends または mon,wed,fri などを指"
+"定してください"
+
+#: src/timer.c
+msgid "a dated alarm cannot repeat"
+msgstr "日付指定のアラームは繰り返せません"
+
+#: src/timer.c
+msgid "that time has already passed"
+msgstr "その時刻はすでに過ぎています"
+
+#: src/timer.c
+#, c-format
+msgid "bad duration \"%s\": use e.g. 90s, 5m, 1h30m"
+msgstr "無効な時間 \"%s\": 例: 90s, 5m, 1h30m"
+
+#: src/timer.c
+#, c-format
+msgid "bad time \"%s\": use HH:MM or YYYY-MM-DD HH:MM"
+msgstr "無効な時刻 \"%s\": HH:MM または YYYY-MM-DD HH:MM を指定してください"

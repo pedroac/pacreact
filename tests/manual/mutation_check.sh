@@ -3,15 +3,16 @@
 # matching test fails. Every mutation must be caught. Restores the sources afterwards.
 cd "$(dirname "$0")/../.."
 BK=$(mktemp -d)
-cp src/*.c "$BK"/
-restore() { cp "$BK"/*.c src/; rm -rf "$BK"; }
+cp src/*.c src/*.h "$BK"/
+restore() { cp "$BK"/*.c "$BK"/*.h src/; rm -rf "$BK"; }
 trap restore EXIT
 
 # name | test | file | python expression: old -> new
 mutate() {
     local name=$1 test=$2 file=$3 old=$4 new=$5
-    cp "$BK"/*.c src/
-    OLD="$old" NEW="$new" FILE="src/$file" python3 - <<'EOF' || { echo "SKIP  $name (pattern not found)"; return; }
+    [ -n "$ONLY" ] && [[ "$name" != *$ONLY* ]] && return   # ONLY=text re-runs the matching ones
+    cp "$BK"/*.c "$BK"/*.h src/
+    OLD="$old" NEW="$new" FILE="src/$file" python3 - <<'EOF' || { echo "SKIP  $name (pattern not found: fix the mutation)"; MISSED=1; return; }
 import os, sys
 p, old, new = os.environ["FILE"], os.environ["OLD"], os.environ["NEW"]
 s = open(p).read()
@@ -46,5 +47,29 @@ mutate "ipc: any reply starting with ok is ok"   ipc   ipc.c        "(reply[2] =
 mutate "notify: short timeouts not raised"       notify notify.c    "ms = expire < MIN_MS ? MIN_MS : expire;" "ms = expire;"
 mutate "power: warn threshold"                   power src_power.c  "#define WARN_PCT 15" "#define WARN_PCT 10"
 mutate "probe: alert after one bad probe"        probe src_probe.c  "#define BAD_TO_ALERT 2" "#define BAD_TO_ALERT 1"
+
+# --- features added later
+mutate "sound: theme names may contain slashes"  sound  sound.c     "if (strchr(spec, '/') || spec[0] == '-' || spec[0] == '.') return false;" "if (0) return false;"
+mutate "sound: a failed lookup keeps its partial path" sound sound.c "if (!theme_lookup(spec, found, sizeof found)) return false;" "theme_lookup(spec, found, sizeof found);"
+mutate "dnd: critical notifications are held"    dnd    dnd.c       "if (!active || urgency >= CRITICAL) return false;" "if (!active) return false;"
+mutate "dnd: the off message ignores the count"  dnd    dnd.c       "    if (missed > 0)" "    if (0)"
+mutate "timer: snooze uses the wrong delay"      timer  timer.c     "time(NULL) + secs, last_fired.label" "time(NULL) + 1, last_fired.label"
+mutate "timer: pause forgets the time left"      timer  timer.c     "e->left = e->when - now > 1 ? e->when - now : 1;" "e->left = 1;"
+mutate "timer: a paused timer is saved as running" timer timer.c    "e->paused ? 'p' : e->alarm ? 'a' : 't'" "e->alarm ? 'a' : 't'"
+mutate "timer: February 30th is accepted"        timer  timer.c     "tm.tm_mon != mo - 1 || tm.tm_mday != d) return -1;" "0) return -1;"
+mutate "icon: theme names may contain slashes"   icon   icon.c      "if (strchr(spec, '/') || spec[0] == '.' || strlen(spec) > 120) return false;" "if (0) return false;"
+mutate "icon: misses are remembered"             icon   icon.c      "    if (found) {
+        int slot = next++ % CACHE;" "    {
+        int slot = next++ % CACHE;"
+mutate "image: a stride smaller than a row"      image  image.c     "if (rowstride < width * channels) return false;" "if (0) return false;"
+mutate "image: alpha is not premultiplied"       image  image.c     "(uint32_t)(r * a / 255) << 16" "(uint32_t)r << 16"
+mutate "hud: the default action is always shown" hud    hud.c       "if (strcmp(a[i], \"default\") != 0) add_action" "if (1) add_action"
+mutate "hud: copies always leave out the image"  hud    hud.c       "if (src->has_image) n = sizeof *src;" ""
+mutate "hud: toasts are not shortened"           hud    hud.c       "ellipsize(line, MAX_TEXT_W, FONT_SIZE, false, out, n);" "snprintf(out, n, \"%s\", line);"
+mutate "audio: the microphone is labelled as volume" audio src_audio.c "if (t == T_SOURCE) return muted" "if (0) return muted"
+mutate "audio: input events are ignored"         audio  src_audio.c "if (facility == FACILITY_SOURCE || facility == FACILITY_SERVER) tracks[T_SOURCE].dirty = true;" "if (facility == FACILITY_SERVER) tracks[T_SOURCE].dirty = true;"
+mutate "scale: buffer sizes are rounded down"    scale  scale.h     "(long long)logical * scale120 + SCALE_UNIT - 1" "(long long)logical * scale120"
+mutate "display: a pinned scale is overridden"   display display.c  "if (d->scale_fixed || scale < SCALE_MIN" "if (scale < SCALE_MIN"
+mutate "text: Thai is not split from Latin"      text   text.c      "if (cls != -2 && c != cls && n < max - 1) {" "if (0) {"
 
 [ $MISSED -eq 0 ] && echo "all mutations caught" || { echo "SOME MUTATIONS WERE MISSED"; exit 1; }

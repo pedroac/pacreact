@@ -1,15 +1,19 @@
 /* How long a notification card stays up, from its urgency and requested timeout. */
 #include "../src/notify.h"
 #include "../src/hud.h"
+#include "../src/sound.h"
 #include "../src/loop.h"
 #include <assert.h>
 #include <stdio.h>
 
-void hud_card(uint32_t id, const char *s, const char *b, const char *i, Level l, int ms) {
-    (void)id; (void)s; (void)b; (void)i; (void)l; (void)ms;
-}
+void hud_card(const HudCard *c) { (void)c; }
+void hud_dismiss(void) {}
+const char *hud_action_key(int n, uint32_t *id) { (void)n; (void)id; return NULL; }
 void hud_on_closed(HudClosedFn fn) { (void)fn; }
 bool hud_remove(uint32_t id) { (void)id; return false; }
+bool dnd_suppress(int urgency) { (void)urgency; return false; }
+void sound_play(SoundKind kind) { (void)kind; }
+void sound_play_spec(const char *s) { (void)s; }
 int loop_add(int fd, uint32_t ev, LoopFn fn, void *ctx) { (void)fd; (void)ev; (void)fn; (void)ctx; return 0; }
 int loop_remove(int fd) { (void)fd; return 0; }
 

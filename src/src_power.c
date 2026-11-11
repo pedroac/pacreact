@@ -1,3 +1,4 @@
+#include "alerts.h"
 #include "hud.h"
 #include "i18n.h"
 #include "loop.h"
@@ -34,11 +35,13 @@ void battery_update(int capacity, bool discharging) {
     char msg[128];
     if (capacity <= CRIT_PCT && !critical) {
         critical = warned = true;
+        if (!alert_allowed("battery", LEVEL_CRIT)) return;
         snprintf(msg, sizeof msg, _("Battery critical — %d%%"), capacity);
         hud_toast(msg, LEVEL_CRIT, ALERT_MS);
         sound_play(SOUND_ALERT);
     } else if (capacity <= WARN_PCT && !warned) {
         warned = true;
+        if (!alert_allowed("battery", LEVEL_WARN)) return;
         snprintf(msg, sizeof msg, _("Battery low — %d%%"), capacity);
         hud_toast(msg, LEVEL_WARN, ALERT_MS);
         sound_play(SOUND_ALERT);
@@ -63,6 +66,10 @@ void power_uevent(const char *msg, size_t len) {
         else if (!strncmp(p, "POWER_SUPPLY_ONLINE=", 20)) online = p + 20;
         else if (!strncmp(p, "POWER_SUPPLY_CAPACITY=", 22)) cap = p + 22;
         else if (!strncmp(p, "POWER_SUPPLY_STATUS=", 20)) status = p + 20;
+    }
+    if (subsystem && (!strcmp(subsystem, "thermal") || !strcmp(subsystem, "hwmon"))) {
+        temp_poke();  /* a trip point was crossed, or a sensor appeared: look at once */
+        return;
     }
     if (!subsystem || strcmp(subsystem, "power_supply") || !type) return;
 

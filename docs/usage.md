@@ -39,6 +39,7 @@ Timers and alarms survive restarts: they are stored in `$XDG_STATE_HOME/pachud/t
 | `PACHUD_PROBE_HOST` | unset | IPv4 address to ping for the slowdown alert. Unset means the probe does not exist. |
 | `PACHUD_PROBE_INTERVAL` | 30 | Seconds between probes (5-3600). |
 | `XDG_STATE_HOME` | `~/.local/state` | Where timers are saved. |
+| `PACHUD_STARTUP_GRACE` | 60 | Seconds after start-up during which an alert that is not worse than one shown in the last 30 minutes is not shown again. `0` turns it off. See [Alerts at start-up](#alerts-at-start-up). |
 | `PACHUD_SOUND` | on | `0` turns all sound off. |
 | `PACHUD_PLAYER` | `pw-play`, else `paplay` | Program started with the sound file as its only argument. |
 | `PACHUD_ALARM_SOUND` | `alarm-clock-elapsed` | Sound for timers and alarms: an absolute file path or a freedesktop sound-theme name. Empty or `0` is silent. |
@@ -50,6 +51,10 @@ Timers and alarms survive restarts: they are stored in `$XDG_STATE_HOME/pachud/t
 - Battery: warning at 15%, critical at 5%, re-armed above 20% or when charging.
 - Memory: PSI trigger `some` 500 ms of 2 s (warning), `full` 250 ms of 2 s (critical), 30 s cooldown. Without PSI it polls `MemAvailable` every 10 s and alerts below 10%.
 - Network: after the default route changes, it waits 1 s before reporting. The probe alerts after two consecutive replies slower than 400 ms or missing, and reports recovery after two good ones.
+
+## Alerts at start-up
+
+Memory pressure and a low battery describe a condition that is often still true when pachud starts, so without care every restart (a new login, a service restart) would raise the same alert again. pachud therefore remembers, per source (memory, battery), the last alert it showed and how severe it was, in `$XDG_STATE_HOME/pachud/alerts`. During the first 60 seconds after start-up an alert is left out if it is not worse than one shown in the last 30 minutes: the same alert, or a milder one that the earlier one already covered (a warning after a critical alert). A worse one always comes through, and after the grace period everything behaves as usual, so pressure that is still there a minute later can alert again. Alerts left out this way do not start the cooldown between memory alerts, so an escalation right after is not held back, and a warning never holds back the critical alert that follows it. `PACHUD_STARTUP_GRACE=0` disables all of this.
 
 ## Do not disturb
 

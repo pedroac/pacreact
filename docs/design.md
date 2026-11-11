@@ -10,6 +10,8 @@ The fade uses the `wp_alpha_modifier_v1` protocol: pachud only changes the surfa
 
 ## Event sources
 
+Alerts that can fire at start-up (memory, battery) go through `src/alerts.c`, which keeps the last alert shown per source in the state directory so a restart does not repeat it (see [Usage](usage.md#alerts-at-start-up)).
+
 | Source | Mechanism | Idle cost |
 |---|---|---|
 | Power (`src_power.c`) | Kernel uevents on a `NETLINK_KOBJECT_UEVENT` socket, group 1 (kernel only, no udev). If a battery exists, a 60 s sysfs poll runs only while discharging, because some drivers do not emit uevents on capacity changes. | none |

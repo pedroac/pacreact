@@ -19,8 +19,10 @@
 #define CARD_SUMMARY_SIZE 15
 #define ACTION_SIZE 12
 #define ACTION_GAP 6
+#define OSD_TIMEOUT_MS 1000
 
-static long long deadline_ms;
+static long long deadline_ms, osd_deadline_ms;
+static bool osd_visible;
 static bool visible;
 static Display *dpy;
 
@@ -541,11 +543,62 @@ void hud_dismiss(void) {
 }
 
 int hud_timeout_ms(void) {
-    if (!visible) return -1;
-    long long left = deadline_ms - now_ms();
-    return left < 0 ? 0 : (int)left;
+    long long now = now_ms(), soonest = -1;
+    if (visible) soonest = deadline_ms;
+    if (osd_visible && (soonest < 0 || osd_deadline_ms < soonest)) soonest = osd_deadline_ms;
+    if (soonest < 0) return -1;
+    return soonest < now ? 0 : (int)(soonest - now);
 }
 
 void hud_tick(void) {
     if (visible && now_ms() >= deadline_ms) advance(HUD_CLOSED_EXPIRED);
+    if (osd_visible && now_ms() >= osd_deadline_ms) hud_osd_hide();
+}
+
+/* ---- OSD (on-screen display): center-positioned user feedback ---- */
+
+
+void hud_osd_slider(const char *label, int percent, bool dim, OsdAnchor anchor) {
+    if (percent < 0) percent = 0;
+    int fill = percent > 100 ? 100 : percent;
+
+    cairo_t *cr;
+    Buf *buf = display_osd_buf(dpy, SLIDER_W, SLIDER_H, &cr);
+    if (!buf) return;
+
+    paint_bg(cr, SLIDER_W, SLIDER_H);
+    double ascent, height;
+    text_extents(label, FONT_SIZE, false, &ascent, &height);
+    cairo_set_source_rgb(cr, 0.93, 0.93, 0.95);
+    double lw = text_width(label, (int)strlen(label), FONT_SIZE, false);
+    text_draw(cr, label, mirror(PAD, lw, SLIDER_W), 12 + ascent, FONT_SIZE, false);
+
+    char pct[16];
+    snprintf(pct, sizeof pct, "%d%%", percent);
+    double pw = text_width(pct, (int)strlen(pct), FONT_SIZE, false);
+    text_draw(cr, pct, mirror(SLIDER_W - PAD - pw, pw, SLIDER_W), 12 + ascent, FONT_SIZE, false);
+
+    double tw = SLIDER_W - 2 * PAD, ty = SLIDER_H - PAD - TRACK_H + 2;
+    cairo_reset_clip(cr);
+    round_rect(cr, PAD, ty, tw, TRACK_H, TRACK_H / 2.0);
+    cairo_set_source_rgba(cr, 1, 1, 1, 0.15);
+    cairo_fill(cr);
+    if (fill > 0) {
+        double fw = tw * fill / 100;
+        if (fw < TRACK_H) fw = TRACK_H;
+        round_rect(cr, text_rtl() ? PAD + tw - fw : PAD, ty, fw, TRACK_H, TRACK_H / 2.0);
+        if (dim) cairo_set_source_rgb(cr, 0.55, 0.55, 0.60);
+        else if (percent > 100) cairo_set_source_rgb(cr, 1.00, 0.75, 0.25);
+        else cairo_set_source_rgb(cr, 0.40, 0.65, 1.00);
+        cairo_fill(cr);
+    }
+
+    display_osd_present(dpy, buf, cr, anchor);
+    osd_visible = true;
+    osd_deadline_ms = now_ms() + OSD_TIMEOUT_MS;
+}
+
+void hud_osd_hide(void) {
+    osd_visible = false;
+    display_osd_hide(dpy);
 }

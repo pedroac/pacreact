@@ -14,6 +14,10 @@ void hud_toast(const char *text, Level level, int timeout_ms);
 /* Shows (or replaces) a labelled level bar. Values above 100 are shown but the bar stays
  * full; dim greys it out (muted). */
 void hud_slider(const char *label, int percent, bool dim);
+
+/* OSD (on-screen display) versions: centered on screen, single instance, no queue. */
+void hud_osd_slider(const char *label, int percent, bool dim, OsdAnchor anchor);
+void hud_osd_hide(void);
 #define HUD_MAX_ACTIONS 3
 
 /* A notification card: summary, wrapped body, an optional icon (raw pixels, else a PNG path)

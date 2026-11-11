@@ -3,6 +3,7 @@
 #include "i18n.h"
 #include "loop.h"
 #include "sound.h"
+#include "state.h"
 #include <ctype.h>
 #include <errno.h>
 #include <stdio.h>
@@ -139,18 +140,7 @@ static void format_days(unsigned days, char *out, size_t n) {
 }
 
 static void state_path(char *out, size_t n, bool make_dir) {
-    const char *base = getenv("XDG_STATE_HOME"), *home = getenv("HOME");
-    char dir[400];
-    if (base && *base) snprintf(dir, sizeof dir, "%s", base);
-    else snprintf(dir, sizeof dir, "%s/.local/state", home ? home : "/tmp");
-    if (make_dir) {
-        mkdir(dir, 0700);
-        strncat(dir, "/pachud", sizeof dir - strlen(dir) - 1);
-        mkdir(dir, 0700);
-    } else {
-        strncat(dir, "/pachud", sizeof dir - strlen(dir) - 1);
-    }
-    snprintf(out, n, "%s/timers", dir);
+    state_file("timers", out, n, make_dir);
 }
 
 static void save(void) {

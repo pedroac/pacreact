@@ -14,7 +14,16 @@ static char slider_label[128];
 static int slider_pct;
 static bool slider_dim;
 
-void hud_slider(const char *label, int percent, bool dim) {
+static int toast_calls;
+static char toast_text[256];
+void hud_toast(const char *text, Level level, int ms) {
+    (void)level; (void)ms;
+    toast_calls++;
+    snprintf(toast_text, sizeof toast_text, "%s", text);
+}
+
+void hud_osd_slider(const char *label, int percent, bool dim, OsdAnchor anchor) {
+    (void)anchor;
     slider_calls++;
     snprintf(slider_label, sizeof slider_label, "%s", label);
     slider_pct = percent;
@@ -33,13 +42,13 @@ static void raw(Buf8 *o, const void *d, size_t n) { memcpy(o->b + o->n, d, n); o
 static void be_u32(Buf8 *o, uint32_t v) { o->b[o->n++] = 'L'; v = htonl(v); raw(o, &v, 4); }
 
 /* A GET_SINK_INFO reply payload as pipewire-pulse sent it: volume `vol` on two channels. */
-static Buf8 sink_info(uint32_t vol, char mute) {
+static Buf8 sink_info_named(uint32_t vol, char mute, const char *name, const char *desc) {
     Buf8 o = {0};
     be_u32(&o, 2);      /* REPLY */
     be_u32(&o, 4);      /* tag */
     be_u32(&o, 0x313);  /* sink index */
-    o.b[o.n++] = 't'; raw(&o, "alsa_output.pci-0000_00_1f.3.analog-stereo", 43);
-    o.b[o.n++] = 't'; raw(&o, "Built-in Audio Analog Stereo", 29);
+    o.b[o.n++] = 't'; raw(&o, name, strlen(name) + 1);
+    o.b[o.n++] = 't'; raw(&o, desc, strlen(desc) + 1);
     raw(&o, "a\x07\x02\x00\x00\xbb\x80", 7);  /* sample spec: format 7, 2 channels, 48000 Hz */
     raw(&o, "m\x02\x01\x02", 4);               /* channel map: front-left, front-right */
     be_u32(&o, 0xFFFFFFFFu);                   /* owner module */
@@ -50,6 +59,10 @@ static Buf8 sink_info(uint32_t vol, char mute) {
     o.b[o.n++] = mute;                         /* '1' muted, '0' not */
     be_u32(&o, 0x312);                         /* monitor source: the real frame continues */
     return o;
+}
+
+static Buf8 sink_info(uint32_t vol, char mute) {
+    return sink_info_named(vol, mute, "alsa_output.pci-0000_00_1f.3.analog-stereo", "Built-in Audio Analog Stereo");
 }
 
 static Buf8 framed(const Buf8 *payload) {
@@ -79,6 +92,8 @@ static void connect_pair(State st) {
         tracks[t].last_pct = tracks[t].last_muted = -1;
     }
     slider_calls = 0;
+    toast_calls = 0;
+    for (int t = 0; t < T_COUNT; t++) tracks[t].name[0] = '\0';
 }
 
 static void drop_pair(void) {
@@ -194,6 +209,51 @@ static void test_sink_info_parsing(void) {
         on_reply(&in);
         assert(slider_pct == cases[i].pct);
     }
+    drop_pair();
+}
+
+static void read_reply(TrackId t, Buf8 reply, bool show) {
+    pending = t;
+    announce = show;
+    In in = { reply.b + 10, reply.b + reply.n, false };
+    on_reply(&in);
+}
+
+static void test_output_change(void) {
+    connect_pair(S_READY);
+    const char *a = "alsa_output.pci-0000_00_1f.3.analog-stereo";
+    const char *b = "bluez_output.AA_BB_CC_DD_EE_FF.1";
+
+    /* Learning the output at start-up says nothing, and remembers its name */
+    read_reply(T_SINK, sink_info_named(0x4000, '0', a, "Built-in Audio"), false);
+    assert(toast_calls == 0 && slider_calls == 0 && !strcmp(tracks[T_SINK].name, a));
+
+    /* The same output again: just the volume, as before */
+    read_reply(T_SINK, sink_info_named(0x8000, '0', a, "Built-in Audio"), true);
+    assert(slider_calls == 1 && slider_pct == 50);
+
+    /* A different default output: one centred bar naming it, at the new device's volume */
+    read_reply(T_SINK, sink_info_named(0x6000, '0', b, "WH-1000XM4"), true);
+    assert(slider_calls == 2 && !strcmp(slider_label, "Audio output: WH-1000XM4") && slider_pct == 38);
+    assert(tracks[T_SINK].last_pct == 38 && !strcmp(tracks[T_SINK].name, b));
+    /* ...and it is not repeated, nor does the same volume come back as a change */
+    read_reply(T_SINK, sink_info_named(0x6000, '0', b, "WH-1000XM4"), true);
+    assert(slider_calls == 2);
+    read_reply(T_SINK, sink_info_named(0x4000, '0', b, "WH-1000XM4"), true);
+    assert(slider_calls == 3 && !strcmp(slider_label, "Volume"));
+
+    /* Back again; without a description the name is used */
+    read_reply(T_SINK, sink_info_named(0x4000, '0', a, ""), true);
+    assert(slider_calls == 4 && !strcmp(slider_label, "Audio output: alsa_output.pci-0000_00_1f.3.analog-stereo"));
+
+    /* Re-learning after a reconnect (not announced) updates the name quietly */
+    read_reply(T_SINK, sink_info_named(0x4000, '0', b, "WH-1000XM4"), false);
+    assert(slider_calls == 4 && !strcmp(tracks[T_SINK].name, b));
+
+    /* Only outputs: the default microphone changing is not announced here */
+    read_reply(T_SOURCE, sink_info_named(0x4000, '0', "alsa_input.usb-a", "USB mic"), true);
+    assert(slider_calls == 5 && tracks[T_SOURCE].name[0] == '\0');
+
     drop_pair();
 }
 
@@ -447,6 +507,7 @@ static void test_server_path(void) {
 int main(void) {
     test_handshake_packets();
     test_sink_info_parsing();
+    test_output_change();
     test_microphone_track();
     test_request_queue();
     test_events();

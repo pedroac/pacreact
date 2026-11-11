@@ -21,6 +21,10 @@ void hud_toast(const char *text, Level level, int ms) {
     shown++;
 }
 void sound_play(SoundKind kind) { (void)kind; }
+static int pokes;
+void temp_poke(void) { pokes++; }
+static bool alerts_open = true;
+bool alert_allowed(const char *source, int level) { (void)source; (void)level; return alerts_open; }
 int loop_add(int fd, unsigned ev, void *fn, void *ctx) { (void)fd; (void)ev; (void)fn; (void)ctx; return 0; }
 
 static size_t uevent(char *out, const char *props[]) {
@@ -53,6 +57,26 @@ int main(void) {
     const char *other[] = { "change@/devices/x", "SUBSYSTEM=block", "POWER_SUPPLY_TYPE=Battery", NULL };
     n = uevent(buf, other);
     power_uevent(buf, n);       assert(shown == 6);
+
+    /* An alert left out as "the same as last time" is not shown, but it still counts as given:
+     * the same condition must not come back later as a fresh alert */
+    battery_update(60, true);                                  /* re-arm everything */
+    alerts_open = false;
+    int before = shown;
+    battery_update(10, true);
+    assert(shown == before);                                   /* warning held back */
+    alerts_open = true;
+    battery_update(9, true);
+    assert(shown == before);                                   /* and not repeated afterwards */
+    battery_update(4, true);
+    assert(shown == before + 1 && last_level == LEVEL_CRIT);   /* a worse level is a new alert */
+    alerts_open = false;
+    battery_update(60, true);
+    battery_update(3, true);
+    assert(shown == before + 1);                               /* critical held back too */
+    alerts_open = true;
+    battery_update(2, true);
+    assert(shown == before + 1);
 
     puts("power: ok");
     return 0;

@@ -1,3 +1,4 @@
+#include "alerts.h"
 #include "display.h"
 #include "hud.h"
 #include "i18n.h"
@@ -190,6 +191,7 @@ static int run_daemon(void) {
 
     text_init();
     sound_init();
+    alerts_init();
     Display *dpy = display_open();
     if (!dpy) { fputs(_("pachud: cannot connect to a Wayland compositor with layer-shell\n"), stderr); return 1; }
     hud_init(dpy);
@@ -202,6 +204,13 @@ static int run_daemon(void) {
     mem_init();
     net_init();
     probe_init();
+    disk_init();
+    temp_init();
+    jack_init();
+    locks_init();
+#ifndef NO_NOTIFY
+    bt_init();
+#endif
     backlight_init();
     audio_init();
 #ifndef NO_NOTIFY

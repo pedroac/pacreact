@@ -119,6 +119,12 @@ Without it no probe is made.
 .B PACHUD_PROBE_INTERVAL
 Seconds between probes, 5 to 3600 (default 30).
 .TP
+.B PACHUD_STARTUP_GRACE
+Seconds after start-up during which a memory or battery alert that is not worse than one shown in the
+last 30 minutes is not shown again (default 60;
+.B 0
+disables it).
+.TP
 .B PACHUD_SOUND
 .B 0
 turns all sound off.
@@ -152,6 +158,9 @@ Where timers are saved.
 .TP
 .I $XDG_RUNTIME_DIR/pachud.sock
 The daemon's command socket.
+.TP
+.I $XDG_STATE_HOME/pachud/alerts
+The last memory and battery alert shown, for the start-up grace period.
 .TP
 .I $XDG_STATE_HOME/pachud/timers
 Timers and alarms, restored when the daemon starts (default

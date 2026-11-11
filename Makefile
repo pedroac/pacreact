@@ -37,7 +37,7 @@ PROTO_OBJS = $(PROTO_NAMES:%=build/%-client-protocol.o)
 
 SRCS = $(wildcard src/*.c)
 ifneq ($(NOTIFY),1)
-SRCS := $(filter-out src/notify.c,$(SRCS))
+SRCS := $(filter-out src/notify.c src/src_bt.c,$(SRCS))
 ALL_CFLAGS += -DNO_NOTIFY
 endif
 ifneq ($(I18N),1)
@@ -137,21 +137,25 @@ uninstall:
 # The tests build the logic on its own, with stubs for the display, the HUD and the loop. Some
 # #include the source under test so that its static internals are reachable.
 TEST_CC = $(CC) $(CFLAGS) -D_GNU_SOURCE -Wall -Wextra -Ibuild -Isrc
-TESTS = power timer probe audio hud ipc sound dnd image icon scale display
+TESTS = power timer probe audio hud ipc sound dnd image icon scale display alerts mem disk temp jack locks
 ifeq ($(I18N),1)
 TESTS += text
 endif
 ifeq ($(NOTIFY),1)
-TESTS += notify
+TESTS += notify bt
 endif
 
 TEST_SRC_power = src/src_power.c
 TEST_SRC_probe = src/src_probe.c
 TEST_SRC_ipc = src/ipc.c
 TEST_SRC_sound = src/sound.c
-TEST_SRC_dnd = src/timer.c
+TEST_SRC_timer = src/state.c
+TEST_SRC_dnd = src/timer.c src/state.c
 TEST_SRC_image = src/image.c
 TEST_SRC_icon = src/icon.c
+TEST_SRC_jack = src/evdev.c
+TEST_SRC_locks = src/evdev.c
+TEST_SRC_alerts = src/state.c
 TEST_SRC_text = src/shape.c src/utf8.c
 TEST_SRC_display = $(PROTO_OBJS)
 TEST_SRC_notify = src/notify.c src/image.c src/icon.c
@@ -159,6 +163,7 @@ TEST_LIBS_hud = $(shell pkg-config --libs cairo) -lm
 TEST_LIBS_text = $(shell pkg-config --cflags --libs cairo freetype2 harfbuzz fribidi) -lm
 TEST_LIBS_display = $(shell pkg-config --libs wayland-client cairo) -lm
 TEST_LIBS_notify = $(shell pkg-config --libs libsystemd 2>/dev/null)
+TEST_LIBS_bt = $(shell pkg-config --libs libsystemd 2>/dev/null)
 
 test: $(TESTS:%=build/test_%)
 	@set -e; for t in $^; do $$t; done

@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: pachud\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-10 09:24+0000\n"
+"POT-Creation-Date: 2026-11-10 10:08+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -107,8 +107,81 @@ msgstr ""
 msgid "Volume"
 msgstr ""
 
+#: src/src_audio.c
+#, c-format
+msgid "Audio output: %s"
+msgstr ""
+
 #: src/src_backlight.c
 msgid "Brightness"
+msgstr ""
+
+#: src/src_bt.c
+#, c-format
+msgid "Bluetooth: %s connected"
+msgstr ""
+
+#: src/src_bt.c
+#, c-format
+msgid "Bluetooth: %s disconnected"
+msgstr ""
+
+#: src/src_disk.c
+#, c-format
+msgid "Disk almost full — %s: %d%% free (%s)"
+msgstr ""
+
+#: src/src_disk.c
+#, c-format
+msgid "Disk space low — %s: %d%% free (%s)"
+msgstr ""
+
+#: src/src_jack.c
+msgid "Headset connected"
+msgstr ""
+
+#: src/src_jack.c
+msgid "Headset disconnected"
+msgstr ""
+
+#: src/src_jack.c
+msgid "Headphones connected"
+msgstr ""
+
+#: src/src_jack.c
+msgid "Headphones disconnected"
+msgstr ""
+
+#: src/src_jack.c
+msgid "Line out connected"
+msgstr ""
+
+#: src/src_jack.c
+msgid "Line out disconnected"
+msgstr ""
+
+#: src/src_jack.c
+msgid "Microphone connected"
+msgstr ""
+
+#: src/src_jack.c
+msgid "Microphone disconnected"
+msgstr ""
+
+#: src/src_locks.c
+msgid "Caps Lock on"
+msgstr ""
+
+#: src/src_locks.c
+msgid "Caps Lock off"
+msgstr ""
+
+#: src/src_locks.c
+msgid "Num Lock on"
+msgstr ""
+
+#: src/src_locks.c
+msgid "Num Lock off"
 msgstr ""
 
 #: src/src_mem.c
@@ -159,6 +232,26 @@ msgstr ""
 
 #: src/src_probe.c
 msgid "Network back to normal"
+msgstr ""
+
+#: src/src_temp.c
+#, c-format
+msgid "CPU temperature critical — %d °C"
+msgstr ""
+
+#: src/src_temp.c
+#, c-format
+msgid "CPU temperature high — %d °C"
+msgstr ""
+
+#: src/src_temp.c
+#, c-format
+msgid "SSD temperature critical — %d °C"
+msgstr ""
+
+#: src/src_temp.c
+#, c-format
+msgid "SSD temperature high — %d °C"
 msgstr ""
 
 #: src/timer.c

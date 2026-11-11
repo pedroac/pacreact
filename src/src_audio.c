@@ -54,13 +54,14 @@ typedef struct {
     const char *object;    /* the alias the server resolves to the current default device */
     uint32_t command;
     int last_pct, last_muted;
+    char name[128];        /* the output's name, to notice that the default changed (outputs only) */
     bool dirty;            /* an event arrived: ask once the burst settles */
     bool want, want_announce;  /* a request is queued, and whether its answer may show a HUD */
 } Track;
 
 static Track tracks[T_COUNT] = {
-    [T_SINK] = { "@DEFAULT_SINK@", CMD_GET_SINK_INFO, -1, -1, false, false, false },
-    [T_SOURCE] = { "@DEFAULT_SOURCE@", CMD_GET_SOURCE_INFO, -1, -1, false, false, false },
+    [T_SINK] = { "@DEFAULT_SINK@", CMD_GET_SINK_INFO, -1, -1, "", false, false, false },
+    [T_SOURCE] = { "@DEFAULT_SOURCE@", CMD_GET_SOURCE_INFO, -1, -1, "", false, false, false },
 };
 static int pending = -1;   /* the track the outstanding request is for, or -1 */
 static bool announce;      /* whether the outstanding answer may show a HUD */
@@ -131,12 +132,15 @@ static uint32_t get_u32(In *in) {
     return ntohl(v);
 }
 
-static void skip_string(In *in) {
+/* A string into out ("" for a null string). */
+static void get_string(In *in, char *out, size_t n) {
+    out[0] = '\0';
     if (!need(in, 1)) return;
     if (*in->p == 'N') { in->p++; return; }
     if (*in->p != 't') { in->bad = true; return; }
     const uint8_t *nul = memchr(in->p + 1, 0, in->end - in->p - 1);
     if (!nul) { in->bad = true; return; }
+    snprintf(out, n, "%s", (const char *)in->p + 1);
     in->p = nul + 1;
 }
 
@@ -235,8 +239,9 @@ static void want_info(TrackId t, bool show) {
  * channel map, owner module, then the volume and the mute flag, which is all that is read. */
 static void handle_info(TrackId t, In *in) {
     get_u32(in);      /* index */
-    skip_string(in);  /* name, description */
-    skip_string(in);
+    char name[128], description[128];
+    get_string(in, name, sizeof name);
+    get_string(in, description, sizeof description);
     skip_sample_spec(in);
     skip_channel_map(in);
     get_u32(in);      /* owner module */
@@ -246,10 +251,27 @@ static void handle_info(TrackId t, In *in) {
 
     Track *k = &tracks[t];
     int pct = (int)(((uint64_t)volume * 100 + VOLUME_NORM / 2) / VOLUME_NORM);
+
+    /* A different default output (a headset connected over USB or Bluetooth, a monitor's speakers):
+     * say so, instead of a volume bar that would just be about the new device. */
+    if (t == T_SINK && name[0] && strcmp(name, k->name) != 0) {
+        bool known = k->name[0] != '\0';   /* the first reading only learns the name */
+        snprintf(k->name, sizeof k->name, "%s", name);
+        if (known) {
+            if (announce) {
+                char msg[192];
+                snprintf(msg, sizeof msg, _("Audio output: %s"), description[0] ? description : name);
+                hud_osd_slider(msg, pct, muted, OSD_CENTER);  /* show device change with current volume */
+            }
+            k->last_pct = pct;
+            k->last_muted = muted;
+            return;
+        }
+    }
     if (pct == k->last_pct && muted == k->last_muted) return;  /* e.g. a device state change */
     k->last_pct = pct;
     k->last_muted = muted;
-    if (announce) hud_slider(label_for(t, muted), pct, muted);
+    if (announce) hud_osd_slider(label_for(t, muted), pct, muted, OSD_CENTER);
 }
 
 static void on_reply(In *in) {

@@ -38,6 +38,30 @@ systemctl --user enable --now pachud.service
 
 To take over notifications from mako, see [Usage](docs/usage.md#replacing-your-notification-daemon).
 
+## Hyprland
+
+If you're using Hyprland, I recommend binding the FN key:
+
+```lua
+local media_binds = {
+    { "XF86AudioRaiseVolume",  "pactl set-sink-volume @DEFAULT_SINK@ +5%" },
+    { "XF86AudioLowerVolume",  "pactl set-sink-volume @DEFAULT_SINK@ -5%" },
+    { "XF86AudioMute",         "pactl set-sink-mute @DEFAULT_SINK@ toggle" },
+    { "XF86AudioMicMute",      "pactl set-source-mute @DEFAULT_SOURCE@ toggle" },
+    { "XF86AudioPlay",         "playerctl play-pause" },
+    { "XF86AudioNext",         "playerctl next" },
+    { "XF86AudioPrev",         "playerctl previous" },
+    { "XF86AudioStop",         "playerctl stop" },
+    { "XF86MonBrightnessUp",   "brightnessctl set +10%" },
+    { "XF86MonBrightnessDown", "brightnessctl set 10%-" },
+}
+-- Drop standalone F23 so it doesn't type characters in terminals
+hl.bind("F23", hl.dsp.exec_cmd("true"))
+for _, bind in ipairs(media_binds) do
+    hl.bind(bind[1], hl.dsp.exec_cmd(bind[2]), { locked = true })
+end
+```
+
 ## Usage
 
 ```

@@ -1,3 +1,4 @@
+#include "alerts.h"
 #include "hud.h"
 #include "i18n.h"
 #include "loop.h"
@@ -31,12 +32,20 @@ static long mem_available_mb(long *total_mb) {
     return avail < 0 ? -1 : avail / 1024;
 }
 
+static time_t last_alert;    /* when the last memory alert was shown, and how bad it was */
+static Level last_level;
+
 static void alert(Level level) {
-    static time_t last;
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
-    if (last && ts.tv_sec - last < COOLDOWN_SECS) return;
-    last = ts.tv_sec;
+    /* The cooldown holds back repeats, not escalations: a critical alert right after a warning
+     * must still come through. */
+    if (last_alert && ts.tv_sec - last_alert < COOLDOWN_SECS && level <= last_level) return;
+    /* Left out as "nothing new since before a restart": that must not start the cooldown, or a
+     * worse alert arriving a moment later would be held back by it. */
+    if (!alert_allowed("memory", level)) return;
+    last_alert = ts.tv_sec;
+    last_level = level;
 
     char msg[128];
     snprintf(msg, sizeof msg, _("Memory pressure — %ld MB available"), mem_available_mb(NULL));

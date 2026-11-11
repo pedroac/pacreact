@@ -72,4 +72,22 @@ mutate "scale: buffer sizes are rounded down"    scale  scale.h     "(long long)
 mutate "display: a pinned scale is overridden"   display display.c  "if (d->scale_fixed || scale < SCALE_MIN" "if (scale < SCALE_MIN"
 mutate "text: Thai is not split from Latin"      text   text.c      "if (cls != -2 && c != cls && n < max - 1) {" "if (0) {"
 
+mutate "alerts: a worse alert is also held back" alerts alerts.c   "if (in_grace && recent && last->level >= level) return false;" "if (in_grace && recent) return false;"
+mutate "alerts: the grace period never ends"     alerts alerts.c   "bool in_grace = mono - start_mono < grace_s;" "bool in_grace = true;"
+mutate "alerts: old alerts count as recent"      alerts alerts.c   "wall >= last->when && wall - last->when <= REPEAT_WINDOW_S" "1"
+mutate "alerts: a held-back alert refreshes the record" alerts alerts.c "if (in_grace && recent && last->level >= level) return false;" "if (in_grace && recent && last->level >= level) { last->when = wall; save(); return false; }"
+mutate "alerts: only the identical level is held back" alerts alerts.c "last->level >= level) return false;" "last->level == level) return false;"
+mutate "alerts: sources share one record"        alerts alerts.c   "if (!strncmp(shown[i].source, source, sizeof shown[i].source - 1)) return &shown[i];" "return &shown[i];"
+mutate "power: a held-back battery alert is not remembered" power src_power.c "critical = warned = true;
+        if (!alert_allowed" "critical = true;
+        if (!alert_allowed"
+
+mutate "mem: a held-back alert starts the cooldown" mem src_mem.c "    if (!alert_allowed(\"memory\", level)) return;
+    last_alert = ts.tv_sec;
+    last_level = level;" "    last_alert = ts.tv_sec;
+    last_level = level;
+    if (!alert_allowed(\"memory\", level)) return;"
+mutate "mem: the cooldown holds back escalations" mem    src_mem.c   "COOLDOWN_SECS && level <= last_level) return;" "COOLDOWN_SECS) return;"
+mutate "mem: no cooldown at all"                 mem    src_mem.c   "if (last_alert && ts.tv_sec - last_alert < COOLDOWN_SECS && level <= last_level) return;" ""
+
 [ $MISSED -eq 0 ] && echo "all mutations caught" || { echo "SOME MUTATIONS WERE MISSED"; exit 1; }

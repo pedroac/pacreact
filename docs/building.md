@@ -57,6 +57,8 @@ It runs `make test` as its check step, installs the binary, the man page (`man p
 | `hud` | the HUD queue (dedupe, preemption by sliders, replacement, removal, overflow, close reasons) with a fake clock, and the card text helpers (markup stripping, word wrap, ellipsis) |
 | `ipc` | the real unix socket: round trips, error replies, single-instance detection, stale sockets, silent clients |
 | `notify` | notification timeouts from urgency and requested expiry (skipped with `NOTIFY=0`) |
+| `alerts` | the start-up grace period: same, milder and worse alerts, the 30-minute window, restarts reading the saved state, the clock going backwards, damaged state files, `PACHUD_STARTUP_GRACE` parsing |
+| `mem` | the memory alert's cooldown: repeats are held back, escalations are not, and an alert left out as already shown does not start the cooldown |
 | `sound` | resolving sound names and paths (and refusing traversal), which sounds are on by default, a fake player started with the right file |
 | `dnd` | do not disturb: what it holds back, the commands, the toasts, the timed switch-off |
 | `image` | raw notification pixels into the fixed icon buffer: scaling, letterboxing, premultiplied alpha, rejecting malformed data |
@@ -65,8 +67,8 @@ It runs `make test` as its check step, installs the binary, the man page (`man p
 | `display` | how the display reacts to the compositor's preferred scale (no compositor needed) |
 | `text` | font choice and the split of mixed-script text into runs, with real-font checks where the fonts exist (skipped with `I18N=0`) |
 
-Several suites `#include` the source file under test so that its static internals are reachable, and stub the display, the HUD and the loop. `tests/manual/mutation_check.sh` checks the tests themselves: it breaks the code in 34 specific ways and requires the matching test to fail each time (`ONLY=text` runs just the mutations whose name contains that).
+Several suites `#include` the source file under test so that its static internals are reachable, and stub the display, the HUD and the loop. `tests/manual/mutation_check.sh` checks the tests themselves: it breaks the code in 44 specific ways and requires the matching test to fail each time (`ONLY=text` runs just the mutations whose name contains that).
 
 The rest was checked by running the daemon on a real Wayland session, with isolated environments so nothing else was affected: a private session bus for notifications (`dbus-run-session`) and a private network namespace for network and probe behaviour (`unshare -Urn`).
 
-Checks that need a Wayland session (and `grim`) live in `tests/manual/` and write screenshots to `build/shots/`: `i18n_test.sh` (translations, scripts, right-to-left; build with `make LOCALEDIR=$PWD/build/locale` first), `fade_test.sh` (fade and surface cleanup, Hyprland only), `dnd_test.sh` and `notify_features_test.sh` (run under `dbus-run-session`: do not disturb, actions, icon names, `image-data`), and `output_test.sh` and `scale_test.sh` (two virtual outputs and the viewport path in a nested headless `labwc`).
+Checks that need a Wayland session (and `grim`) live in `tests/manual/` and write screenshots to `build/shots/`: `i18n_test.sh` (translations, scripts, right-to-left; build with `make LOCALEDIR=$PWD/build/locale` first), `fade_test.sh` (fade and surface cleanup, Hyprland only), `dnd_test.sh` and `notify_features_test.sh` (run under `dbus-run-session`: do not disturb, actions, icon names, `image-data`), `startup_grace_test.sh` (a real memory-pressure alert across restarts; needs a machine that is actually under pressure), and `output_test.sh` and `scale_test.sh` (two virtual outputs and the viewport path in a nested headless `labwc`).

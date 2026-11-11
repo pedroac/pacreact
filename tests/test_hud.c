@@ -22,6 +22,9 @@ static int hides;
 Buf *display_buf(Display *d, int w, int h, cairo_t **cr) { (void)d; (void)w; (void)h; (void)cr; return NULL; }
 void display_present(Display *d, Buf *b, cairo_t *cr) { (void)d; (void)b; (void)cr; }
 void display_hide(Display *d) { (void)d; hides++; }
+Buf *display_osd_buf(Display *d, int w, int h, cairo_t **cr) { (void)d; (void)w; (void)h; (void)cr; return NULL; }
+void display_osd_present(Display *d, Buf *b, cairo_t *cr, OsdAnchor a) { (void)d; (void)b; (void)cr; (void)a; }
+void display_osd_hide(Display *d) { (void)d; }
 void display_on_rescale(Display *d, void (*fn)(void)) { (void)d; (void)fn; }
 
 /* Ten units per byte: easy to reason about when wrapping. */

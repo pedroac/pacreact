@@ -64,6 +64,18 @@ struct Display {
     double cur_alpha, from_alpha, to_alpha;
     uint32_t t0;
     bool t0_set, animating, hiding, mapped, fade_in_pending;
+
+    /* OSD (on-screen display): separate layer for user-triggered feedback at screen center.
+     * Reuses the shared Wayland interfaces (compositor, shm, layer_shell, etc.). */
+    struct wl_surface *osd_surface;
+    struct zwlr_layer_surface_v1 *osd_layer;
+    Buf *osd_pending;
+    bool osd_configured;
+    int osd_w, osd_h;
+    struct wp_fractional_scale_v1 *osd_frac;
+    struct wp_viewport *osd_viewport;
+    bool osd_mapped;
+    OsdAnchor osd_anchor;
 };
 
 static void buf_free(Buf *b) {
@@ -260,9 +272,12 @@ Display *display_open(void) {
     return d;
 }
 
+static void destroy_osd_surface(Display *d);
+
 void display_close(Display *d) {
     if (!d) return;
     destroy_surface(d);
+    destroy_osd_surface(d);
     if (d->alpha_mgr) wp_alpha_modifier_v1_destroy(d->alpha_mgr);
     if (d->frac_mgr) wp_fractional_scale_manager_v1_destroy(d->frac_mgr);
     if (d->viewporter) wp_viewporter_destroy(d->viewporter);
@@ -447,4 +462,110 @@ void display_hide(Display *d) {
         return;
     }
     if (!d->hiding) destroy_surface(d);
+}
+
+/* ---- OSD surface (on-screen display: volume, device changes) ---- */
+
+static void osd_attach(Display *d, Buf *b) {
+    if (d->osd_viewport) wp_viewport_set_destination(d->osd_viewport, b->w, b->h);
+    else wl_surface_set_buffer_scale(d->osd_surface, whole_scale(b->scale120));
+    wl_surface_attach(d->osd_surface, b->wl, 0, 0);
+    wl_surface_damage_buffer(d->osd_surface, 0, 0, INT32_MAX, INT32_MAX);
+    d->osd_mapped = true;
+    wl_surface_commit(d->osd_surface);
+}
+
+static void osd_layer_configure(void *data, struct zwlr_layer_surface_v1 *ls, uint32_t serial,
+                                uint32_t w, uint32_t h) {
+    Display *d = data;
+    (void)w; (void)h;
+    zwlr_layer_surface_v1_ack_configure(ls, serial);
+    d->osd_configured = true;
+    if (d->osd_pending) {
+        osd_attach(d, d->osd_pending);
+        d->osd_pending = NULL;  /* owned by the compositor until release */
+    }
+}
+
+static void osd_layer_closed(void *data, struct zwlr_layer_surface_v1 *ls) {
+    (void)ls;
+    destroy_osd_surface(data);
+}
+
+static const struct zwlr_layer_surface_v1_listener osd_layer_listener = {
+    .configure = osd_layer_configure,
+    .closed = osd_layer_closed,
+};
+
+static void destroy_osd_surface(Display *d) {
+    if (d->osd_viewport) wp_viewport_destroy(d->osd_viewport);
+    if (d->osd_frac) wp_fractional_scale_v1_destroy(d->osd_frac);
+    if (d->osd_layer) zwlr_layer_surface_v1_destroy(d->osd_layer);
+    if (d->osd_surface) wl_surface_destroy(d->osd_surface);
+    d->osd_viewport = NULL;
+    d->osd_frac = NULL;
+    d->osd_layer = NULL;
+    d->osd_surface = NULL;
+    buf_free(d->osd_pending);
+    d->osd_pending = NULL;
+    d->osd_configured = d->osd_mapped = false;
+    d->osd_w = d->osd_h = 0;
+}
+
+static void osd_set_anchor(Display *d, OsdAnchor a) {
+    static const uint32_t edges[] = { [OSD_CENTER] = 0, [OSD_TOP] = ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP,
+                                      [OSD_BOTTOM] = ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM };
+    zwlr_layer_surface_v1_set_anchor(d->osd_layer, edges[a]);
+    d->osd_anchor = a;
+}
+
+static void create_osd_surface(Display *d, OsdAnchor anchor) {
+    d->osd_surface = wl_compositor_create_surface(d->compositor);
+    d->osd_layer = zwlr_layer_shell_v1_get_layer_surface(d->layer_shell, d->osd_surface, pick_output(d),
+                                                         ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY, "pachud-osd");
+    osd_set_anchor(d, anchor);
+    zwlr_layer_surface_v1_set_exclusive_zone(d->osd_layer, 0);
+    zwlr_layer_surface_v1_set_keyboard_interactivity(d->osd_layer,
+        ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_NONE);
+    zwlr_layer_surface_v1_add_listener(d->osd_layer, &osd_layer_listener, d);
+
+    if (d->frac_mgr && d->viewporter) {
+        d->osd_frac = wp_fractional_scale_manager_v1_get_fractional_scale(d->frac_mgr, d->osd_surface);
+        wp_fractional_scale_v1_add_listener(d->osd_frac, &fractional_listener, d);
+        d->osd_viewport = wp_viewporter_get_viewport(d->viewporter, d->osd_surface);
+    }
+
+    struct wl_region *empty = wl_compositor_create_region(d->compositor);
+    wl_surface_set_input_region(d->osd_surface, empty);
+    wl_region_destroy(empty);
+}
+
+Buf *display_osd_buf(Display *dpy, int w, int h, cairo_t **cr) {
+    return display_buf(dpy, w, h, cr);
+}
+
+void display_osd_present(Display *d, Buf *b, cairo_t *cr, OsdAnchor anchor) {
+    cairo_destroy(cr);
+    cairo_surface_flush(b->img);
+    cairo_surface_destroy(b->img);
+    b->img = NULL;
+
+    if (!d->osd_surface) create_osd_surface(d, anchor);
+    bool moved = d->osd_anchor != anchor;
+    if (moved) osd_set_anchor(d, anchor);
+    if (!moved && d->osd_configured && b->w == d->osd_w && b->h == d->osd_h) {
+        osd_attach(d, b);
+        return;
+    }
+    zwlr_layer_surface_v1_set_size(d->osd_layer, b->w, b->h);
+    d->osd_w = b->w;
+    d->osd_h = b->h;
+    buf_free(d->osd_pending);
+    d->osd_pending = b;
+    d->osd_configured = false;
+    wl_surface_commit(d->osd_surface);
+}
+
+void display_osd_hide(Display *d) {
+    destroy_osd_surface(d);
 }

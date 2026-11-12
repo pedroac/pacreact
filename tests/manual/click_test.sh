@@ -87,6 +87,15 @@ resident_case() {
     click_at 1000 40
     grim -o HEADLESS-1 build/shots/click_resident_after.png
     check "a left click sends ActionInvoked(default)" 'invoked default'
+    # The compositor's activation token (xdg-activation-v1) comes first, so the app can take focus.
+    token_first() {
+        local t d
+        t=$(grep -a -n "member=ActivationToken" $R/signals | head -1 | cut -d: -f1)
+        d=$(grep -a -n 'string "default"' $R/signals | head -1 | cut -d: -f1)
+        [ -n "$t" ] && [ -n "$d" ] && [ "$t" -lt "$d" ] &&
+            grep -a -A2 "member=ActivationToken" $R/signals | grep -aq 'string "[^"][^"]*"'
+    }
+    check "...preceded by an ActivationToken with a token in it" token_first
     check "...and the resident card is still not closed" '! closed 2'
     click_at 1000 40 0x111
     check "a right click closes it as dismissed (reason 2)" 'closed 2'

@@ -29,7 +29,8 @@ PROTOCOLS = protocol/wlr-layer-shell-unstable-v1.xml \
             $(WL_PROTOCOLS)/stable/xdg-shell/xdg-shell.xml \
             $(WL_PROTOCOLS)/staging/alpha-modifier/alpha-modifier-v1.xml \
             $(WL_PROTOCOLS)/staging/fractional-scale/fractional-scale-v1.xml \
-            $(WL_PROTOCOLS)/stable/viewporter/viewporter.xml
+            $(WL_PROTOCOLS)/stable/viewporter/viewporter.xml \
+            $(WL_PROTOCOLS)/staging/xdg-activation/xdg-activation-v1.xml
 
 PROTO_NAMES = $(basename $(notdir $(PROTOCOLS)))
 PROTO_HEADERS = $(PROTO_NAMES:%=build/%-client-protocol.h)

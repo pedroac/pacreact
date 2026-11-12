@@ -47,11 +47,13 @@ void hud_card(const HudCard *card);
  * The "default" action is only offered when it is the card's only one. */
 const char *hud_action_key(int n, uint32_t *id);
 
-/* Called when a card with a `default` action is left-clicked: the app should hear it. The card
- * is then handled as by hud_action_invoked(). A left click on a card without one, and any right
+/* Called when a card with a `default` action is left-clicked: the app should hear it. token is an
+ * activation token the app can use to take focus, or NULL when the compositor gave none; the
+ * call comes a moment after the click, once the compositor has answered. The card is then handled
+ * as by hud_action_invoked(). A left click on a card without a default action, and any right
  * click, dismiss the card without calling this. Clicks are taken only on cards, and only where
  * the display allows them (PACHUD_CLICK). */
-typedef void (*HudClickFn)(uint32_t id);
+typedef void (*HudClickFn)(uint32_t id, const char *token);
 void hud_on_click(HudClickFn fn);
 
 /* Reasons passed to the closed callback, matching the notification spec. */

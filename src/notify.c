@@ -47,8 +47,11 @@ static void emit_closed(uint32_t id, int reason) {
 }
 
 /* A click on a card is the spec's "default" action, for apps that offered one. */
-static void on_card_click(uint32_t id) {
-    if (bus) sd_bus_emit_signal(bus, PATH, IFACE, "ActionInvoked", "us", id, "default");
+static void on_card_click(uint32_t id, const char *token) {
+    if (!bus) return;
+    /* The token first, so the app can use it to take focus as it handles the action */
+    if (token && *token) sd_bus_emit_signal(bus, PATH, IFACE, "ActivationToken", "us", id, token);
+    sd_bus_emit_signal(bus, PATH, IFACE, "ActionInvoked", "us", id, "default");
 }
 
 /* The spec: -1 leaves it to the server (low and normal get a sane timeout; critical ones "should
@@ -224,6 +227,7 @@ static const sd_bus_vtable vtable[] = {
     SD_BUS_METHOD("GetServerInformation", "", "ssss", method_info, SD_BUS_VTABLE_UNPRIVILEGED),
     SD_BUS_SIGNAL("NotificationClosed", "uu", 0),
     SD_BUS_SIGNAL("ActionInvoked", "us", 0),
+    SD_BUS_SIGNAL("ActivationToken", "us", 0),
     SD_BUS_VTABLE_END
 };
 

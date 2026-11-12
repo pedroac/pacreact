@@ -30,6 +30,19 @@ int display_align(Display *d) { (void)d; return 2; }
 static int click_rects_set = -1;
 void display_set_click_rects(Display *d, const ClickRect *r, int n) { (void)d; (void)r; click_rects_set = n; }
 void display_on_click(Display *d, void (*fn)(int, int, bool)) { (void)d; (void)fn; }
+/* The compositor's answer comes later: a test makes tokens available, then delivers one. */
+static bool tokens_available;
+static int token_requests;
+static void (*token_fn)(const char *, void *);
+static void *token_ctx;
+bool display_request_token(Display *d, void (*fn)(const char *, void *), void *ctx) {
+    (void)d;
+    if (!tokens_available) return false;
+    token_requests++;
+    token_fn = fn;
+    token_ctx = ctx;
+    return true;
+}
 
 /* Ten units per byte: easy to reason about when wrapping. */
 bool text_rtl(void) { return false; }
@@ -301,8 +314,12 @@ static void card_with_actions(uint32_t id, const char *const *actions, int n) {
 }
 
 static uint32_t clicks[8];
+static char click_tokens[8][32];
 static int nclicks;
-static void on_card_click(uint32_t id) { clicks[nclicks++] = id; }
+static void on_card_click(uint32_t id, const char *token) {
+    snprintf(click_tokens[nclicks], sizeof click_tokens[0], "%s", token ? token : "(none)");
+    clicks[nclicks++] = id;
+}
 
 static void test_click(void) {
     reset();
@@ -390,6 +407,64 @@ static void test_resident(void) {
     card(4, "again", "", LEVEL_INFO, 1000);
     hud_action_invoked(4);
     assert(!nstack);
+    hud_on_click(NULL);
+}
+
+static void test_click_token(void) {
+    reset();
+    hud_on_closed(on_closed);
+    hud_on_click(on_card_click);
+    nclicks = 0;
+    token_pending = false;
+
+    /* Without the protocol the click is acted on at once, with no token */
+    tokens_available = false;
+    card_with_actions(1, (const char *[]){ "default", "" }, 2);
+    on_click(hit[0].x + 1, hit[0].y + 1, false);
+    assert(nclicks == 1 && !strcmp(click_tokens[0], "(none)") && !nstack && !token_pending);
+    nevents = 0;
+
+    /* With it, the app is told when the compositor answers, with the token; until then nothing moves */
+    tokens_available = true;
+    token_requests = 0;
+    card_with_actions(2, (const char *[]){ "default", "" }, 2);
+    on_click(hit[0].x + 1, hit[0].y + 1, false);
+    assert(token_requests == 1 && nclicks == 1 && nstack == 1 && token_pending);
+    on_click(hit[0].x + 1, hit[0].y + 1, false);           /* a second click meanwhile is ignored */
+    assert(token_requests == 1 && nclicks == 1);
+    token_fn("tok-123", token_ctx);
+    assert(nclicks == 2 && clicks[1] == 2 && !strcmp(click_tokens[1], "tok-123"));
+    assert(!nstack && !token_pending && nevents == 1 && events[0].reason == HUD_CLOSED_DISMISSED);
+
+    /* A resident card stays after the action, and can be clicked again */
+    reset();
+    hud_on_closed(on_closed);
+    resident_card(3, (const char *[]){ "default", "" }, 2);
+    on_click(hit[0].x + 1, hit[0].y + 1, false);
+    token_fn("tok-a", token_ctx);
+    assert(nstack == 1 && nevents == 0 && !token_pending && nclicks == 3);
+    on_click(hit[0].x + 1, hit[0].y + 1, false);
+    token_fn("tok-b", token_ctx);
+    assert(nclicks == 4 && !strcmp(click_tokens[3], "tok-b"));
+
+    /* The card goes away before the compositor answers: nobody is told about a card that is gone */
+    hud_remove(3);
+    card_with_actions(4, (const char *[]){ "default", "" }, 2);
+    on_click(hit[0].x + 1, hit[0].y + 1, false);
+    assert(token_pending);
+    hud_remove(4);
+    token_fn("late", token_ctx);
+    assert(nclicks == 4 && !token_pending);
+
+    /* A right click, or a card with nothing to invoke, never asks for a token */
+    token_requests = 0;
+    card_with_actions(5, (const char *[]){ "default", "" }, 2);
+    on_click(hit[0].x + 1, hit[0].y + 1, true);
+    card(6, "no default", "", LEVEL_INFO, 1000);
+    on_click(hit[0].x + 1, hit[0].y + 1, false);
+    assert(token_requests == 0 && !nstack);
+
+    tokens_available = false;
     hud_on_click(NULL);
 }
 
@@ -563,6 +638,7 @@ int main(void) {
     test_card_count();
     test_click();
     test_resident();
+    test_click_token();
     test_dismiss_prefers_alerts();
     test_queue_overflow();
     test_actions();

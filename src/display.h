@@ -39,6 +39,12 @@ typedef struct { int x, y, w, h; } ClickRect;
 #define CLICK_RECTS_MAX 8
 void display_set_click_rects(Display *dpy, const ClickRect *rects, int n);
 void display_on_click(Display *dpy, void (*fn)(int x, int y, bool secondary));
+/* Asks the compositor for an activation token (xdg-activation-v1) for the click being handled, so
+ * the app whose notification was clicked is allowed to take focus. fn runs with the token once
+ * the compositor has answered. Returns false, with fn never called, when this is not possible
+ * (no such protocol, or no click to base it on): the caller then goes on without a token. Only
+ * valid inside a click callback, since it is tied to that click's input serial. */
+bool display_request_token(Display *dpy, void (*fn)(const char *token, void *ctx), void *ctx);
 /* Where the stack sits horizontally within its surface: 0 left, 1 centre, 2 right (PACHUD_ANCHOR). */
 int display_align(Display *dpy);
 /* The scale buffers are rendered at, in 120ths (see scale.h). */

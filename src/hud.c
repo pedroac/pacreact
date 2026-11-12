@@ -613,6 +613,18 @@ void hud_action_invoked(uint32_t id) {
     if (it && !it->resident) hud_dismiss_id(id);
 }
 
+static bool token_pending;   /* a click is waiting for its activation token */
+
+/* The click on a card's default action, with the token the compositor gave for it (or NULL). */
+static void click_default(uint32_t id, const char *token) {
+    token_pending = false;
+    if (!by_id(id)) return;   /* it left the screen while the compositor was answering */
+    if (click_cb) click_cb(id, token);
+    hud_action_invoked(id);
+}
+
+static void token_ready(const char *token, void *ctx) { click_default((uint32_t)(uintptr_t)ctx, token); }
+
 static void on_click(int px, int py, bool secondary) {
     for (int k = 0; k < nhit; k++) {
         if (px < hit[k].x || py < hit[k].y || px >= hit[k].x + hit[k].w || py >= hit[k].y + hit[k].h)
@@ -620,8 +632,9 @@ static void on_click(int px, int py, bool secondary) {
         uint32_t id = hit_id[k];  /* the redraw that closing causes replaces the table */
         const Item *it = by_id(id);
         if (!secondary && it && it->has_default) {
-            if (click_cb) click_cb(id);
-            hud_action_invoked(id);
+            if (token_pending) return;
+            token_pending = true;
+            if (!display_request_token(dpy, token_ready, (void *)(uintptr_t)id)) click_default(id, NULL);
         } else {
             hud_dismiss_id(id);
         }

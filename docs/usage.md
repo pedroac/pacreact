@@ -142,6 +142,8 @@ pachud action        # the first one
 
 pachud tells the app (`ActionInvoked`) and closes the card, unless the app set the `resident` hint: a resident card stays on screen after an action is invoked, and so does one that is left-clicked while it has a `default` action (the click invokes it, again each time). A resident card goes away on its timeout, with a right click, with `pachud dismiss`, or when the app closes or replaces it. At most three actions are shown. The special `default` action ("the user clicked the notification") is not shown as a button unless it is the card's only action, in which case it appears as `[1] Open`. Actions apply to the newest card on screen; cards waiting for room are not available until they are shown. A Hyprland example:
 
+**Focus after a click.** When you left-click a card's `default` action, pachud asks the compositor for an activation token (the `xdg-activation-v1` protocol) from that click and sends it to the app as the `ActivationToken` signal, just before `ActionInvoked`, so the app can use it to bring its window to the front instead of the compositor refusing the focus change. This needs a compositor with `xdg-activation-v1` (Hyprland and other wlroots-based ones have it); without it the app gets only `ActionInvoked`, as before. Actions invoked from the keyboard (`pachud action`) carry no token: they are not tied to an input event pachud can see, and compositors ignore a token that is not.
+
 ```lua
 hl.bind("SUPER + 1", hl.dsp.exec_cmd("~/.local/bin/pachud action 1"))
 hl.bind("SUPER + 2", hl.dsp.exec_cmd("~/.local/bin/pachud action 2"))

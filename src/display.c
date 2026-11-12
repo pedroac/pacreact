@@ -3,6 +3,7 @@
 #include "fractional-scale-v1-client-protocol.h"
 #include "scale.h"
 #include "viewporter-client-protocol.h"
+#include "xdg-activation-v1-client-protocol.h"
 #include "wlr-layer-shell-unstable-v1-client-protocol.h"
 #include <errno.h>
 #include <linux/input-event-codes.h>
@@ -51,6 +52,11 @@ struct Display {
     ClickRect rects[CLICK_RECTS_MAX];
     int nrects;
     void (*click_cb)(int x, int y, bool secondary);
+    uint32_t click_serial;        /* the input serial of the click being handled */
+    struct xdg_activation_v1 *activation;   /* optional: without it clicks carry no token */
+    struct xdg_activation_token_v1 *token;  /* a request waiting for the compositor's answer */
+    void (*token_fn)(const char *token, void *ctx);
+    void *token_ctx;
     uint32_t anchor;              /* where the notification stack sits: PACHUD_ANCHOR */
     int align;                    /* 0 left, 1 centre, 2 right: how items line up in the stack */
 
@@ -148,7 +154,8 @@ static void ptr_motion(void *data, struct wl_pointer *p, uint32_t time, wl_fixed
 static void ptr_button(void *data, struct wl_pointer *p, uint32_t serial, uint32_t time,
                        uint32_t button, uint32_t state) {
     Display *d = data;
-    (void)p; (void)serial; (void)time;
+    (void)p; (void)time;
+    d->click_serial = serial;
     if ((button == BTN_LEFT || button == BTN_RIGHT) && state == WL_POINTER_BUTTON_STATE_PRESSED &&
         d->surface && d->pointer_surface == d->surface && d->click_cb)
         d->click_cb((int)d->px, (int)d->py, button == BTN_RIGHT);
@@ -201,6 +208,8 @@ static void registry_global(void *data, struct wl_registry *reg, uint32_t name,
         d->frac_mgr = wl_registry_bind(reg, name, &wp_fractional_scale_manager_v1_interface, 1);
     else if (!strcmp(iface, wp_viewporter_interface.name))
         d->viewporter = wl_registry_bind(reg, name, &wp_viewporter_interface, 1);
+    else if (!strcmp(iface, xdg_activation_v1_interface.name))
+        d->activation = wl_registry_bind(reg, name, &xdg_activation_v1_interface, 1);
     else if (!strcmp(iface, wp_alpha_modifier_v1_interface.name))
         d->alpha_mgr = wl_registry_bind(reg, name, &wp_alpha_modifier_v1_interface, 1);
 }
@@ -374,6 +383,8 @@ void display_close(Display *d) {
     if (d->viewporter) wp_viewporter_destroy(d->viewporter);
     for (int i = 0; i < MAX_OUTPUTS; i++)
         if (d->outputs[i].proxy) wl_output_release(d->outputs[i].proxy);
+    if (d->token) xdg_activation_token_v1_destroy(d->token);
+    if (d->activation) xdg_activation_v1_destroy(d->activation);
     if (d->pointer) wl_pointer_destroy(d->pointer);
     if (d->seat) wl_seat_destroy(d->seat);
     if (d->layer_shell) zwlr_layer_shell_v1_destroy(d->layer_shell);
@@ -485,6 +496,30 @@ void display_set_click_rects(Display *d, const ClickRect *rects, int n) {
     d->nrects = n > CLICK_RECTS_MAX ? CLICK_RECTS_MAX : n;
     for (int i = 0; i < d->nrects; i++) d->rects[i] = rects[i];
     apply_click_region(d);
+}
+
+static void token_done(void *data, struct xdg_activation_token_v1 *t, const char *token) {
+    Display *d = data;
+    void (*fn)(const char *, void *) = d->token_fn;
+    void *ctx = d->token_ctx;
+    xdg_activation_token_v1_destroy(t);
+    d->token = NULL;
+    d->token_fn = NULL;
+    fn(token, ctx);
+}
+static const struct xdg_activation_token_v1_listener token_listener = { .done = token_done };
+
+bool display_request_token(Display *d, void (*fn)(const char *token, void *ctx), void *ctx) {
+    if (!d->activation || !d->seat || !d->surface || d->token) return false;
+    d->token = xdg_activation_v1_get_activation_token(d->activation);
+    xdg_activation_token_v1_add_listener(d->token, &token_listener, d);
+    xdg_activation_token_v1_set_serial(d->token, d->click_serial, d->seat);
+    xdg_activation_token_v1_set_app_id(d->token, "pachud");
+    xdg_activation_token_v1_set_surface(d->token, d->surface);
+    xdg_activation_token_v1_commit(d->token);
+    d->token_fn = fn;
+    d->token_ctx = ctx;
+    return true;
 }
 
 void display_on_click(Display *d, void (*fn)(int x, int y, bool secondary)) { d->click_cb = fn; }

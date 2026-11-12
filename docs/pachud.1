@@ -217,6 +217,19 @@ service, so only one notification daemon can run at a time.
 It supports summary and body (tags removed), urgency, replacement by id, sound hints, actions,
 and icons as raw pixels, as PNG paths or as icon-theme names (PNG only).
 .PP
+A left click on a card's default action also sends the app an
+.B ActivationToken
+signal, just before
+.BR ActionInvoked ,
+with a token from the compositor (the
+.B xdg-activation-v1
+protocol) so that the app can take focus.
+Without that protocol, or for actions invoked with
+.BR "pachud action" ,
+only
+.B ActionInvoked
+is sent.
+.PP
 With no timeout requested (\-1) cards stay up 3 s (low urgency) or 6 s (normal); critical cards never expire.
 A timeout of 0 means never expire, for any urgency; any other value is honoured as asked, but never below 1.5 s.
 A card that never expires stays until it is clicked, dismissed with

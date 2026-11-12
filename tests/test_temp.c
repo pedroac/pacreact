@@ -207,13 +207,15 @@ static void test_init(void) {
 
     setenv("PACHUD_TEMP_INTERVAL", "30", 1);       temp_init();   assert(max_interval_s == 30);
     setenv("PACHUD_TEMP_INTERVAL", "0", 1);        temp_init();   assert(max_interval_s == 0);   /* kernel events only */
-    const char *bad[] = { "abc", "-1", "99999", "1.5", "5s" };
+    const char *bad[] = { "abc", "1.5", "5s" };
     for (size_t i = 0; i < sizeof bad / sizeof *bad; i++) {
         setenv("PACHUD_TEMP_INTERVAL", bad[i], 1);
         max_interval_s = 77;
         temp_init();
-        assert(max_interval_s == 77);                       /* unchanged: nonsense is ignored */
+        assert(max_interval_s == DEFAULT_INTERVAL_S);       /* not a number: the default */
     }
+    setenv("PACHUD_TEMP_INTERVAL", "-1", 1);   temp_init();   assert(max_interval_s == 0);      /* out of range: */
+    setenv("PACHUD_TEMP_INTERVAL", "99999", 1); temp_init();  assert(max_interval_s == 3600);   /* the nearest end */
     unsetenv("PACHUD_TEMP_INTERVAL");
     max_interval_s = DEFAULT_INTERVAL_S;
 
@@ -231,9 +233,12 @@ static void test_init(void) {
     Limits l = temp_limits(CLASS_CPU, 100);
     assert(l.warn == 70 && l.hot == 80);
     setenv("PACHUD_TEMP_WARN", "abc", 1);
-    setenv("PACHUD_TEMP_CRIT", "5", 1);
+    setenv("PACHUD_TEMP_CRIT", "abc", 1);
     temp_init();
     assert(cpu_warn_c == 85 && cpu_hot_c == 95);
+    setenv("PACHUD_TEMP_CRIT", "5", 1);                             /* below the range: its lowest, then pushed above high */
+    temp_init();
+    assert(cpu_warn_c == 85 && cpu_hot_c == 86);
     setenv("PACHUD_TEMP_WARN", "90", 1);
     setenv("PACHUD_TEMP_CRIT", "60", 1);                            /* critical below high: pushed above it */
     temp_init();

@@ -2,6 +2,7 @@
 #include "i18n.h"
 #include "loop.h"
 #include "sources.h"
+#include "util.h"
 #include <arpa/inet.h>
 #include <netinet/ip_icmp.h>
 #include <stdbool.h>
@@ -56,12 +57,6 @@ static bool waiting;
 static unsigned short seq;
 static long long sent_ms;
 
-static long long now_ms(void) {
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return ts.tv_sec * 1000LL + ts.tv_nsec / 1000000;
-}
-
 static void arm(long ms) {
     struct itimerspec its = { .it_value = { .tv_sec = ms / 1000, .tv_nsec = ms % 1000 * 1000000L } };
     timerfd_settime(timer_fd, 0, &its, NULL);
@@ -115,7 +110,7 @@ void probe_init(void) {
         return;
     }
     snprintf(host_name, sizeof host_name, "%s", host);
-    if (every && atoi(every) >= 5 && atoi(every) <= 3600) interval_s = atoi(every);
+    interval_s = (int)int_value("PACHUD_PROBE_INTERVAL", every, interval_s, 5, 3600, "seconds");
 
     sock = socket(AF_INET, SOCK_DGRAM | SOCK_NONBLOCK | SOCK_CLOEXEC, IPPROTO_ICMP);
     if (sock < 0) {

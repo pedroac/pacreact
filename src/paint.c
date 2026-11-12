@@ -2,6 +2,7 @@
 #include "sicon.h"
 #include "pngload.h"
 #include "text.h"
+#include "util.h"
 #include <math.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -59,26 +60,11 @@ void paint_configure_icons(bool enabled, int size_px) {
     apply_icons();
 }
 
-/* A whole number from an environment variable, or 0 (unset or not one) after saying so */
-static int env_number(const char *name, int lo, int hi) {
-    const char *v = getenv(name);
-    if (!v || !*v) return 0;
-    char *end;
-    long n = strtol(v, &end, 10);
-    if (*end || n < 1) {
-        fprintf(stderr, "pachud: %s must be a whole number of pixels, not \"%s\"; ignored\n", name, v);
-        return 0;
-    }
-    if (n < lo || n > hi) fprintf(stderr, "pachud: %s=%ld is outside %d to %d; using %ld\n", name, n, lo, hi,
-                                  (long)clamp((int)n, lo, hi));
-    return (int)n;
-}
-
 void paint_init(void) {
     const char *icons = getenv("PACHUD_ICONS");
-    paint_configure_icons(!(icons && !strcmp(icons, "0")), env_number("PACHUD_ICON_SIZE", PAINT_ICON_MIN, PAINT_ICON_MAX));
-    paint_configure(env_number("PACHUD_FONT_SIZE", PAINT_FONT_MIN, PAINT_FONT_MAX),
-                    env_number("PACHUD_WIDTH", PAINT_WIDTH_MIN, PAINT_WIDTH_MAX));
+    paint_configure_icons(!(icons && !strcmp(icons, "0")), (int)env_int("PACHUD_ICON_SIZE", 0, PAINT_ICON_MIN, PAINT_ICON_MAX, "pixels"));
+    paint_configure((int)env_int("PACHUD_FONT_SIZE", 0, PAINT_FONT_MIN, PAINT_FONT_MAX, "pixels"),
+                    (int)env_int("PACHUD_WIDTH", 0, PAINT_WIDTH_MIN, PAINT_WIDTH_MAX, "pixels"));
 }
 
 int paint_px(int design_px) {

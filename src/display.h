@@ -26,7 +26,6 @@ void display_hide(Display *dpy);
 
 /* OSD (on-screen display) surface for user-triggered feedback: volume, device changes.
  * Separate from notifications; positioned at screen center. Updates in place (no queueing). */
-Buf *display_osd_buf(Display *dpy, int w, int h, cairo_t **cr);
 /* Where the OSD sits: the compositor centres it on OSD_CENTER (no anchor), else it hugs that edge. */
 typedef enum { OSD_CENTER, OSD_TOP, OSD_BOTTOM } OsdAnchor;
 void display_osd_present(Display *dpy, Buf *buf, cairo_t *cr, OsdAnchor anchor);

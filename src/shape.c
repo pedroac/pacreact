@@ -9,17 +9,6 @@
 #define MAX_CHARS 160
 #define SUBPIXEL 64
 
-bool shape_needed(const char *utf8) {
-    while (*utf8) {
-        uint32_t cp;
-        int len = utf8_decode(utf8, &cp);
-        /* Hebrew through Myanmar: RTL scripts, Indic scripts, Thai, Lao and friends. */
-        if (len && cp >= 0x0590 && cp < 0x1100) return true;
-        utf8 += len ? len : 1;
-    }
-    return false;
-}
-
 static hb_font_t *cached_font;
 static char cached_path[256];
 static int cached_index;

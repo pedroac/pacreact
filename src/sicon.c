@@ -1,19 +1,22 @@
 #include "sicon.h"
 #include "icon.h"
 #include "pngload.h"
+#include "util.h"
+#include <errno.h>
 #include <fcntl.h>
+#include <poll.h>
+#include <signal.h>
+#include <spawn.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/stat.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
-#ifdef HAVE_RSVG
-#include <librsvg/rsvg.h>
-#endif
 
 #define CACHE 32
-#define SVG_MAX (1 << 20)   /* the largest SVG file taken */
+#define SVG_WAIT_MS 1500          /* the longest a conversion may take */
+#define SVG_OUT_MAX (256 * 1024)  /* the most of PNG taken from it: an icon is a few hundred bytes */
 
 typedef struct {
     char names[96];
@@ -25,16 +28,18 @@ static Entry cache[CACHE];
 static int ncache, victim;
 static bool enabled = true;
 static int size = 24;
+static char tool[1024];
+static int tool_known;       /* 0 not looked for yet, 1 found, -1 not there */
 
 bool sicon_enabled(void) { return enabled; }
 int sicon_size(void) { return size; }
 
+/* SVG is drawn by rsvg-convert, run for the purpose and gone again: librsvg and what it pulls in
+ * (GLib, libxml2, ICU...) would otherwise sit in the daemon for good, several times its own size,
+ * to draw a few icons once each. */
 bool sicon_svg(void) {
-#ifdef HAVE_RSVG
-    return true;
-#else
-    return false;
-#endif
+    if (!tool_known) tool_known = find_in_path("rsvg-convert", tool, sizeof tool) ? 1 : -1;
+    return tool_known > 0;
 }
 
 static void forget(void) {
@@ -48,61 +53,11 @@ void sicon_configure(bool on, int size_px) {
     if (size_px != size) forget();
     enabled = on;
     size = size_px > 0 ? size_px : 24;
+    tool_known = 0;   /* look for the tool again: it may have been installed since */
 }
 
-#ifdef HAVE_RSVG
-/* The file, if it is a regular file of a sane size: the path comes from a theme directory, but a pipe
- * there would still stop the daemon, so the same care as for any other file. */
-static char *read_regular(const char *path, size_t max, size_t *len) {
-    int fd = open(path, O_RDONLY | O_CLOEXEC | O_NONBLOCK | O_NOCTTY);
-    if (fd < 0) return NULL;
-    struct stat st;
-    char *data = NULL;
-    if (fstat(fd, &st) == 0 && S_ISREG(st.st_mode) && st.st_size > 0 && (size_t)st.st_size <= max) {
-        data = malloc((size_t)st.st_size);
-        size_t got = 0;
-        while (data && got < (size_t)st.st_size) {
-            ssize_t n = read(fd, data + got, (size_t)st.st_size - got);
-            if (n <= 0) break;
-            got += (size_t)n;
-        }
-        if (data && got != (size_t)st.st_size) { free(data); data = NULL; }
-        if (data) *len = got;
-    }
-    close(fd);
-    return data;
-}
-
-static cairo_surface_t *render_svg(const char *path, int px) {
-    size_t len;
-    char *data = read_regular(path, SVG_MAX, &len);
-    if (!data) return NULL;
-    GError *err = NULL;
-    RsvgHandle *h = rsvg_handle_new_from_data((const guint8 *)data, len, &err);
-    free(data);
-    if (!h) {
-        if (err) g_error_free(err);
-        return NULL;
-    }
-    cairo_surface_t *surf = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, px, px);
-    cairo_t *cr = cairo_create(surf);
-    RsvgRectangle viewport = { 0, 0, px, px };   /* the whole picture, fitted, keeping its proportions */
-    gboolean ok = rsvg_handle_render_document(h, cr, &viewport, &err);
-    if (err) g_error_free(err);
-    cairo_destroy(cr);
-    g_object_unref(h);
-    if (!ok) {
-        cairo_surface_destroy(surf);
-        return NULL;
-    }
-    return surf;
-}
-#endif
-
-/* A PNG scaled to fit px x px, centred */
-static cairo_surface_t *render_png(const char *path, int px) {
-    cairo_surface_t *img = png_load(path);
-    if (!img) return NULL;
+/* A picture fitted into px x px, centred, keeping its proportions. Takes img. */
+static cairo_surface_t *fit_square(cairo_surface_t *img, int px) {
     int w = cairo_image_surface_get_width(img), h = cairo_image_surface_get_height(img);
     cairo_surface_t *surf = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, px, px);
     cairo_t *cr = cairo_create(surf);
@@ -117,16 +72,65 @@ static cairo_surface_t *render_png(const char *path, int px) {
     return surf;
 }
 
+/* The PNG the tool writes on its standard output, read within a time limit and a size limit: a
+ * tool that hangs or never stops writing is killed and the icon is not there. Without a shell, and
+ * with an absolute path, so what is in the file name cannot be taken for an option. */
+static cairo_surface_t *render_svg(const char *path, int px) {
+    if (!sicon_svg() || path[0] != '/') return NULL;
+    char dim[16];
+    snprintf(dim, sizeof dim, "%d", px);
+    char *argv[] = { "rsvg-convert", "-a", "-w", dim, "-h", dim, "-f", "png", (char *)path, NULL };
+
+    int fds[2];
+    if (pipe2(fds, O_CLOEXEC) < 0) return NULL;
+    /* Nothing of ours goes along. Without a session bus address the tool's GIO cannot ask D-Bus to
+     * start a virtual file system daemon for a file it reads straight from disk. */
+    static char *const clean_env[] = { (char *)"GIO_USE_VFS=local", NULL };
+    posix_spawn_file_actions_t fa;
+    posix_spawn_file_actions_init(&fa);
+    posix_spawn_file_actions_adddup2(&fa, fds[1], STDOUT_FILENO);
+    posix_spawn_file_actions_addopen(&fa, STDIN_FILENO, "/dev/null", O_RDONLY, 0);
+    posix_spawn_file_actions_addopen(&fa, STDERR_FILENO, "/dev/null", O_WRONLY, 0);
+    pid_t pid;
+    int err = posix_spawn(&pid, tool, &fa, NULL, argv, clean_env);
+    posix_spawn_file_actions_destroy(&fa);
+    close(fds[1]);
+    if (err) {
+        close(fds[0]);
+        return NULL;
+    }
+
+    unsigned char *buf = malloc(SVG_OUT_MAX);
+    size_t len = 0;
+    bool ok = buf != NULL;
+    long long deadline = now_ms() + SVG_WAIT_MS;
+    while (ok) {
+        long long left = deadline - now_ms();
+        struct pollfd p = { .fd = fds[0], .events = POLLIN };
+        int r = left > 0 ? poll(&p, 1, (int)left) : 0;
+        if (r < 0 && errno == EINTR) continue;
+        ssize_t n = r > 0 ? read(fds[0], buf + len, SVG_OUT_MAX - len) : -1;
+        if (n < 0 && errno == EINTR) continue;
+        if (n < 0 || (n > 0 && (len += (size_t)n) == SVG_OUT_MAX)) ok = false;   /* too late, or too much */
+        if (n <= 0) break;                                                       /* the end, or a failure */
+    }
+    close(fds[0]);
+    /* Do not wait on what is not done: it has had its say. (With SIGCHLD ignored, as the sound player
+     * code sets it, the kernel reaps it and waitpid just says so.) */
+    if (!ok || waitpid(pid, NULL, WNOHANG) == 0) {
+        kill(pid, SIGKILL);
+        waitpid(pid, NULL, 0);
+    }
+    cairo_surface_t *img = ok ? png_decode(buf, len) : NULL;
+    free(buf);
+    return img ? fit_square(img, px) : NULL;
+}
+
 static cairo_surface_t *render(const char *path, int px) {
     size_t len = strlen(path);
-    if (len > 4 && !strcmp(path + len - 4, ".svg")) {
-#ifdef HAVE_RSVG
-        return render_svg(path, px);
-#else
-        return NULL;
-#endif
-    }
-    return render_png(path, px);
+    if (len > 4 && !strcmp(path + len - 4, ".svg")) return render_svg(path, px);
+    cairo_surface_t *img = png_load(path);
+    return img ? fit_square(img, px) : NULL;
 }
 
 /* The entry for these names, found and drawn the first time they are asked for */

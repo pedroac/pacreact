@@ -1,4 +1,5 @@
 #include "sound.h"
+#include "util.h"
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -17,12 +18,6 @@ static bool quiet;
 static char files[SOUND_KINDS][512];  /* indexed by SoundKind; empty = silent */
 static long long last_ms;
 
-static long long now_ms(void) {
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return ts.tv_sec * 1000LL + ts.tv_nsec / 1000000;
-}
-
 /* A regular file we can read. Not a pipe or a device: a notification names the path, and a player
  * waiting forever on a pipe would be left behind every time. */
 static bool is_file(const char *path) {
@@ -34,17 +29,8 @@ static bool is_file(const char *path) {
  * data directories. */
 static bool theme_lookup(const char *name, char *out, size_t n) {
     static const char *const exts[] = { ".oga", ".ogg", ".wav" };
-    const char *home = getenv("HOME"), *xdg_home = getenv("XDG_DATA_HOME");
-    const char *dirs = getenv("XDG_DATA_DIRS");
     char list[2048];
-    snprintf(list, sizeof list, "%s:%s",
-             xdg_home && *xdg_home ? xdg_home : "", dirs && *dirs ? dirs : "/usr/local/share:/usr/share");
-    char fallback[512];
-    if (!(xdg_home && *xdg_home) && home) {
-        snprintf(fallback, sizeof fallback, "%s/.local/share", home);
-        snprintf(list, sizeof list, "%s:%s", fallback, dirs && *dirs ? dirs : "/usr/local/share:/usr/share");
-    }
-
+    data_dirs(list, sizeof list);
     char *save, *dir = strtok_r(list, ":", &save);
     for (; dir; dir = strtok_r(NULL, ":", &save)) {
         if (!*dir) continue;
@@ -73,17 +59,8 @@ bool sound_resolve(const char *spec, char *out, size_t n) {
 }
 
 static bool find_player(const char *name) {
-    if (strchr(name, '/')) return is_file(name) && access(name, X_OK) == 0;
-    const char *path = getenv("PATH");
-    if (!path) return false;
-    char copy[2048], full[512];
-    snprintf(copy, sizeof copy, "%s", path);
-    char *save, *dir = strtok_r(copy, ":", &save);
-    for (; dir; dir = strtok_r(NULL, ":", &save)) {
-        snprintf(full, sizeof full, "%s/%s", dir, name);
-        if (access(full, X_OK) == 0) return true;
-    }
-    return false;
+    char full[512];
+    return find_in_path(name, full, sizeof full);
 }
 
 static void configure(SoundKind kind, const char *env, const char *fallback) {

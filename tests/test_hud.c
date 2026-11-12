@@ -27,7 +27,6 @@ static int hides;
 Buf *display_buf(Display *d, int w, int h, cairo_t **cr) { (void)d; (void)w; (void)h; (void)cr; return NULL; }
 void display_present(Display *d, Buf *b, cairo_t *cr) { (void)d; (void)b; (void)cr; }
 void display_hide(Display *d) { (void)d; hides++; }
-Buf *display_osd_buf(Display *d, int w, int h, cairo_t **cr) { (void)d; (void)w; (void)h; (void)cr; return NULL; }
 void display_osd_present(Display *d, Buf *b, cairo_t *cr, OsdAnchor a) { (void)d; (void)b; (void)cr; (void)a; }
 void display_osd_hide(Display *d) { (void)d; }
 void display_on_rescale(Display *d, void (*fn)(void)) { (void)d; (void)fn; }
@@ -1286,13 +1285,18 @@ static void test_size_environment(void) {
     assert(paint_px(16) == 48 && paint_item_w() == PAINT_WIDTH_MIN);
 
     /* Not whole numbers of pixels: said so, and the default stays */
-    const char *bad[] = { "abc", "20px", "1.5", "0", "-4", "20 ", "" };
+    const char *bad[] = { "abc", "20px", "1.5", "20 ", "" };
     for (size_t i = 0; i < sizeof bad / sizeof *bad; i++) {
         setenv("PACHUD_FONT_SIZE", bad[i], 1);
         setenv("PACHUD_WIDTH", bad[i], 1);
         paint_init();
         assert(paint_px(16) == 16 && paint_item_w() == 380);
     }
+
+    setenv("PACHUD_FONT_SIZE", "0", 1);                          /* zero and negatives are out of range: the smallest */
+    setenv("PACHUD_WIDTH", "-4", 1);
+    paint_init();
+    assert(paint_px(16) == PAINT_FONT_MIN && paint_item_w() == PAINT_WIDTH_MIN);
 
     setenv("PACHUD_FONT_SIZE", " 20", 1);                       /* a stray space in front is forgiven */
     unsetenv("PACHUD_WIDTH");
@@ -1412,6 +1416,9 @@ static void test_status_icons(void) {
 
     /* The environment: PACHUD_ICONS=0 turns them off, PACHUD_ICON_SIZE is a size in pixels */
     unsetenv("PACHUD_ICONS");
+    setenv("PACHUD_ICON_SIZE", "-3", 1);
+    paint_init();
+    assert(sicon_size() == PAINT_ICON_MIN);                 /* out of range: the nearest end */
     unsetenv("PACHUD_ICON_SIZE");
     paint_init();
     assert(sicon_enabled() && sicon_size() == 24);
@@ -1428,7 +1435,7 @@ static void test_status_icons(void) {
     setenv("PACHUD_ICON_SIZE", "999", 1);
     paint_init();
     assert(sicon_size() == PAINT_ICON_MAX);
-    const char *bad[] = { "big", "20px", "0", "-3", "1.5" };
+    const char *bad[] = { "big", "20px", "1.5" };
     for (size_t i = 0; i < sizeof bad / sizeof *bad; i++) {
         setenv("PACHUD_ICON_SIZE", bad[i], 1);
         paint_init();

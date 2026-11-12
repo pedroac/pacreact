@@ -98,12 +98,18 @@ int main(void) {
     t0 = start_mono;
     assert(!decide("memory", WARN, wall + 10000102, t0 + 29));
     assert(decide("memory", WARN, wall + 10000103, t0 + 30));
-    const char *bad[] = { "abc", "-5", "99999", "1.5", "", "10s" };
+    const char *bad[] = { "abc", "1.5", "", "10s" };
     for (size_t i = 0; i < sizeof bad / sizeof *bad; i++) {
         setenv("PACHUD_STARTUP_GRACE", bad[i], 1);
         restart();
-        assert(grace_s == 60);                               /* nonsense falls back to the default */
+        assert(grace_s == 60);                               /* not a number: the default */
     }
+    setenv("PACHUD_STARTUP_GRACE", "-5", 1);
+    restart();
+    assert(grace_s == 0);                                    /* out of range: the nearest end of it */
+    setenv("PACHUD_STARTUP_GRACE", "99999", 1);
+    restart();
+    assert(grace_s == MAX_GRACE_S);
     unsetenv("PACHUD_STARTUP_GRACE");
 
     /* A damaged state file does no harm */

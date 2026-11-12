@@ -193,9 +193,12 @@ static void test_real_system(void) {
     disk_init();
     assert(warn_pct == 20 && crit_pct == 8);
     setenv("PACHUD_DISK_WARN", "abc", 1);
-    setenv("PACHUD_DISK_CRIT", "99", 1);                          /* out of range: default, then kept below warn */
+    setenv("PACHUD_DISK_CRIT", "abc", 1);                         /* not a number: the default */
     disk_init();
     assert(warn_pct == 10 && crit_pct == 5);
+    setenv("PACHUD_DISK_CRIT", "99", 1);                          /* out of range: the highest allowed, then kept below warn */
+    disk_init();
+    assert(warn_pct == 10 && crit_pct == 9);
     setenv("PACHUD_DISK_WARN", "6", 1);
     setenv("PACHUD_DISK_CRIT", "30", 1);                          /* in range but not below warn: pulled down */
     disk_init();

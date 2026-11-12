@@ -25,7 +25,6 @@ void hud_slider(const char *label, int percent, bool dim, const char *icon);   /
 
 /* OSD (on-screen display) versions: centered on screen, single instance, no queue. */
 void hud_osd_slider(const char *label, int percent, bool dim, OsdAnchor anchor, const char *icon);
-void hud_osd_hide(void);
 #define HUD_MAX_ACTIONS 3
 
 /* The attention deck: a few things must not be ignored, so they do not go in the stack with the

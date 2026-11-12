@@ -2,6 +2,7 @@
 #define PNGLOAD_H
 
 #include <cairo/cairo.h>
+#include <stddef.h>
 
 /* Decodes a PNG file. The path may come from the app that sent a notification, and a file can be
  * anything: a pipe that never delivers (which would stop the whole daemon), a device, or a few
@@ -11,5 +12,9 @@
  * most 2048 x 2048 pixels before any decoding starts. Returns an image surface the caller owns, or
  * NULL. */
 cairo_surface_t *png_load(const char *path);
+
+/* The same for PNG data already in memory (the output of a helper program): the same header check
+ * before decoding, and no more than 4 MiB of it. */
+cairo_surface_t *png_decode(const unsigned char *data, size_t len);
 
 #endif

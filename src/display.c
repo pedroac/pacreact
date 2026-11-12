@@ -6,6 +6,7 @@
 #include "xdg-activation-v1-client-protocol.h"
 #include "xdg-output-unstable-v1-client-protocol.h"
 #include "wlr-layer-shell-unstable-v1-client-protocol.h"
+#include "util.h"
 #include <errno.h>
 #include <linux/input-event-codes.h>
 #include <stdio.h>
@@ -361,23 +362,6 @@ static void parse_anchor(Display *d, const char *name) {
                     "bottom-right, bottom-left, bottom\n", name);
 }
 
-/* PACHUD_MARGIN: pixels from the screen's edge, 0 to 200; anything else is said so and the default stays */
-static void parse_margin(Display *d, const char *value) {
-    d->margin = DEFAULT_MARGIN;
-    if (!value || !*value) return;
-    char *end;
-    long n = strtol(value, &end, 10);
-    if (*end || n < 0) {
-        fprintf(stderr, "pachud: PACHUD_MARGIN must be a whole number of pixels, not \"%s\"; ignored\n", value);
-        return;
-    }
-    if (n > MARGIN_MAX) {
-        fprintf(stderr, "pachud: PACHUD_MARGIN=%ld is outside 0 to %d; using %d\n", n, MARGIN_MAX, MARGIN_MAX);
-        n = MARGIN_MAX;
-    }
-    d->margin = (int)n;
-}
-
 Display *display_open(void) {
     Display *d = calloc(1, sizeof *d);
     if (!d) return NULL;
@@ -398,14 +382,12 @@ Display *display_open(void) {
     const char *want = getenv("PACHUD_OUTPUT");
     d->want_output = want && *want ? want : NULL;
     parse_anchor(d, getenv("PACHUD_ANCHOR"));
-    parse_margin(d, getenv("PACHUD_MARGIN"));
+    d->margin = (int)env_int("PACHUD_MARGIN", DEFAULT_MARGIN, 0, MARGIN_MAX, "pixels");
 
     int fixed = parse_scale120(getenv("PACHUD_SCALE"));  /* e.g. 1.5, 2; unset follows the compositor */
     d->scale120 = fixed ? fixed : SCALE_UNIT;
     d->scale_fixed = fixed != 0;
-    const char *fade = getenv("PACHUD_FADE_MS");  /* 0 turns the fade off */
-    d->fade_ms = fade && *fade ? atoi(fade) : DEFAULT_FADE_MS;
-    if (d->fade_ms < 0 || d->fade_ms > 2000) d->fade_ms = DEFAULT_FADE_MS;
+    d->fade_ms = (int)env_int("PACHUD_FADE_MS", DEFAULT_FADE_MS, 0, 2000, "milliseconds");  /* 0 turns the fade off */
     if (d->fade_ms == 0 && d->alpha_mgr) {
         wp_alpha_modifier_v1_destroy(d->alpha_mgr);
         d->alpha_mgr = NULL;
@@ -804,10 +786,6 @@ static uint32_t osd_edges(OsdAnchor a) {
     static const uint32_t edges[] = { [OSD_CENTER] = 0, [OSD_TOP] = ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP,
                                       [OSD_BOTTOM] = ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM };
     return edges[a];
-}
-
-Buf *display_osd_buf(Display *dpy, int w, int h, cairo_t **cr) {
-    return display_buf(dpy, w, h, cr);
 }
 
 void display_osd_present(Display *d, Buf *b, cairo_t *cr, OsdAnchor anchor) {

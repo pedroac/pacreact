@@ -4,6 +4,7 @@
 #include "loop.h"
 #include "sound.h"
 #include "sources.h"
+#include "util.h"
 #include <fcntl.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -217,22 +218,14 @@ static void on_timer(void *ctx, uint32_t ev) {
     if (read(timer_fd, &n, sizeof n) > 0) check_all(true);
 }
 
-static long env_number(const char *name, long def, long lo, long hi) {
-    const char *v = getenv(name);
-    if (!v || !*v) return def;
-    char *end;
-    long x = strtol(v, &end, 10);
-    return *end == '\0' && x >= lo && x <= hi ? x : def;
-}
-
 void disk_init(void) {
     const char *off = getenv("PACHUD_DISK");
     if (off && !strcmp(off, "0")) return;
 
-    warn_pct = (int)env_number("PACHUD_DISK_WARN", DEFAULT_WARN_PCT, 2, 95);
-    crit_pct = (int)env_number("PACHUD_DISK_CRIT", DEFAULT_CRIT_PCT, 1, 94);
+    warn_pct = (int)env_int("PACHUD_DISK_WARN", DEFAULT_WARN_PCT, 2, 95, "percent");
+    crit_pct = (int)env_int("PACHUD_DISK_CRIT", DEFAULT_CRIT_PCT, 1, 94, "percent");
     if (crit_pct >= warn_pct) crit_pct = warn_pct - 1;
-    long interval = env_number("PACHUD_DISK_INTERVAL", DEFAULT_INTERVAL_S, 0, 86400);  /* 0: mount changes only */
+    long interval = env_int("PACHUD_DISK_INTERVAL", DEFAULT_INTERVAL_S, 0, 86400, "seconds");  /* 0: mount changes only */
 
     mounts_fd = open("/proc/self/mountinfo", O_RDONLY | O_CLOEXEC);
     if (mounts_fd >= 0) loop_add(mounts_fd, EPOLLPRI | EPOLLERR, on_mounts, NULL);

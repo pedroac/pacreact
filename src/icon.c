@@ -1,4 +1,5 @@
 #include "icon.h"
+#include "util.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -73,12 +74,7 @@ static bool lookup(const char *name, char *out, size_t n) {
     configured_theme(theme, sizeof theme);
     const char *themes[4] = { theme, "hicolor", "Adwaita", NULL };
 
-    const char *home = getenv("HOME"), *xdg_home = getenv("XDG_DATA_HOME"), *xdg_dirs = getenv("XDG_DATA_DIRS");
-    char user_data[512] = "";
-    if (xdg_home && *xdg_home) snprintf(user_data, sizeof user_data, "%s", xdg_home);
-    else if (home) snprintf(user_data, sizeof user_data, "%s/.local/share", home);
-    snprintf(bases, sizeof bases, "%s:%s", user_data,
-             xdg_dirs && *xdg_dirs ? xdg_dirs : "/usr/local/share:/usr/share");
+    data_dirs(bases, sizeof bases);
 
     for (int t = 0; t < 3; t++) {
         if (!*themes[t]) continue;
@@ -172,11 +168,7 @@ static bool status_one(const char *name, bool svg, char *out, size_t n, bool *sy
     configured_theme(theme, sizeof theme);
     const char *themes[5] = { theme, "hicolor", "Adwaita", "AdwaitaLegacy", NULL };
 
-    const char *home = getenv("HOME"), *xdg_home = getenv("XDG_DATA_HOME"), *xdg_dirs = getenv("XDG_DATA_DIRS");
-    char user_data[512] = "";
-    if (xdg_home && *xdg_home) snprintf(user_data, sizeof user_data, "%s", xdg_home);
-    else if (home) snprintf(user_data, sizeof user_data, "%s/.local/share", home);
-    snprintf(bases, sizeof bases, "%s:%s", user_data, xdg_dirs && *xdg_dirs ? xdg_dirs : "/usr/local/share:/usr/share");
+    data_dirs(bases, sizeof bases);
 
     for (int t = 0; t < 4; t++) {
         if (!*themes[t]) continue;

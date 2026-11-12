@@ -20,31 +20,24 @@ static Display *fresh(void) {
     return d;
 }
 
-/* Whether the attention deck can sit apart from the stack: it needs the screen to be wide enough
- * for the stack in its corner and the deck in the middle, on the right output. */
 /* PACHUD_MARGIN: pixels from the edge */
+static long margin_of(const char *v) {
+    if (v) setenv("PACHUD_MARGIN", v, 1); else unsetenv("PACHUD_MARGIN");
+    return env_int("PACHUD_MARGIN", DEFAULT_MARGIN, 0, MARGIN_MAX, "pixels");
+}
+
 static void test_margin(void) {
-    Display *d = fresh();
-    parse_margin(d, NULL);
-    assert(d->margin == 16);
-    parse_margin(d, "");
-    assert(d->margin == 16);
-    parse_margin(d, "30");
-    assert(d->margin == 30);
-    parse_margin(d, "0");                       /* flush with the edge is allowed */
-    assert(d->margin == 0);
-    parse_margin(d, "200");
-    assert(d->margin == 200);
-    parse_margin(d, "999");                     /* too much: the most */
-    assert(d->margin == 200);
-    const char *bad[] = { "abc", "-5", "10px", "1.5", "5 " };
-    for (size_t i = 0; i < sizeof bad / sizeof *bad; i++) {
-        parse_margin(d, bad[i]);                /* said so, and the default stays */
-        assert(d->margin == 16);
-    }
-    parse_margin(d, " 12");                     /* a stray space in front is forgiven */
-    assert(d->margin == 12);
-    free(d);
+    assert(margin_of(NULL) == 16 && margin_of("") == 16);
+    assert(margin_of("30") == 30);
+    assert(margin_of("0") == 0);                /* flush with the edge is allowed */
+    assert(margin_of("200") == 200);
+    assert(margin_of("999") == 200);            /* too much: the most */
+    assert(margin_of("-5") == 0);               /* below the range: the least */
+    const char *bad[] = { "abc", "10px", "1.5", "5 " };
+    for (size_t i = 0; i < sizeof bad / sizeof *bad; i++)
+        assert(margin_of(bad[i]) == 16);        /* said so, and the default stays */
+    assert(margin_of(" 12") == 12);             /* a stray space in front is forgiven */
+    unsetenv("PACHUD_MARGIN");
 }
 
 static void test_deck_apart(void) {

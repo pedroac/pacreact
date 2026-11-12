@@ -1,7 +1,7 @@
 #!/bin/bash
 # Live check of the status icons and of PACHUD_ICONS, PACHUD_ICON_SIZE and PACHUD_MARGIN, in a nested
 # headless compositor with a private session bus, using whatever icon theme is installed (Adwaita's
-# symbolic SVG icons need librsvg). Run it as:
+# symbolic SVG icons need rsvg-convert). Run it as:
 #   dbus-run-session -- bash tests/manual/icons_test.sh
 # Needs grim and python3 with PIL (to measure the screenshots, 1280 x 720). Screenshots land in
 # build/shots/.

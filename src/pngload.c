@@ -23,15 +23,35 @@ static cairo_status_t read_png(void *closure, unsigned char *data, unsigned int 
     return CAIRO_STATUS_SUCCESS;
 }
 
-/* The signature and the IHDR chunk, which comes first and holds the size. */
-static int header_ok(int fd) {
+/* The signature and the IHDR chunk, which comes first and holds the size: the first 24 bytes. */
+static int header_ok(const unsigned char h[24]) {
     static const unsigned char sig[8] = { 0x89, 'P', 'N', 'G', '\r', '\n', 0x1A, '\n' };
-    unsigned char h[24];
-    if (pread(fd, h, sizeof h, 0) != (ssize_t)sizeof h || memcmp(h, sig, sizeof sig) || memcmp(h + 12, "IHDR", 4))
-        return 0;
+    if (memcmp(h, sig, sizeof sig) || memcmp(h + 12, "IHDR", 4)) return 0;
     uint32_t w = (uint32_t)h[16] << 24 | (uint32_t)h[17] << 16 | (uint32_t)h[18] << 8 | h[19];
     uint32_t ht = (uint32_t)h[20] << 24 | (uint32_t)h[21] << 16 | (uint32_t)h[22] << 8 | h[23];
     return w >= 1 && ht >= 1 && w <= DIM_MAX && ht <= DIM_MAX;
+}
+
+typedef struct { const unsigned char *data; size_t left; } Memory;
+
+static cairo_status_t read_memory(void *closure, unsigned char *data, unsigned int length) {
+    Memory *m = closure;
+    if (length > m->left) return CAIRO_STATUS_READ_ERROR;
+    memcpy(data, m->data, length);
+    m->data += length;
+    m->left -= length;
+    return CAIRO_STATUS_SUCCESS;
+}
+
+cairo_surface_t *png_decode(const unsigned char *data, size_t len) {
+    if (len < 24 || len > FILE_MAX || !header_ok(data)) return NULL;
+    Memory m = { data, len };
+    cairo_surface_t *img = cairo_image_surface_create_from_png_stream(read_memory, &m);
+    if (img && cairo_surface_status(img) != CAIRO_STATUS_SUCCESS) {
+        cairo_surface_destroy(img);
+        img = NULL;
+    }
+    return img;
 }
 
 cairo_surface_t *png_load(const char *path) {
@@ -42,7 +62,9 @@ cairo_surface_t *png_load(const char *path) {
     if (fd < 0) return NULL;
     struct stat st;
     cairo_surface_t *img = NULL;
-    if (fstat(fd, &st) == 0 && S_ISREG(st.st_mode) && st.st_size > 0 && st.st_size <= FILE_MAX && header_ok(fd)) {
+    unsigned char head[24];
+    if (fstat(fd, &st) == 0 && S_ISREG(st.st_mode) && st.st_size > 0 && st.st_size <= FILE_MAX &&
+        pread(fd, head, sizeof head, 0) == (ssize_t)sizeof head && header_ok(head)) {
         Source src = { fd, (size_t)st.st_size };
         img = cairo_image_surface_create_from_png_stream(read_png, &src);
     }

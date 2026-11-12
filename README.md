@@ -6,7 +6,7 @@ A tiny daemon that sleeps until something deserves your attention, then shows a 
 
 * **Asleep by default:** one `epoll` loop, no timers running while idle, zero wakeups. Everything it watches is event-driven, preferably straight from the kernel.
 * **No configuration overhead:** sensible defaults, a few environment variables, no config language.
-* **Minimal dependencies:** `wayland-client` and `cairo`, plus `libsystemd` (sd-bus) for notifications, `librsvg` for SVG icons and FreeType, HarfBuzz and FriBidi for translations. `make NOTIFY=0 I18N=0 RSVG=0` drops all of those. No toolkit; GLib only comes in with `librsvg`, which is optional; the status icons are the installed icon theme's, when it has them.
+* **Minimal dependencies:** `wayland-client` and `cairo`, plus `libsystemd` (sd-bus) for notifications, and FreeType, HarfBuzz and FriBidi for translations. `make NOTIFY=0 I18N=0` drops all of those. No toolkit and no GLib; the status icons are the installed icon theme's, when it has them, and SVG ones are drawn by the optional `rsvg-convert` tool.
 * **Nothing on screen unless needed:** the Wayland surface exists only while a HUD is visible, and clicks pass straight through it, except on notification cards (click one to dismiss it; `PACHUD_CLICK=0` turns that off).
 
 ## What it reacts to

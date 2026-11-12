@@ -6,17 +6,7 @@ NOTIFY ?= 1
 # and no per-language fonts.
 I18N ?= 1
 
-# RSVG=0 builds without librsvg: status icons are then found only as PNG files, which many themes
-# (Adwaita, Breeze) no longer ship. auto (the default) uses librsvg when it is installed.
-RSVG ?= auto
-ifeq ($(RSVG),auto)
-RSVG := $(shell pkg-config --exists librsvg-2.0 && echo 1 || echo 0)
-endif
-
 PKGS = wayland-client cairo
-ifeq ($(RSVG),1)
-PKGS += librsvg-2.0
-endif
 ifeq ($(NOTIFY),1)
 PKGS += libsystemd
 endif
@@ -33,9 +23,6 @@ ALL_CFLAGS := $(CFLAGS) -std=gnu11 -D_GNU_SOURCE -U_FORTIFY_SOURCE -D_FORTIFY_SO
               $(shell pkg-config --cflags $(PKGS))
 ALL_LDFLAGS := $(LDFLAGS) -Wl,--as-needed -pie -Wl,-z,relro -Wl,-z,now -Wl,-z,noexecstack
 ALL_LIBS := $(LDLIBS) $(shell pkg-config --libs $(PKGS))
-ifeq ($(RSVG),1)
-ALL_CFLAGS += -DHAVE_RSVG
-endif
 
 WL_PROTOCOLS = $(shell pkg-config --variable=pkgdatadir wayland-protocols)
 PROTOCOLS = protocol/wlr-layer-shell-unstable-v1.xml \
@@ -152,7 +139,7 @@ uninstall:
 # The tests build the logic on its own, with stubs for the display, the HUD and the loop. Some
 # #include the source under test so that its static internals are reachable.
 TEST_CC = $(CC) $(CFLAGS) -D_GNU_SOURCE -Wall -Wextra -Ibuild -Isrc
-TESTS = power timer probe audio hud ipc sound dnd image icon sicon scale display alerts mem disk temp jack locks
+TESTS = power timer probe audio hud ipc sound dnd image icon sicon scale display alerts mem disk temp jack locks util
 ifeq ($(I18N),1)
 TESTS += text
 endif
@@ -161,23 +148,25 @@ TESTS += notify bt history
 endif
 
 TEST_SRC_power = src/src_power.c
-TEST_SRC_probe = src/src_probe.c
-TEST_SRC_sound = src/sound.c
+TEST_SRC_probe = src/src_probe.c src/util.c
+TEST_SRC_sound = src/sound.c src/util.c
 TEST_SRC_timer = src/state.c
 TEST_SRC_dnd = src/timer.c src/state.c
 TEST_SRC_image = src/image.c
-TEST_SRC_icon = src/icon.c
+TEST_SRC_icon = src/icon.c src/util.c
+TEST_SRC_disk = src/util.c
+TEST_SRC_util = src/util.c
+TEST_SRC_temp = src/util.c
 TEST_SRC_jack = src/evdev.c
 TEST_SRC_locks = src/evdev.c
-TEST_SRC_alerts = src/state.c
+TEST_SRC_alerts = src/state.c src/util.c
 TEST_SRC_text = src/shape.c src/utf8.c
-TEST_SRC_display = $(PROTO_OBJS)
-TEST_SRC_notify = src/notify.c src/image.c src/icon.c
-TEST_SRC_hud = src/pngload.c src/sicon.c src/icon.c
-TEST_SRC_sicon = src/sicon.c src/icon.c src/pngload.c
-RSVG_TEST = $(if $(filter 1,$(RSVG)),-DHAVE_RSVG $(shell pkg-config --cflags --libs librsvg-2.0))
-TEST_LIBS_hud = $(shell pkg-config --libs cairo) $(RSVG_TEST) -lm
-TEST_LIBS_sicon = $(shell pkg-config --libs cairo) $(RSVG_TEST) -lm
+TEST_SRC_display = $(PROTO_OBJS) src/util.c
+TEST_SRC_notify = src/notify.c src/image.c src/icon.c src/util.c
+TEST_SRC_hud = src/pngload.c src/sicon.c src/icon.c src/util.c
+TEST_SRC_sicon = src/sicon.c src/icon.c src/pngload.c src/util.c
+TEST_LIBS_hud = $(shell pkg-config --libs cairo) -lm
+TEST_LIBS_sicon = $(shell pkg-config --libs cairo) -lm
 TEST_LIBS_text = $(shell pkg-config --cflags --libs cairo freetype2 harfbuzz fribidi) -lm
 TEST_LIBS_display = $(shell pkg-config --libs wayland-client cairo) -lm
 TEST_LIBS_notify = $(shell pkg-config --libs libsystemd 2>/dev/null)

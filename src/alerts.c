@@ -1,5 +1,6 @@
 #include "alerts.h"
 #include "state.h"
+#include "util.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -54,13 +55,7 @@ static void save(void) {
 }
 
 void alerts_init(void) {
-    const char *v = getenv("PACHUD_STARTUP_GRACE");
-    grace_s = DEFAULT_GRACE_S;
-    if (v && *v) {
-        char *end;
-        long g = strtol(v, &end, 10);
-        if (*end == '\0' && g >= 0 && g <= MAX_GRACE_S) grace_s = g;
-    }
+    grace_s = env_int("PACHUD_STARTUP_GRACE", DEFAULT_GRACE_S, 0, MAX_GRACE_S, "seconds");
     start_mono = mono_seconds();
     count = 0;
     load();

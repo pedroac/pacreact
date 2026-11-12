@@ -1,6 +1,7 @@
 #include "hud.h"
 #include "i18n.h"
 #include "paint.h"
+#include "util.h"
 #include <limits.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -14,12 +15,7 @@ static long long osd_deadline_ms;
 static bool osd_visible;
 static Display *dpy;
 
-static long long now_ms(void) {
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return ts.tv_sec * 1000LL + ts.tv_nsec / 1000000;
-}
-
+static void hud_osd_hide(void);
 static void on_rescale(void);
 static void on_click(int area, int x, int y, bool secondary);
 static void on_hover(int area, int x, int y, bool over);
@@ -636,7 +632,7 @@ void hud_osd_slider(const char *label, int percent, bool dim, OsdAnchor anchor, 
     int w, h;
     paint_slider(NULL, label, percent, dim, icon, PAINT_OSD_W, &w, &h);
     cairo_t *cr;
-    Buf *buf = display_osd_buf(dpy, w, h, &cr);
+    Buf *buf = display_buf(dpy, w, h, &cr);
     if (!buf) return;
     paint_slider(cr, label, percent, dim, icon, PAINT_OSD_W, &w, &h);
     display_osd_present(dpy, buf, cr, anchor);
@@ -644,7 +640,7 @@ void hud_osd_slider(const char *label, int percent, bool dim, OsdAnchor anchor, 
     osd_deadline_ms = now_ms() + OSD_TIMEOUT_MS;
 }
 
-void hud_osd_hide(void) {
+static void hud_osd_hide(void) {
     osd_visible = false;
     display_osd_hide(dpy);
 }

@@ -14,7 +14,7 @@
 void sicon_configure(bool enabled, int size_px);
 bool sicon_enabled(void);
 int sicon_size(void);
-/* Whether this build can draw SVG icons (librsvg), which is most of what themes ship now */
+/* Whether this build can draw SVG icons (through rsvg-convert, when installed), which is most of what themes ship now */
 bool sicon_svg(void);
 
 /* Whether there is an icon for these names (and they are on) */

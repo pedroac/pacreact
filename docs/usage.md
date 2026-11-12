@@ -37,6 +37,8 @@ HUDs stack in one column, all the same width (a long toast wraps onto up to thre
 
 ## Environment variables
 
+Settings that are numbers are read strictly: the whole value must be a whole number. Something else (`abc`, `1.5`, `10px`) is reported on standard error and the default is used; a number outside the setting's range is reported and brought to the nearest end of it. An empty value is the same as unset.
+
 | Variable | Default | Meaning |
 |---|---|---|
 | `PACHUD_ICONS` | on | `0` turns the status icons off. See [Status icons](#status-icons). |
@@ -126,7 +128,7 @@ What this does not cover: root can read anything, and so can a debugger started 
 
 pachud's own messages come with the icon theme's status icons where the theme has them: a battery on the battery alerts, a plug or a cable for the charger, the network (offline, wired or wireless), a headset, headphones or microphone when one is connected, Bluetooth, a bell struck through for do-not-disturb, an alarm for timers, a drive for a full disk, and a speaker with more or fewer waves on the volume bar (and a microphone on the microphone bar), a sun on the brightness bar. They are the symbolic icons (`battery-low-symbolic`), which have no colour of their own, drawn in the text's colour, or in the level's amber or red for warnings and critical alerts. A theme with only coloured icons has them drawn as they are.
 
-The icons come from the GTK icon theme named in `~/.config/gtk-3.0/settings.ini`, then `hicolor`, `Adwaita` and `AdwaitaLegacy`, in the user's and the system's icon directories. Most themes ship SVG now (Adwaita and Breeze do, with no PNG), so pachud needs `librsvg` to draw them; built without it (`RSVG=0`) it finds only PNG icons, which on a modern theme is next to none. An icon the theme does not have is simply left out, and the text keeps the room. They are looked for once, the first time they are needed.
+The icons come from the GTK icon theme named in `~/.config/gtk-3.0/settings.ini`, then `hicolor`, `Adwaita` and `AdwaitaLegacy`, in the user's and the system's icon directories. Most themes ship SVG now (Adwaita and Breeze do, with no PNG), so pachud runs `rsvg-convert` (in the `librsvg` package; pachud does not link it) to draw them; without that tool it finds only PNG icons, which on a modern theme is next to none. An icon the theme does not have is simply left out, and the text keeps the room. They are looked for once, the first time they are needed.
 
 - `PACHUD_ICONS=0` turns them all off.
 - `PACHUD_ICON_SIZE` sets their size in pixels (12 to 128). By default they are 24 at the default font size and follow `PACHUD_FONT_SIZE` like everything else; when set, the size is what you asked for.

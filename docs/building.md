@@ -8,7 +8,7 @@
 | `cairo` | drawing |
 | `libsystemd` | sd-bus, for notifications only (`NOTIFY=0` drops it) |
 | `freetype2`, `harfbuzz`, `fribidi` | per-language fonts and Arabic/Hebrew shaping (`I18N=0` drops them) |
-| `librsvg` | drawing the SVG status icons that most icon themes ship now (optional: `RSVG=0` drops it, and icons are then only found as PNG files; the default `RSVG=auto` uses it when installed) |
+| `rsvg-convert` (from `librsvg`) | run time only, optional: draws the SVG status icons that most icon themes ship now. Nothing links against librsvg; without the tool, icons are found only as PNG files |
 | `gettext` (`msgfmt`) | building the translation catalogs at build time |
 | `pkgconf`, a C compiler, `make` | build |
 
@@ -20,7 +20,6 @@ There is no build or runtime dependency on `libpulse` or `pactl`: volume is read
 make                 # everything
 make NOTIFY=0        # no notification daemon, no libsystemd
 make I18N=0          # English only: no catalogs, FreeType, HarfBuzz or FriBidi
-make RSVG=0          # no librsvg: status icons only from PNG files (Adwaita and Breeze ship SVG only)
 make LOCALEDIR=$PWD/build/locale   # development: find catalogs in the build tree
 make test            # unit tests (no display needed)
 ```
@@ -65,6 +64,7 @@ It runs `make test` as its check step, installs the binary, the man page (`man p
 | `history` | the notification history ring (replacement in place, close reasons, wrap-around, listing limits and the footer, text flattening, wiping) |
 | `dnd` | do not disturb: what it holds back, the commands, the toasts, the timed switch-off |
 | `image` | raw notification pixels into the fixed icon buffer: scaling, letterboxing, premultiplied alpha, rejecting malformed data |
+| `util` | the shared helpers: strict whole-number settings (defaults, ranges, clamping, garbage), the data-directory list and finding a tool on `PATH` |
 | `icon` | icon-theme lookup across theme layouts and precedence, and refusing anything that could leave the icon directories |
 | `scale` | fractional scale arithmetic and `PACHUD_SCALE` parsing |
 | `display` | how the display reacts to the compositor's preferred scale (no compositor needed) |

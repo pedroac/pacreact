@@ -4,6 +4,7 @@
 #include "loop.h"
 #include "sound.h"
 #include "sources.h"
+#include "util.h"
 #include <dirent.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -189,25 +190,12 @@ void temp_poke(void) {
     if (timer_fd >= 0) arm(check(true));
 }
 
-static long env_degrees(const char *name, long def) {
-    const char *v = getenv(name);
-    if (!v || !*v) return def;
-    char *end;
-    long x = strtol(v, &end, 10);
-    return *end == '\0' && x >= 20 && x <= 150 ? x : def;
-}
-
 void temp_init(void) {
     const char *off = getenv("PACHUD_TEMP");
     if (off && !strcmp(off, "0")) return;
-    const char *v = getenv("PACHUD_TEMP_INTERVAL");
-    if (v && *v) {
-        char *end;
-        long s = strtol(v, &end, 10);
-        if (*end == '\0' && s >= 0 && s <= 3600) max_interval_s = s;
-    }
-    cpu_warn_c = (int)env_degrees("PACHUD_TEMP_WARN", CPU_DEFAULT_WARN);
-    cpu_hot_c = (int)env_degrees("PACHUD_TEMP_CRIT", CPU_DEFAULT_HOT);
+    max_interval_s = env_int("PACHUD_TEMP_INTERVAL", DEFAULT_INTERVAL_S, 0, 3600, "seconds");
+    cpu_warn_c = (int)env_int("PACHUD_TEMP_WARN", CPU_DEFAULT_WARN, 20, 150, "degrees Celsius");
+    cpu_hot_c = (int)env_int("PACHUD_TEMP_CRIT", CPU_DEFAULT_HOT, 20, 150, "degrees Celsius");
     if (cpu_hot_c <= cpu_warn_c) cpu_hot_c = cpu_warn_c + 1;
     timer_fd = timerfd_create(CLOCK_MONOTONIC, TFD_CLOEXEC | TFD_NONBLOCK);
     if (timer_fd < 0) return;

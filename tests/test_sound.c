@@ -97,6 +97,16 @@ static void test_resolve(void) {
     assert(!sound_resolve("-evil", path, sizeof path));      /* would look like a player option */
     assert(!sound_resolve(".hidden", path, sizeof path));
     assert(!sound_resolve("", path, sizeof path) && !sound_resolve(NULL, path, sizeof path));
+
+    /* Only regular files: a pipe, a directory or a device would hang or confuse the player */
+    char odd[512];
+    snprintf(odd, sizeof odd, "%s/pipe.oga", theme);
+    assert(mkfifo(odd, 0600) == 0);
+    assert(!sound_resolve(odd, path, sizeof path));
+    snprintf(odd, sizeof odd, "%s/dir.oga", theme);
+    assert(mkdir(odd, 0700) == 0 && !sound_resolve(odd, path, sizeof path));
+    assert(!sound_resolve("/dev/zero", path, sizeof path) && !sound_resolve("/dev/null", path, sizeof path));
+    assert(!sound_resolve("/tmp", path, sizeof path));
 }
 
 static void test_defaults_and_playing(void) {

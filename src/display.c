@@ -33,6 +33,22 @@ typedef struct {
     char name[64];              /* "DP-1", "HDMI-A-1", ... */
 } Output;
 
+/* A layer surface with what it takes to show buffers: the notification stack and the on-screen
+ * display each have one, and differ only in the hooks. */
+typedef struct Surface Surface;
+struct Surface {
+    Display *d;
+    struct wl_surface *wl;
+    struct zwlr_layer_surface_v1 *layer;
+    struct wp_fractional_scale_v1 *frac;   /* optional: else whole-number scales */
+    struct wp_viewport *viewport;
+    Buf *pending;      /* waiting for the next configure */
+    bool configured, mapped;
+    int w, h;          /* logical size last sent to the compositor */
+    void (*attach)(Surface *s, Buf *b);    /* shows a buffer; the stack also fades in on the first */
+    void (*destroy)(Surface *s);           /* the compositor closed it */
+};
+
 struct Display {
     struct wl_display *wl;
     struct wl_registry *registry;
@@ -60,17 +76,13 @@ struct Display {
     uint32_t anchor;              /* where the notification stack sits: PACHUD_ANCHOR */
     int align;                    /* 0 left, 1 centre, 2 right: how items line up in the stack */
 
-    struct wl_surface *surface;
-    struct zwlr_layer_surface_v1 *layer;
-    Buf *pending;      /* waiting for the next configure */
-    bool configured;
-    int w, h;          /* logical size last sent to the compositor */
+    Surface main;      /* the notification stack */
+    Surface osd;       /* the on-screen display: volume, brightness, device changes */
+    OsdAnchor osd_anchor;
     int scale120;        /* what new buffers are rendered at, in 120ths */
     bool scale_fixed;    /* PACHUD_SCALE: ignore what the compositor prefers */
     struct wp_fractional_scale_manager_v1 *frac_mgr;  /* optional: else whole-number scales */
     struct wp_viewporter *viewporter;
-    struct wp_fractional_scale_v1 *frac;
-    struct wp_viewport *viewport;
     void (*rescale_cb)(void);
 
     /* Fade: the compositor applies the opacity (no redraw), paced by frame callbacks, so
@@ -80,19 +92,8 @@ struct Display {
     int fade_ms;
     double cur_alpha, from_alpha, to_alpha;
     uint32_t t0;
-    bool t0_set, animating, hiding, mapped, fade_in_pending;
+    bool t0_set, animating, hiding, fade_in_pending;
 
-    /* OSD (on-screen display): separate layer for user-triggered feedback at screen center.
-     * Reuses the shared Wayland interfaces (compositor, shm, layer_shell, etc.). */
-    struct wl_surface *osd_surface;
-    struct zwlr_layer_surface_v1 *osd_layer;
-    Buf *osd_pending;
-    bool osd_configured;
-    int osd_w, osd_h;
-    struct wp_fractional_scale_v1 *osd_frac;
-    struct wp_viewport *osd_viewport;
-    bool osd_mapped;
-    OsdAnchor osd_anchor;
 };
 
 static void buf_free(Buf *b) {
@@ -157,7 +158,7 @@ static void ptr_button(void *data, struct wl_pointer *p, uint32_t serial, uint32
     (void)p; (void)time;
     d->click_serial = serial;
     if ((button == BTN_LEFT || button == BTN_RIGHT) && state == WL_POINTER_BUTTON_STATE_PRESSED &&
-        d->surface && d->pointer_surface == d->surface && d->click_cb)
+        d->main.wl && d->pointer_surface == d->main.wl && d->click_cb)
         d->click_cb((int)d->px, (int)d->py, button == BTN_RIGHT);
 }
 static void ptr_axis(void *data, struct wl_pointer *p, uint32_t time, uint32_t axis, wl_fixed_t v) {
@@ -244,7 +245,7 @@ static const struct wl_callback_listener frame_listener = { .done = frame_done }
 /* Takes effect with the next commit of the surface. */
 static void request_frame(Display *d) {
     if (d->frame) return;
-    d->frame = wl_surface_frame(d->surface);
+    d->frame = wl_surface_frame(d->main.wl);
     wl_callback_add_listener(d->frame, &frame_listener, d);
 }
 
@@ -260,7 +261,7 @@ static void frame_done(void *data, struct wl_callback *cb, uint32_t time) {
     Display *d = data;
     wl_callback_destroy(cb);
     d->frame = NULL;
-    if (!d->animating || !d->surface) return;
+    if (!d->animating || !d->main.wl) return;
 
     if (!d->t0_set) { d->t0 = time; d->t0_set = true; }
     double t = (double)(time - d->t0) / d->fade_ms;
@@ -274,43 +275,8 @@ static void frame_done(void *data, struct wl_callback *cb, uint32_t time) {
     } else {
         request_frame(d);
     }
-    wl_surface_commit(d->surface);
+    wl_surface_commit(d->main.wl);
 }
-
-static void attach(Display *d, Buf *b) {
-    if (d->viewport) wp_viewport_set_destination(d->viewport, b->w, b->h);  /* logical size */
-    else wl_surface_set_buffer_scale(d->surface, whole_scale(b->scale120));
-    wl_surface_attach(d->surface, b->wl, 0, 0);
-    wl_surface_damage_buffer(d->surface, 0, 0, INT32_MAX, INT32_MAX);
-    d->mapped = true;
-    if (d->fade_in_pending) {  /* first content of a new surface: fade it in */
-        d->fade_in_pending = false;
-        begin_fade(d, 1.0);
-    }
-    wl_surface_commit(d->surface);
-}
-
-static void layer_configure(void *data, struct zwlr_layer_surface_v1 *ls, uint32_t serial,
-                            uint32_t w, uint32_t h) {
-    Display *d = data;
-    (void)w; (void)h;
-    zwlr_layer_surface_v1_ack_configure(ls, serial);
-    d->configured = true;
-    if (d->pending) {
-        attach(d, d->pending);
-        d->pending = NULL;  /* now owned by the compositor until release */
-    }
-}
-
-static void layer_closed(void *data, struct zwlr_layer_surface_v1 *ls) {
-    (void)ls;
-    destroy_surface(data);
-}
-
-static const struct zwlr_layer_surface_v1_listener layer_listener = {
-    .configure = layer_configure,
-    .closed = layer_closed,
-};
 
 #define EDGE_T ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP
 #define EDGE_B ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM
@@ -372,12 +338,12 @@ Display *display_open(void) {
     return d;
 }
 
-static void destroy_osd_surface(Display *d);
+static void surf_destroy(Surface *s);
 
 void display_close(Display *d) {
     if (!d) return;
     destroy_surface(d);
-    destroy_osd_surface(d);
+    surf_destroy(&d->osd);
     if (d->alpha_mgr) wp_alpha_modifier_v1_destroy(d->alpha_mgr);
     if (d->frac_mgr) wp_fractional_scale_manager_v1_destroy(d->frac_mgr);
     if (d->viewporter) wp_viewporter_destroy(d->viewporter);
@@ -458,7 +424,7 @@ static void preferred_scale(void *data, struct wp_fractional_scale_v1 *f, uint32
     (void)f;
     if (d->scale_fixed || scale < SCALE_MIN || scale > SCALE_MAX || (int)scale == d->scale120) return;
     d->scale120 = (int)scale;  /* later HUDs start at the right scale */
-    if (d->surface && d->rescale_cb) d->rescale_cb();  /* and the one on screen is drawn again */
+    if (d->main.wl && d->rescale_cb) d->rescale_cb();  /* and the one on screen is drawn again */
 }
 
 static const struct wp_fractional_scale_v1_listener fractional_listener = {
@@ -484,11 +450,11 @@ static struct wl_output *pick_output(Display *d) {
 
 /* An empty input region makes the HUD click-through; clicks are taken only inside the rectangles. */
 static void apply_click_region(Display *d) {
-    if (!d->surface) return;
+    if (!d->main.wl) return;
     struct wl_region *region = wl_compositor_create_region(d->compositor);
     for (int i = 0; d->click && i < d->nrects; i++)
         wl_region_add(region, d->rects[i].x, d->rects[i].y, d->rects[i].w, d->rects[i].h);
-    wl_surface_set_input_region(d->surface, region);
+    wl_surface_set_input_region(d->main.wl, region);
     wl_region_destroy(region);
 }
 
@@ -510,12 +476,12 @@ static void token_done(void *data, struct xdg_activation_token_v1 *t, const char
 static const struct xdg_activation_token_v1_listener token_listener = { .done = token_done };
 
 bool display_request_token(Display *d, void (*fn)(const char *token, void *ctx), void *ctx) {
-    if (!d->activation || !d->seat || !d->surface || d->token) return false;
+    if (!d->activation || !d->seat || !d->main.wl || d->token) return false;
     d->token = xdg_activation_v1_get_activation_token(d->activation);
     xdg_activation_token_v1_add_listener(d->token, &token_listener, d);
     xdg_activation_token_v1_set_serial(d->token, d->click_serial, d->seat);
     xdg_activation_token_v1_set_app_id(d->token, "pachud");
-    xdg_activation_token_v1_set_surface(d->token, d->surface);
+    xdg_activation_token_v1_set_surface(d->token, d->main.wl);
     xdg_activation_token_v1_commit(d->token);
     d->token_fn = fn;
     d->token_ctx = ctx;
@@ -524,25 +490,122 @@ bool display_request_token(Display *d, void (*fn)(const char *token, void *ctx),
 
 void display_on_click(Display *d, void (*fn)(int x, int y, bool secondary)) { d->click_cb = fn; }
 
-static void create_surface(Display *d) {
-    d->surface = wl_compositor_create_surface(d->compositor);
-    d->layer = zwlr_layer_shell_v1_get_layer_surface(d->layer_shell, d->surface, pick_output(d),
-                                                     ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY, "pachud");
-    zwlr_layer_surface_v1_set_anchor(d->layer, d->anchor);
-    zwlr_layer_surface_v1_set_margin(d->layer, MARGIN, MARGIN, MARGIN, MARGIN);
-    zwlr_layer_surface_v1_set_exclusive_zone(d->layer, 0);  /* stay clear of bars and docks */
-    zwlr_layer_surface_v1_set_keyboard_interactivity(d->layer,
+static void buf_finish(Buf *b, cairo_t *cr) {
+    cairo_destroy(cr);
+    cairo_surface_flush(b->img);
+    cairo_surface_destroy(b->img);
+    b->img = NULL;
+}
+
+/* Hands a buffer to the compositor (the caller commits). */
+static void surf_attach_buffer(Surface *s, Buf *b) {
+    if (s->viewport) wp_viewport_set_destination(s->viewport, b->w, b->h);  /* logical size */
+    else wl_surface_set_buffer_scale(s->wl, whole_scale(b->scale120));
+    wl_surface_attach(s->wl, b->wl, 0, 0);
+    wl_surface_damage_buffer(s->wl, 0, 0, INT32_MAX, INT32_MAX);
+    s->mapped = true;
+}
+
+static void layer_configure(void *data, struct zwlr_layer_surface_v1 *ls, uint32_t serial,
+                            uint32_t w, uint32_t h) {
+    Surface *s = data;
+    (void)w; (void)h;
+    zwlr_layer_surface_v1_ack_configure(ls, serial);
+    s->configured = true;
+    if (s->pending) {
+        s->attach(s, s->pending);
+        s->pending = NULL;  /* now owned by the compositor until release */
+    }
+}
+
+static void layer_closed(void *data, struct zwlr_layer_surface_v1 *ls) {
+    Surface *s = data;
+    (void)ls;
+    s->destroy(s);
+}
+
+static const struct zwlr_layer_surface_v1_listener layer_listener = {
+    .configure = layer_configure,
+    .closed = layer_closed,
+};
+
+/* A click-through overlay surface; the caller adds what is particular to it. */
+static void surf_open(Display *d, Surface *s, const char *name, uint32_t anchor,
+                      void (*attach)(Surface *, Buf *), void (*destroy)(Surface *)) {
+    s->d = d;
+    s->attach = attach;
+    s->destroy = destroy;
+    s->wl = wl_compositor_create_surface(d->compositor);
+    s->layer = zwlr_layer_shell_v1_get_layer_surface(d->layer_shell, s->wl, pick_output(d),
+                                                     ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY, name);
+    zwlr_layer_surface_v1_set_anchor(s->layer, anchor);
+    zwlr_layer_surface_v1_set_exclusive_zone(s->layer, 0);  /* stay clear of bars and docks */
+    zwlr_layer_surface_v1_set_keyboard_interactivity(s->layer,
         ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_NONE);
-    zwlr_layer_surface_v1_add_listener(d->layer, &layer_listener, d);
+    zwlr_layer_surface_v1_add_listener(s->layer, &layer_listener, s);
 
     if (d->frac_mgr && d->viewporter) {  /* fractional scales: render large, present at logical size */
-        d->frac = wp_fractional_scale_manager_v1_get_fractional_scale(d->frac_mgr, d->surface);
-        wp_fractional_scale_v1_add_listener(d->frac, &fractional_listener, d);
-        d->viewport = wp_viewporter_get_viewport(d->viewporter, d->surface);
+        s->frac = wp_fractional_scale_manager_v1_get_fractional_scale(d->frac_mgr, s->wl);
+        wp_fractional_scale_v1_add_listener(s->frac, &fractional_listener, d);
+        s->viewport = wp_viewporter_get_viewport(d->viewporter, s->wl);
     }
 
+    struct wl_region *empty = wl_compositor_create_region(d->compositor);  /* click-through */
+    wl_surface_set_input_region(s->wl, empty);
+    wl_region_destroy(empty);
+}
+
+static void surf_destroy(Surface *s) {
+    if (s->viewport) wp_viewport_destroy(s->viewport);
+    if (s->frac) wp_fractional_scale_v1_destroy(s->frac);
+    if (s->layer) zwlr_layer_surface_v1_destroy(s->layer);
+    if (s->wl) wl_surface_destroy(s->wl);
+    buf_free(s->pending);
+    s->viewport = NULL;
+    s->frac = NULL;
+    s->layer = NULL;
+    s->wl = NULL;
+    s->pending = NULL;
+    s->configured = s->mapped = false;
+    s->w = s->h = 0;
+}
+
+/* Shows b: at once if the surface already has this size, else once the compositor has configured
+ * it for the new one (or when `resize` says to ask anyway, as after an anchor change). */
+static void surf_show(Surface *s, Buf *b, bool resize) {
+    if (!resize && s->configured && b->w == s->w && b->h == s->h) {
+        s->attach(s, b);  /* same size: no configure round trip needed */
+        return;
+    }
+    zwlr_layer_surface_v1_set_size(s->layer, b->w, b->h);
+    s->w = b->w;
+    s->h = b->h;
+    buf_free(s->pending);
+    s->pending = b;
+    s->configured = false;
+    wl_surface_commit(s->wl);
+}
+
+/* ---- the notification stack ---- */
+
+static void stack_attach(Surface *s, Buf *b) {
+    Display *d = s->d;
+    surf_attach_buffer(s, b);
+    if (d->fade_in_pending) {  /* first content of a new surface: fade it in */
+        d->fade_in_pending = false;
+        begin_fade(d, 1.0);
+    }
+    wl_surface_commit(s->wl);
+}
+
+static void stack_gone(Surface *s) { destroy_surface(s->d); }
+
+static void create_surface(Display *d) {
+    surf_open(d, &d->main, "pachud", d->anchor, stack_attach, stack_gone);
+    zwlr_layer_surface_v1_set_margin(d->main.layer, MARGIN, MARGIN, MARGIN, MARGIN);
+
     if (d->alpha_mgr) {  /* start invisible; the first buffer fades in */
-        d->alpha = wp_alpha_modifier_v1_get_surface(d->alpha_mgr, d->surface);
+        d->alpha = wp_alpha_modifier_v1_get_surface(d->alpha_mgr, d->main.wl);
         set_alpha(d, 0);
         d->fade_in_pending = true;
     } else {
@@ -553,136 +616,47 @@ static void create_surface(Display *d) {
 }
 
 void display_present(Display *d, Buf *b, cairo_t *cr) {
-    cairo_destroy(cr);
-    cairo_surface_flush(b->img);
-    cairo_surface_destroy(b->img);
-    b->img = NULL;
-
-    if (!d->surface) create_surface(d);
+    buf_finish(b, cr);
+    if (!d->main.wl) create_surface(d);
     if (d->hiding) {  /* something new arrived while fading out: bring it back */
         d->hiding = false;
         begin_fade(d, 1.0);
     }
-    if (d->configured && b->w == d->w && b->h == d->h) {
-        attach(d, b);  /* same size: no configure round trip needed */
-        return;
-    }
-    /* New or resized: tell the compositor and attach once its configure is acked. */
-    zwlr_layer_surface_v1_set_size(d->layer, b->w, b->h);
-    d->w = b->w;
-    d->h = b->h;
-    buf_free(d->pending);
-    d->pending = b;
-    d->configured = false;
-    wl_surface_commit(d->surface);
+    surf_show(&d->main, b, false);
 }
 
 static void destroy_surface(Display *d) {
-    if (d->pointer_surface == d->surface) d->pointer_surface = NULL;
+    if (d->pointer_surface == d->main.wl) d->pointer_surface = NULL;
     if (d->frame) wl_callback_destroy(d->frame);
-    if (d->viewport) wp_viewport_destroy(d->viewport);
-    if (d->frac) wp_fractional_scale_v1_destroy(d->frac);
-    d->viewport = NULL;
-    d->frac = NULL;
     if (d->alpha) wp_alpha_modifier_surface_v1_destroy(d->alpha);
-    if (d->layer) zwlr_layer_surface_v1_destroy(d->layer);
-    if (d->surface) wl_surface_destroy(d->surface);
     d->frame = NULL;
     d->alpha = NULL;
-    d->layer = NULL;
-    d->surface = NULL;
-    buf_free(d->pending);
-    d->pending = NULL;
-    d->configured = false;
-    d->animating = d->hiding = d->mapped = d->fade_in_pending = false;
-    d->w = d->h = 0;
+    surf_destroy(&d->main);
+    d->animating = d->hiding = d->fade_in_pending = false;
 }
 
 void display_hide(Display *d) {
-    if (!d->surface) return;
-    if (d->alpha && d->mapped && !d->hiding) {  /* fade out, then frame_done() tears it down */
+    if (!d->main.wl) return;
+    if (d->alpha && d->main.mapped && !d->hiding) {  /* fade out, then frame_done() tears it down */
         d->hiding = true;
         begin_fade(d, 0.0);
-        wl_surface_commit(d->surface);
+        wl_surface_commit(d->main.wl);
         return;
     }
     if (!d->hiding) destroy_surface(d);
 }
 
-/* ---- OSD surface (on-screen display: volume, device changes) ---- */
+/* ---- the on-screen display ---- */
 
-static void osd_attach(Display *d, Buf *b) {
-    if (d->osd_viewport) wp_viewport_set_destination(d->osd_viewport, b->w, b->h);
-    else wl_surface_set_buffer_scale(d->osd_surface, whole_scale(b->scale120));
-    wl_surface_attach(d->osd_surface, b->wl, 0, 0);
-    wl_surface_damage_buffer(d->osd_surface, 0, 0, INT32_MAX, INT32_MAX);
-    d->osd_mapped = true;
-    wl_surface_commit(d->osd_surface);
+static void osd_attach(Surface *s, Buf *b) {
+    surf_attach_buffer(s, b);
+    wl_surface_commit(s->wl);
 }
 
-static void osd_layer_configure(void *data, struct zwlr_layer_surface_v1 *ls, uint32_t serial,
-                                uint32_t w, uint32_t h) {
-    Display *d = data;
-    (void)w; (void)h;
-    zwlr_layer_surface_v1_ack_configure(ls, serial);
-    d->osd_configured = true;
-    if (d->osd_pending) {
-        osd_attach(d, d->osd_pending);
-        d->osd_pending = NULL;  /* owned by the compositor until release */
-    }
-}
-
-static void osd_layer_closed(void *data, struct zwlr_layer_surface_v1 *ls) {
-    (void)ls;
-    destroy_osd_surface(data);
-}
-
-static const struct zwlr_layer_surface_v1_listener osd_layer_listener = {
-    .configure = osd_layer_configure,
-    .closed = osd_layer_closed,
-};
-
-static void destroy_osd_surface(Display *d) {
-    if (d->osd_viewport) wp_viewport_destroy(d->osd_viewport);
-    if (d->osd_frac) wp_fractional_scale_v1_destroy(d->osd_frac);
-    if (d->osd_layer) zwlr_layer_surface_v1_destroy(d->osd_layer);
-    if (d->osd_surface) wl_surface_destroy(d->osd_surface);
-    d->osd_viewport = NULL;
-    d->osd_frac = NULL;
-    d->osd_layer = NULL;
-    d->osd_surface = NULL;
-    buf_free(d->osd_pending);
-    d->osd_pending = NULL;
-    d->osd_configured = d->osd_mapped = false;
-    d->osd_w = d->osd_h = 0;
-}
-
-static void osd_set_anchor(Display *d, OsdAnchor a) {
+static uint32_t osd_edges(OsdAnchor a) {
     static const uint32_t edges[] = { [OSD_CENTER] = 0, [OSD_TOP] = ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP,
                                       [OSD_BOTTOM] = ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM };
-    zwlr_layer_surface_v1_set_anchor(d->osd_layer, edges[a]);
-    d->osd_anchor = a;
-}
-
-static void create_osd_surface(Display *d, OsdAnchor anchor) {
-    d->osd_surface = wl_compositor_create_surface(d->compositor);
-    d->osd_layer = zwlr_layer_shell_v1_get_layer_surface(d->layer_shell, d->osd_surface, pick_output(d),
-                                                         ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY, "pachud-osd");
-    osd_set_anchor(d, anchor);
-    zwlr_layer_surface_v1_set_exclusive_zone(d->osd_layer, 0);
-    zwlr_layer_surface_v1_set_keyboard_interactivity(d->osd_layer,
-        ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_NONE);
-    zwlr_layer_surface_v1_add_listener(d->osd_layer, &osd_layer_listener, d);
-
-    if (d->frac_mgr && d->viewporter) {
-        d->osd_frac = wp_fractional_scale_manager_v1_get_fractional_scale(d->frac_mgr, d->osd_surface);
-        wp_fractional_scale_v1_add_listener(d->osd_frac, &fractional_listener, d);
-        d->osd_viewport = wp_viewporter_get_viewport(d->viewporter, d->osd_surface);
-    }
-
-    struct wl_region *empty = wl_compositor_create_region(d->compositor);
-    wl_surface_set_input_region(d->osd_surface, empty);
-    wl_region_destroy(empty);
+    return edges[a];
 }
 
 Buf *display_osd_buf(Display *dpy, int w, int h, cairo_t **cr) {
@@ -690,27 +664,19 @@ Buf *display_osd_buf(Display *dpy, int w, int h, cairo_t **cr) {
 }
 
 void display_osd_present(Display *d, Buf *b, cairo_t *cr, OsdAnchor anchor) {
-    cairo_destroy(cr);
-    cairo_surface_flush(b->img);
-    cairo_surface_destroy(b->img);
-    b->img = NULL;
-
-    if (!d->osd_surface) create_osd_surface(d, anchor);
-    bool moved = d->osd_anchor != anchor;
-    if (moved) osd_set_anchor(d, anchor);
-    if (!moved && d->osd_configured && b->w == d->osd_w && b->h == d->osd_h) {
-        osd_attach(d, b);
-        return;
+    buf_finish(b, cr);
+    if (!d->osd.wl) {
+        surf_open(d, &d->osd, "pachud-osd", osd_edges(anchor), osd_attach, surf_destroy);
+        d->osd_anchor = anchor;
     }
-    zwlr_layer_surface_v1_set_size(d->osd_layer, b->w, b->h);
-    d->osd_w = b->w;
-    d->osd_h = b->h;
-    buf_free(d->osd_pending);
-    d->osd_pending = b;
-    d->osd_configured = false;
-    wl_surface_commit(d->osd_surface);
+    bool moved = d->osd_anchor != anchor;
+    if (moved) {
+        zwlr_layer_surface_v1_set_anchor(d->osd.layer, osd_edges(anchor));
+        d->osd_anchor = anchor;
+    }
+    surf_show(&d->osd, b, moved);
 }
 
 void display_osd_hide(Display *d) {
-    destroy_osd_surface(d);
+    surf_destroy(&d->osd);
 }

@@ -87,33 +87,27 @@ static int read_image(sd_bus_message *m, uint8_t *out, bool *ok) {
     return 0;
 }
 
-static int method_notify(sd_bus_message *m, void *ud, sd_bus_error *err) {
-    (void)ud; (void)err;
-    const char *app, *icon, *summary, *body;
-    uint32_t replaces;
-    int32_t expire;
-    int urgency = 1;
-    const char *image_path = NULL, *sound_file = NULL, *sound_name = NULL;
-    int suppress_sound = 0, resident = 0, transient = 0;
-    static uint8_t image[IMAGE_BYTES];
-    bool has_image = false;
+/* The hints of a Notify call that matter here. Any others, and any of these with an unexpected
+ * type, are skipped: apps are not trusted to send what the spec says. */
+typedef struct {
+    int urgency;                    /* 0 low, 1 normal, 2 critical */
+    const char *image_path, *sound_file, *sound_name;   /* valid until the message is released */
+    int suppress_sound, resident, transient;
+    bool has_image;                 /* image-data was usable: its pixels are in the buffer given */
+} Hints;
 
-    int r = sd_bus_message_read(m, "susss", &app, &replaces, &icon, &summary, &body);
-    if (r < 0) return r;
+static bool is_hint(const char *key, const char *name, const char *contents, const char *type) {
+    return !strcmp(key, name) && contents && !strcmp(contents, type);
+}
 
-    /* Actions: key, label, key, label... Extra ones beyond what a card can show are dropped. */
-    const char *actions[MAX_ACTION_STRINGS];
-    int n_actions = 0;
-    r = sd_bus_message_enter_container(m, 'a', "s");
-    if (r < 0) return r;
-    const char *str;
-    while ((r = sd_bus_message_read(m, "s", &str)) > 0)
-        if (n_actions < MAX_ACTION_STRINGS) actions[n_actions++] = str;
-    if (r < 0) return r;
-    r = sd_bus_message_exit_container(m);
-    if (r < 0) return r;
+/* The image-data hint under the names of spec 1.2, 1.1 and 1.0 */
+static bool is_image_data(const char *key, const char *contents) {
+    return (!strcmp(key, "image-data") || !strcmp(key, "image_data") || !strcmp(key, "icon_data")) &&
+           contents && !strcmp(contents, "(iiibiiay)");
+}
 
-    r = sd_bus_message_enter_container(m, 'a', "{sv}");
+static int read_hints(sd_bus_message *m, Hints *h, uint8_t *image) {
+    int r = sd_bus_message_enter_container(m, 'a', "{sv}");
     if (r < 0) return r;
     while ((r = sd_bus_message_enter_container(m, 'e', "sv")) > 0) {
         const char *key, *contents;
@@ -123,25 +117,24 @@ static int method_notify(sd_bus_message *m, void *ud, sd_bus_error *err) {
         r = sd_bus_message_peek_type(m, &type, &contents);
         if (r < 0) return r;
 
-        if (!strcmp(key, "urgency") && contents && !strcmp(contents, "y")) {
+        if (is_hint(key, "urgency", contents, "y")) {
             uint8_t u;
             r = sd_bus_message_read(m, "v", "y", &u);
-            urgency = u;
-        } else if (!strcmp(key, "image-path") && contents && !strcmp(contents, "s")) {
-            r = sd_bus_message_read(m, "v", "s", &image_path);
-        } else if ((!strcmp(key, "image-data") || !strcmp(key, "image_data") || !strcmp(key, "icon_data")) &&
-                   contents && !strcmp(contents, "(iiibiiay)")) {
-            r = read_image(m, image, &has_image);  /* the 1.2, 1.1 and 1.0 spellings */
-        } else if (!strcmp(key, "sound-file") && contents && !strcmp(contents, "s")) {
-            r = sd_bus_message_read(m, "v", "s", &sound_file);
-        } else if (!strcmp(key, "sound-name") && contents && !strcmp(contents, "s")) {
-            r = sd_bus_message_read(m, "v", "s", &sound_name);
-        } else if (!strcmp(key, "transient") && contents && !strcmp(contents, "b")) {
-            r = sd_bus_message_read(m, "v", "b", &transient);
-        } else if (!strcmp(key, "resident") && contents && !strcmp(contents, "b")) {
-            r = sd_bus_message_read(m, "v", "b", &resident);
-        } else if (!strcmp(key, "suppress-sound") && contents && !strcmp(contents, "b")) {
-            r = sd_bus_message_read(m, "v", "b", &suppress_sound);
+            h->urgency = u;
+        } else if (is_hint(key, "image-path", contents, "s")) {
+            r = sd_bus_message_read(m, "v", "s", &h->image_path);
+        } else if (is_image_data(key, contents)) {
+            r = read_image(m, image, &h->has_image);
+        } else if (is_hint(key, "sound-file", contents, "s")) {
+            r = sd_bus_message_read(m, "v", "s", &h->sound_file);
+        } else if (is_hint(key, "sound-name", contents, "s")) {
+            r = sd_bus_message_read(m, "v", "s", &h->sound_name);
+        } else if (is_hint(key, "transient", contents, "b")) {
+            r = sd_bus_message_read(m, "v", "b", &h->transient);
+        } else if (is_hint(key, "resident", contents, "b")) {
+            r = sd_bus_message_read(m, "v", "b", &h->resident);
+        } else if (is_hint(key, "suppress-sound", contents, "b")) {
+            r = sd_bus_message_read(m, "v", "b", &h->suppress_sound);
         } else {
             r = sd_bus_message_skip(m, "v");
         }
@@ -150,12 +143,37 @@ static int method_notify(sd_bus_message *m, void *ud, sd_bus_error *err) {
         if (r < 0) return r;
     }
     if (r < 0) return r;
-    r = sd_bus_message_exit_container(m);
+    return sd_bus_message_exit_container(m);
+}
+
+/* Actions: key, label, key, label... Those beyond what a card can show are dropped. */
+static int read_actions(sd_bus_message *m, const char **actions, int *n_actions) {
+    int r = sd_bus_message_enter_container(m, 'a', "s");
     if (r < 0) return r;
-    r = sd_bus_message_read(m, "i", &expire);
+    const char *str;
+    while ((r = sd_bus_message_read(m, "s", &str)) > 0)
+        if (*n_actions < MAX_ACTION_STRINGS) actions[(*n_actions)++] = str;
+    if (r < 0) return r;
+    return sd_bus_message_exit_container(m);
+}
+
+static int method_notify(sd_bus_message *m, void *ud, sd_bus_error *err) {
+    (void)ud; (void)err;
+    const char *app, *icon, *summary, *body;
+    uint32_t replaces;
+    int32_t expire;
+    const char *actions[MAX_ACTION_STRINGS];
+    int n_actions = 0;
+    Hints h = { .urgency = 1 };
+    static uint8_t image[IMAGE_BYTES];
+
+    int r = sd_bus_message_read(m, "susss", &app, &replaces, &icon, &summary, &body);
+    if (r >= 0) r = read_actions(m, actions, &n_actions);
+    if (r >= 0) r = read_hints(m, &h, image);
+    if (r >= 0) r = sd_bus_message_read(m, "i", &expire);
     if (r < 0) return r;
 
-    int ms = notify_timeout_ms(urgency, expire);
+    int ms = notify_timeout_ms(h.urgency, expire);
 
     /* A replacement keeps its id; an id we no longer hold simply becomes a new card. */
     uint32_t id = replaces ? replaces : next_id++;
@@ -163,27 +181,27 @@ static int method_notify(sd_bus_message *m, void *ud, sd_bus_error *err) {
 
     /* Do-not-disturb: the app still gets an id, but nothing is shown or played. A card it
      * replaces is withdrawn, since what it showed is out of date. */
-    bool shown = !dnd_suppress(urgency);
+    bool shown = !dnd_suppress(h.urgency);
     if (!shown && replaces) hud_remove(id);
     /* The history keeps what apps sent, except what they marked transient. */
-    if (!transient) history_record(id, app, summary, body, urgency, shown ? HIST_OPEN : HIST_SKIPPED);
+    if (!h.transient) history_record(id, app, summary, body, h.urgency, shown ? HIST_OPEN : HIST_SKIPPED);
     if (shown) {
         /* Icon: raw pixels first, then the image-path hint, then app_icon (a path or a theme name) */
         char icon_file[512] = "";
-        if (!has_image && !(image_path && icon_find(image_path, icon_file, sizeof icon_file)))
+        if (!h.has_image && !(h.image_path && icon_find(h.image_path, icon_file, sizeof icon_file)))
             icon_find(icon, icon_file, sizeof icon_file);
 
         HudCard card = {
             .id = id, .summary = summary, .body = body, .icon_path = icon_file,
-            .image = has_image ? image : NULL,
-            .level = urgency >= 2 ? LEVEL_CRIT : LEVEL_INFO, .timeout_ms = ms,
-            .actions = actions, .n_actions = n_actions, .resident = resident,
+            .image = h.has_image ? image : NULL,
+            .level = h.urgency >= 2 ? LEVEL_CRIT : LEVEL_INFO, .timeout_ms = ms,
+            .actions = actions, .n_actions = n_actions, .resident = h.resident,
         };
         hud_card(&card);
     }
-    if (shown && !suppress_sound) {  /* what the app asked for, else the configured default (if any) */
-        if (sound_file && *sound_file) sound_play_spec(sound_file);
-        else if (sound_name && *sound_name) sound_play_spec(sound_name);
+    if (shown && !h.suppress_sound) {  /* what the app asked for, else the configured default (if any) */
+        if (h.sound_file && *h.sound_file) sound_play_spec(h.sound_file);
+        else if (h.sound_name && *h.sound_name) sound_play_spec(h.sound_name);
         else sound_play(SOUND_NOTIFY);
     }
     r = sd_bus_reply_method_return(m, "u", id);

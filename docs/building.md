@@ -54,7 +54,7 @@ It runs `make test` as its check step, installs the binary, the man page (`man p
 | `timer` | duration/alarm/recurrence parsing and scheduling, the IPC commands, the state file (including malformed lines), firing, rescheduling and missed alarms |
 | `probe` | slowdown alert and recovery thresholds |
 | `audio` | the PulseAudio client: handshake packets, framing across partial reads, the sink-info parser (using a frame captured from a real server), truncated and malformed replies, reconnect triggers, server path selection |
-| `hud` | the HUD stack (stacking order, refresh, replacement, removal, full-stack and overflow rules, close reasons) with a fake clock, and the card text helpers (markup stripping, word wrap, ellipsis) |
+| `hud` | the HUD stack (stacking order, refresh, replacement, removal, full-stack and overflow rules, close reasons) with a fake clock, and the drawing helpers in `paint.c` (markup stripping, word wrap, ellipsis, icon files, including hostile ones) |
 | `ipc` | the real unix socket: round trips, error replies, single-instance detection, stale sockets, silent clients |
 | `notify` | notification timeouts from urgency and requested expiry (skipped with `NOTIFY=0`) |
 | `alerts` | the start-up grace period: same, milder and worse alerts, the 30-minute window, restarts reading the saved state, the clock going backwards, damaged state files, `PACHUD_STARTUP_GRACE` parsing |

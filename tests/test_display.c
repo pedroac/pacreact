@@ -29,7 +29,7 @@ int main(void) {
     assert(display_scale(d) == 180);
 
     /* A HUD on screen: it is redrawn, once per actual change */
-    d->surface = surface;
+    d->main.wl = surface;
     preferred_scale(d, NULL, 240);
     assert(d->scale120 == 240 && rescales == 1);
     preferred_scale(d, NULL, 240);                 /* the compositor repeats itself */

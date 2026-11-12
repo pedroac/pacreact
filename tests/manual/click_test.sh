@@ -40,6 +40,19 @@ click_at() {   # click_at X Y [BUTTON]: travel there like a hand, then click
 }
 
 fail=0
+# The nested labwc sometimes loses a click (pachud then sees no pointer event at all), so a click
+# that has to have an effect is repeated, up to three times, until that effect is seen. A click
+# that never works still fails the test.
+click_until() {   # click_until CONDITION X Y [BUTTON]
+    local cond=$1
+    shift
+    for _ in 1 2 3; do
+        click_at "$@"
+        eval "$cond" && return 0
+    done
+    return 1
+}
+
 run_case() {  # run_case LABEL PACHUD_CLICK-VALUE EXPECT (gone|stays)
     echo "== $1 (PACHUD_CLICK='$2')"
     PACHUD_CLICK=$2 ./pachud 2> $R/stderr &
@@ -49,7 +62,7 @@ run_case() {  # run_case LABEL PACHUD_CLICK-VALUE EXPECT (gone|stays)
     N=$!
     sleep 0.7
     grim -o HEADLESS-1 build/shots/click_$1_before.png
-    click_at 1000 40
+    if [ "$3" = gone ]; then click_until '! kill -0 $N 2>/dev/null' 1000 40; else click_at 1000 40; fi
     grim -o HEADLESS-1 build/shots/click_$1_after.png
     if kill -0 $N 2>/dev/null; then
         echo "notify-send still waiting: the card was not closed"; result=stays; kill $N
@@ -84,7 +97,7 @@ resident_case() {
     sleep 0.4
     check "pachud action sends ActionInvoked(reply)" 'invoked reply'
     check "...and the resident card is not closed" '! closed 2'
-    click_at 1000 40
+    click_until 'invoked default' 1000 40
     grim -o HEADLESS-1 build/shots/click_resident_after.png
     check "a left click sends ActionInvoked(default)" 'invoked default'
     # The compositor's activation token (xdg-activation-v1) comes first, so the app can take focus.
@@ -97,7 +110,7 @@ resident_case() {
     }
     check "...preceded by an ActivationToken with a token in it" token_first
     check "...and the resident card is still not closed" '! closed 2'
-    click_at 1000 40 0x111
+    click_until 'closed 2' 1000 40 0x111
     check "a right click closes it as dismissed (reason 2)" 'closed 2'
     [ $fail -ne 0 ] && grep -a -E "member=|uint32|string" $R/signals | tail -30
     kill $P $MON 2>/dev/null; wait $P 2>/dev/null

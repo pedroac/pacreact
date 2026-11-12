@@ -82,6 +82,21 @@ check "two cards and a toast: 2" '[ "$(./pachud count)" = 2 ]'
 ./pachud dismiss >/dev/null; ./pachud dismiss >/dev/null
 check "a toast does not count; dismissing the cards brings it to 0" '[ "$(./pachud count)" = 0 ]'
 
+echo "-- hostile icon files (apps name the path; the daemon must not stall or balloon)"
+for i in $(seq 1 20); do [ "$(./pachud count)" = 0 ] && break; ./pachud dismiss >/dev/null; done
+H=$R/icons; mkdir -p $H
+mkfifo $H/pipe.png
+ln -s /dev/zero $H/zero.png
+# 33 bytes: a PNG header that claims 30000 x 30000 pixels (about 3.6 GB decoded)
+printf '\x89PNG\r\n\x1a\n\x00\x00\x00\x0dIHDR\x00\x00\x75\x30\x00\x00\x75\x30\x08\x06\x00\x00\x00' > $H/bomb.png
+for f in pipe zero bomb; do notify-send -t 20000 -i $H/$f.png "icon $f" "named a hostile file"; done
+sleep 0.5
+check "the daemon still answers (not stuck reading a pipe)" 'timeout 3 ./pachud count >/dev/null'
+check "all three cards are shown, without their icons" '[ "$(timeout 3 ./pachud count)" = 3 ]'
+mem=$(awk '/VmHWM/{print $2}' /proc/$P/status)
+check "and its memory stayed small (peak ${mem} kB)" '[ "$mem" -lt 200000 ]'
+for i in 1 2 3; do ./pachud dismiss >/dev/null; done
+
 echo "-- the history is private"
 ./pachud toast "keep alive" >/dev/null
 notify-send -t 20000 "private" "my secret body"

@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/prctl.h>
+#include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -21,8 +22,11 @@ static long long now_ms(void) {
     return ts.tv_sec * 1000LL + ts.tv_nsec / 1000000;
 }
 
+/* A regular file we can read. Not a pipe or a device: a notification names the path, and a player
+ * waiting forever on a pipe would be left behind every time. */
 static bool is_file(const char *path) {
-    return access(path, R_OK) == 0;
+    struct stat st;
+    return stat(path, &st) == 0 && S_ISREG(st.st_mode) && access(path, R_OK) == 0;
 }
 
 /* Looks for NAME.oga/.ogg/.wav in the freedesktop sound theme, in the user's and the system's

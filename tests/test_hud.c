@@ -2,9 +2,13 @@
  * hud.c is included so its statics are reachable; drawing and time are stubbed: no surface
  * is ever created, and the clock only moves when the test says so. */
 #include <assert.h>
+#include <signal.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <time.h>
+#include <unistd.h>
 
 static long long fake_ms = 1000;
 static int fake_clock_gettime(clockid_t c, struct timespec *ts) {
@@ -56,6 +60,7 @@ void text_draw(cairo_t *cr, const char *u, double x, double y, double size, bool
     (void)cr; (void)u; (void)x; (void)y; (void)size; (void)bold;
 }
 
+#include "../src/paint.c"
 #include "../src/hud.c"
 
 /* ---- helpers ---- */
@@ -436,16 +441,36 @@ static void test_click_token(void) {
     assert(nclicks == 2 && clicks[1] == 2 && !strcmp(click_tokens[1], "tok-123"));
     assert(!nstack && !token_pending && nevents == 1 && events[0].reason == HUD_CLOSED_DISMISSED);
 
+    /* A compositor that never answers must not make cards unclickable: after a while a click goes
+     * ahead without a token */
+    reset();
+    hud_on_closed(on_closed);
+    card_with_actions(7, (const char *[]){ "default", "" }, 2);
+    tokens_available = true;
+    int before = nclicks;
+    on_click(hit[0].x + 1, hit[0].y + 1, false);
+    assert(token_pending && nclicks == before && nstack == 1);
+    fake_ms += TOKEN_WAIT_MS - 1;
+    on_click(hit[0].x + 1, hit[0].y + 1, false);           /* still waiting: ignored */
+    assert(nstack == 1);
+    fake_ms += 1;
+    tokens_available = false;                              /* the display is stuck on the old request */
+    on_click(hit[0].x + 1, hit[0].y + 1, false);
+    assert(nstack == 0 && !token_pending && nclicks == before + 1 && !strcmp(click_tokens[before], "(none)"));
+    tokens_available = true;
+    token_pending = false;
+
     /* A resident card stays after the action, and can be clicked again */
     reset();
     hud_on_closed(on_closed);
+    int base = nclicks;
     resident_card(3, (const char *[]){ "default", "" }, 2);
     on_click(hit[0].x + 1, hit[0].y + 1, false);
     token_fn("tok-a", token_ctx);
-    assert(nstack == 1 && nevents == 0 && !token_pending && nclicks == 3);
+    assert(nstack == 1 && nevents == 0 && !token_pending && nclicks == base + 1);
     on_click(hit[0].x + 1, hit[0].y + 1, false);
     token_fn("tok-b", token_ctx);
-    assert(nclicks == 4 && !strcmp(click_tokens[3], "tok-b"));
+    assert(nclicks == base + 2 && !strcmp(click_tokens[base + 1], "tok-b"));
 
     /* The card goes away before the compositor answers: nobody is told about a card that is gone */
     hud_remove(3);
@@ -454,7 +479,7 @@ static void test_click_token(void) {
     assert(token_pending);
     hud_remove(4);
     token_fn("late", token_ctx);
-    assert(nclicks == 4 && !token_pending);
+    assert(nclicks == base + 2 && !token_pending);
 
     /* A right click, or a card with nothing to invoke, never asks for a token */
     token_requests = 0;
@@ -466,6 +491,141 @@ static void test_click_token(void) {
 
     tokens_available = false;
     hud_on_click(NULL);
+}
+
+/* ---- icons from files ---- */
+
+static char icondir[64];
+
+static void write_png(const char *name, int w, int h, double r, double g, double b) {
+    char path[128];
+    snprintf(path, sizeof path, "%s/%s", icondir, name);
+    cairo_surface_t *s = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, w, h);
+    cairo_t *cr = cairo_create(s);
+    cairo_set_source_rgb(cr, r, g, b);
+    cairo_paint(cr);
+    cairo_destroy(cr);
+    assert(cairo_surface_write_to_png(s, path) == CAIRO_STATUS_SUCCESS);
+    cairo_surface_destroy(s);
+}
+
+static void ipath(char *out, size_t n, const char *name) { snprintf(out, n, "%s/%s", icondir, name); }
+
+static uint32_t pixel(const uint8_t *img, int x, int y) { return ((const uint32_t *)img)[y * IMAGE_PX + x]; }
+
+static void test_icon_files(void) {
+    alarm(20);   /* a blocking read on a pipe must fail the test, not hang it */
+    snprintf(icondir, sizeof icondir, "/tmp/pachud-icons-XXXXXX");
+    assert(mkdtemp(icondir));
+    static uint8_t img[IMAGE_BYTES];
+    char p[160];
+
+    /* A real PNG becomes the 64x64 raw icon, fitted and centred: a wide one leaves bands above and below */
+    write_png("wide.png", 100, 50, 1, 0, 0);
+    ipath(p, sizeof p, "wide.png");
+    assert(load_icon_pixels(p, img));
+    assert(pixel(img, 32, 32) == 0xFFFF0000u);
+    assert(pixel(img, 32, 2) == 0 && pixel(img, 32, 61) == 0);
+    char url[200];
+    snprintf(url, sizeof url, "file://%s", p);
+    assert(load_icon_pixels(url, img));                    /* the file:// spelling too */
+
+    write_png("tiny.png", 8, 8, 0, 0, 1);                   /* small ones are scaled up to fill it */
+    ipath(p, sizeof p, "tiny.png");
+    assert(load_icon_pixels(p, img) && pixel(img, 2, 2) == 0xFF0000FFu && pixel(img, 61, 61) == 0xFF0000FFu);
+
+    /* Not a path to a PNG */
+    assert(!load_icon_pixels("relative.png", img) && !load_icon_pixels("", img));
+    ipath(p, sizeof p, "missing.png");
+    assert(!load_icon_pixels(p, img));
+    char wrong[160];
+    ipath(wrong, sizeof wrong, "wide.png");
+    wrong[strlen(wrong) - 1] = 'x';                        /* ".pnx": a different suffix */
+    assert(!load_icon_pixels(wrong, img));
+
+    /* Not a regular file: none of these may block or be read */
+    ipath(p, sizeof p, "pipe.png");
+    assert(mkfifo(p, 0600) == 0);
+    assert(!load_icon_pixels(p, img));
+    ipath(p, sizeof p, "zero.png");
+    assert(symlink("/dev/zero", p) == 0 && !load_icon_pixels(p, img));
+    ipath(p, sizeof p, "dir.png");
+    assert(mkdir(p, 0700) == 0 && !load_icon_pixels(p, img));
+
+    /* Contents that are not a sane PNG */
+    FILE *f;
+    ipath(p, sizeof p, "text.png");
+    f = fopen(p, "w");
+    assert(f && fputs("this is not a PNG, whatever the name says", f) >= 0 && !fclose(f));
+    assert(!load_icon_pixels(p, img));
+    ipath(p, sizeof p, "empty.png");
+    f = fopen(p, "w");
+    assert(f && !fclose(f) && !load_icon_pixels(p, img));
+
+    /* A header that claims a huge picture is refused before anything is decoded or allocated: this
+     * file is 33 bytes and would otherwise mean about 3.6 GB */
+    static const unsigned char sig[8] = { 0x89, 'P', 'N', 'G', '\r', '\n', 0x1A, '\n' };
+    unsigned char bomb[33] = { 0 };
+    memcpy(bomb, sig, 8);
+    bomb[11] = 13;
+    memcpy(bomb + 12, "IHDR", 4);
+    bomb[16] = bomb[17] = 0x00; bomb[18] = 0x75; bomb[19] = 0x30;   /* 30000 */
+    bomb[20] = bomb[21] = 0x00; bomb[22] = 0x75; bomb[23] = 0x30;
+    bomb[24] = 8; bomb[25] = 6;
+    ipath(p, sizeof p, "bomb.png");
+    f = fopen(p, "wb");
+    assert(f && fwrite(bomb, 1, sizeof bomb, f) == sizeof bomb && !fclose(f));
+    assert(!load_icon_pixels(p, img));
+    bomb[18] = 0x08; bomb[19] = 0x01;                      /* 2049 wide: one over the limit */
+    bomb[22] = 0x00; bomb[23] = 0x10;
+    f = fopen(p, "wb");
+    assert(f && fwrite(bomb, 1, sizeof bomb, f) == sizeof bomb && !fclose(f));
+    assert(!load_icon_pixels(p, img));
+    bomb[22] = 0x00; bomb[23] = 0x00;                      /* a zero height */
+    f = fopen(p, "wb");
+    assert(f && fwrite(bomb, 1, sizeof bomb, f) == sizeof bomb && !fclose(f));
+    assert(!load_icon_pixels(p, img));
+
+    /* A valid header with the rest missing, and a valid PNG that is too large a file */
+    ipath(p, sizeof p, "wide.png");
+    char cut[160];
+    ipath(cut, sizeof cut, "cut.png");
+    f = fopen(p, "rb");
+    FILE *g = fopen(cut, "wb");
+    assert(f && g);
+    unsigned char buf[40];
+    assert(fread(buf, 1, sizeof buf, f) == sizeof buf && fwrite(buf, 1, sizeof buf, g) == sizeof buf);
+    fclose(f);
+    fclose(g);
+    assert(!load_icon_pixels(cut, img));
+    ipath(p, sizeof p, "wide.png");
+    ipath(cut, sizeof cut, "big.png");
+    f = fopen(p, "rb");
+    g = fopen(cut, "wb");
+    assert(f && g);
+    size_t got;
+    while ((got = fread(buf, 1, sizeof buf, f)) > 0) assert(fwrite(buf, 1, got, g) == got);
+    fclose(f);
+    fclose(g);
+    assert(load_icon_pixels(cut, img));                    /* as it is, it loads */
+    assert(truncate(cut, ICON_FILE_MAX + 1) == 0);         /* padded past the size limit */
+    assert(!load_icon_pixels(cut, img));
+
+    /* A card picks its icon up when it arrives, once: the stored item carries the pixels */
+    reset();
+    ipath(p, sizeof p, "wide.png");
+    HudCard c = { .id = 1, .summary = "with icon file", .body = "", .icon_path = p, .level = LEVEL_INFO, .timeout_ms = 1000 };
+    hud_card(&c);
+    assert(stack[0].has_image && pixel(stack[0].image, 32, 32) == 0xFFFF0000u);
+    ipath(p, sizeof p, "pipe.png");
+    HudCard bad = { .id = 2, .summary = "bad icon file", .body = "", .icon_path = p, .level = LEVEL_INFO, .timeout_ms = 1000 };
+    hud_card(&bad);                                         /* still shown, just without the icon */
+    assert(nstack == 2 && !stack[0].has_image);
+
+    char cmd[128];
+    snprintf(cmd, sizeof cmd, "rm -rf %s", icondir);
+    assert(system(cmd) == 0);
+    alarm(0);
 }
 
 static void test_actions(void) {
@@ -639,6 +799,7 @@ int main(void) {
     test_click();
     test_resident();
     test_click_token();
+    test_icon_files();
     test_dismiss_prefers_alerts();
     test_queue_overflow();
     test_actions();

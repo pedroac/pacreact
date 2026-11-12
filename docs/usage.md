@@ -129,7 +129,7 @@ To go back to mako: `systemctl --user disable --now pachud.service`, remove `~/.
 
 ## Notifications: what is supported
 
-Summary and body (tags stripped, entities decoded), the `urgency` and `resident` hints, replacement by id, `CloseNotification`, sound hints, actions, and icons in three forms: raw pixels (`image-data`, and its older spellings `image_data` and `icon_data`, scaled down to 64x64), a PNG path (`app_icon` or `image-path`, also as `file://`), or an icon-theme name (`dialog-information`, `firefox`, ...). Theme names are looked up as PNG files in the user's and the system's icon directories: the GTK theme named in `~/.config/gtk-3.0/settings.ini` first, then `hicolor`, then `Adwaita`. SVG-only icons are not found and the card is shown without an icon.
+Summary and body (tags stripped, entities decoded), the `urgency` and `resident` hints, replacement by id, `CloseNotification`, sound hints, actions, and icons in three forms: raw pixels (`image-data`, and its older spellings `image_data` and `icon_data`, scaled down to 64x64), a PNG path (`app_icon` or `image-path`, also as `file://`), or an icon-theme name (`dialog-information`, `firefox`, ...). Theme names are looked up as PNG files in the user's and the system's icon directories: the GTK theme named in `~/.config/gtk-3.0/settings.ini` first, then `hicolor`, then `Adwaita`. SVG-only icons are not found and the card is shown without an icon. A PNG is read once, when the notification arrives, and only if it is a regular file of at most 4 MiB whose header declares at most 2048 x 2048 pixels; anything else (a pipe, a device, an oversized or corrupt file) is ignored and the card is shown without an icon. Sound files from the `sound-file` hint must likewise be regular files.
 
 ### Actions
 

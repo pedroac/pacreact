@@ -12,6 +12,12 @@
 static char toasts[8][160];
 static int ntoasts;
 
+static char toast_icon[96];   /* the status icon of the last toast, for the tests that care */
+void hud_toast_icon(const char *t, Level l, int ms, const char *icon) {
+    extern void hud_toast(const char *, Level, int);
+    snprintf(toast_icon, sizeof toast_icon, "%s", icon ? icon : "");
+    hud_toast(t, l, ms);
+}
 void hud_toast(const char *t, Level l, int ms) {
     (void)l; (void)ms;
     snprintf(toasts[ntoasts++ % 8], sizeof toasts[0], "%s", t);
@@ -47,6 +53,7 @@ int main(void) {
     assert(!quiet_now);
     assert(run("on") && dnd_active() && !strncmp(reply, "ok on", 5));
     assert(ntoasts == 1 && !strcmp(toasts[0], "Do not disturb on"));
+    assert(!strcmp(toast_icon, "notifications-disabled"));
     assert(quiet_now);                                                /* the opt-in event sounds are held back too */
 
     /* Normal and low notifications are held and counted; critical ones come through */

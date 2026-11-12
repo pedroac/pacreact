@@ -14,6 +14,12 @@ static char last[128];
 static int shown;
 static Level last_level;
 
+static char toast_icon[96];   /* the status icon of the last toast, for the tests that care */
+void hud_toast_icon(const char *t, Level l, int ms, const char *icon) {
+    extern void hud_toast(const char *, Level, int);
+    snprintf(toast_icon, sizeof toast_icon, "%s", icon ? icon : "");
+    hud_toast(t, l, ms);
+}
 void hud_toast(const char *text, Level level, int ms) {
     (void)ms;
     snprintf(last, sizeof last, "%s", text);
@@ -42,15 +48,19 @@ static void test_charger_sounds(void) {
     assert(nsounds == before);
     charger_update(false);
     assert(nsounds == before + 1 && last_sound == SOUND_POWER_UNPLUGGED);
+    assert(!strncmp(toast_icon, "battery", 7));
     charger_update(true);
     assert(nsounds == before + 2 && last_sound == SOUND_POWER_PLUGGED);
+    assert(!strncmp(toast_icon, "ac-adapter", 10));
 }
 
 int main(void) {
     battery_update(50, true);   assert(shown == 0);
     battery_update(15, true);   assert(shown == 1 && last_level == LEVEL_WARN);
+    assert(!strncmp(toast_icon, "battery-low", 11));
     battery_update(14, true);   assert(shown == 1);                /* once per crossing */
     battery_update(5, true);    assert(shown == 2 && last_level == LEVEL_CRIT);
+    assert(!strncmp(toast_icon, "battery-caution", 15));         /* the emptier icon, and a fallback to the other */
     battery_update(4, true);    assert(shown == 2);
     battery_update(10, false);  assert(shown == 2);                /* charging re-arms */
     battery_update(15, true);   assert(shown == 3 && last_level == LEVEL_WARN);

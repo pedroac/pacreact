@@ -178,7 +178,8 @@ void disk_evaluate(const char *dev, const char *mount, uint64_t avail, uint64_t 
     int pct = (int)free_pct(avail, total);
     if (level == 2) snprintf(msg, sizeof msg, _("Disk almost full — %s: %d%% free (%s)"), mount, pct, size);
     else snprintf(msg, sizeof msg, _("Disk space low — %s: %d%% free (%s)"), mount, pct, size);
-    hud_toast(msg, level == 2 ? LEVEL_CRIT : LEVEL_WARN, ALERT_MS);
+    hud_toast_icon(msg, level == 2 ? LEVEL_CRIT : LEVEL_WARN, ALERT_MS,
+                   level == 2 ? "drive-harddisk,dialog-error" : "drive-harddisk,dialog-warning");
     sound_play(SOUND_ALERT);
 }
 

@@ -12,6 +12,7 @@
 #include <cairo/cairo-ft.h>
 #include <ft2build.h>
 #include FT_FREETYPE_H
+#include <sys/stat.h>
 #include <unistd.h>
 #endif
 
@@ -157,7 +158,7 @@ static const cairo_user_data_key_t ft_face_key;
 
 static void done_face(void *face) { FT_Done_Face(face); }
 
-static void load_face(Face *f, const char *const *candidates, int index) {
+static void load_face(Face *f, const char *const *candidates, int index, int synthesize) {
     f->tried = true;
     if (!ft_ready) {
         if (FT_Init_FreeType(&ft) != 0) return;
@@ -168,9 +169,31 @@ static void load_face(Face *f, const char *const *candidates, int index) {
         if (access(*c, R_OK) != 0 || FT_New_Face(ft, *c, index, &face) != 0) continue;
         snprintf(f->path, sizeof f->path, "%s", *c);
         f->index = index;
-        f->face = cairo_ft_font_face_create_for_ft_face(face, 0);
+        f->face = cairo_ft_font_face_create_for_ft_face(face, 0);   /* (0: FreeType's load flags) */
+        if (synthesize) cairo_ft_font_face_set_synthesize(f->face, synthesize);
         cairo_font_face_set_user_data(f->face, &ft_face_key, face, done_face);
         return;
+    }
+}
+
+/* PACHUD_FONT: a font file for Latin text instead of the default (the other scripts keep theirs).
+ * PACHUD_FONT_BOLD is its bold; without one, bold text is the same file with the bold made by
+ * the renderer. Anything that is not a readable regular file is said so once and ignored. */
+static void load_user_face(Face *f, bool bold) {
+    const char *path = getenv(bold ? "PACHUD_FONT_BOLD" : "PACHUD_FONT");
+    int flags = 0;
+    if (bold && !(path && *path)) {
+        path = getenv("PACHUD_FONT");
+        flags = CAIRO_FT_SYNTHESIZE_BOLD;
+    }
+    if (!path || !*path) return;
+    struct stat st;
+    const char *list[] = { path, NULL };
+    if (stat(path, &st) == 0 && S_ISREG(st.st_mode)) load_face(f, list, 0, flags);
+    static bool warned[2];
+    if (!f->face && !warned[bold]) {
+        warned[bold] = true;
+        fprintf(stderr, "pachud: cannot use the font \"%s\" (not a font file that can be read); using the default\n", path);
     }
 }
 
@@ -182,12 +205,13 @@ static Face *get_face(int slot, bool bold) {
         snprintf(a, sizeof a, "/usr/share/fonts/noto/%s-%s.ttf", name, weight);
         snprintf(b, sizeof b, "/usr/share/fonts/truetype/noto/%s-%s.ttf", name, weight);
         const char *list[] = { a, b, NULL };
-        load_face(f, list, 0);
+        load_face(f, list, 0, 0);
     } else if (!f->tried) {
         const char *const *list = slot == SLOT_LATIN ? (bold ? latin_bold_fonts : latin_fonts)
                                 : slot == SLOT_RTL   ? (bold ? rtl_bold_fonts : rtl_fonts)
                                                      : (bold ? cjk_bold_fonts : cjk_fonts);
-        load_face(f, list, slot >= SLOT_CJK ? slot - SLOT_CJK : 0);
+        if (slot == SLOT_LATIN) load_user_face(f, bold);   /* PACHUD_FONT, if there is one and it works */
+        if (!f->face) load_face(f, list, slot >= SLOT_CJK ? slot - SLOT_CJK : 0, 0);
     }
     if (!f->face && bold) return get_face(slot, false);  /* no bold file: regular will do */
     return f;

@@ -12,6 +12,12 @@ static Level last_level;
 static bool allow = true;
 static int asked;
 
+static char toast_icon[96];   /* the status icon of the last toast, for the tests that care */
+void hud_toast_icon(const char *t, Level l, int ms, const char *icon) {
+    extern void hud_toast(const char *, Level, int);
+    snprintf(toast_icon, sizeof toast_icon, "%s", icon ? icon : "");
+    hud_toast(t, l, ms);
+}
 void hud_toast(const char *t, Level l, int ms) { (void)t; (void)ms; toasts++; last_level = l; }
 void sound_play(SoundKind k) { (void)k; }
 int loop_add(int fd, uint32_t ev, LoopFn fn, void *ctx) { (void)fd; (void)ev; (void)fn; (void)ctx; return 0; }

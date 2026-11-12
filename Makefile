@@ -6,7 +6,17 @@ NOTIFY ?= 1
 # and no per-language fonts.
 I18N ?= 1
 
+# RSVG=0 builds without librsvg: status icons are then found only as PNG files, which many themes
+# (Adwaita, Breeze) no longer ship. auto (the default) uses librsvg when it is installed.
+RSVG ?= auto
+ifeq ($(RSVG),auto)
+RSVG := $(shell pkg-config --exists librsvg-2.0 && echo 1 || echo 0)
+endif
+
 PKGS = wayland-client cairo
+ifeq ($(RSVG),1)
+PKGS += librsvg-2.0
+endif
 ifeq ($(NOTIFY),1)
 PKGS += libsystemd
 endif
@@ -23,6 +33,9 @@ ALL_CFLAGS := $(CFLAGS) -std=gnu11 -D_GNU_SOURCE -U_FORTIFY_SOURCE -D_FORTIFY_SO
               $(shell pkg-config --cflags $(PKGS))
 ALL_LDFLAGS := $(LDFLAGS) -Wl,--as-needed -pie -Wl,-z,relro -Wl,-z,now -Wl,-z,noexecstack
 ALL_LIBS := $(LDLIBS) $(shell pkg-config --libs $(PKGS))
+ifeq ($(RSVG),1)
+ALL_CFLAGS += -DHAVE_RSVG
+endif
 
 WL_PROTOCOLS = $(shell pkg-config --variable=pkgdatadir wayland-protocols)
 PROTOCOLS = protocol/wlr-layer-shell-unstable-v1.xml \
@@ -30,7 +43,8 @@ PROTOCOLS = protocol/wlr-layer-shell-unstable-v1.xml \
             $(WL_PROTOCOLS)/staging/alpha-modifier/alpha-modifier-v1.xml \
             $(WL_PROTOCOLS)/staging/fractional-scale/fractional-scale-v1.xml \
             $(WL_PROTOCOLS)/stable/viewporter/viewporter.xml \
-            $(WL_PROTOCOLS)/staging/xdg-activation/xdg-activation-v1.xml
+            $(WL_PROTOCOLS)/staging/xdg-activation/xdg-activation-v1.xml \
+            $(WL_PROTOCOLS)/unstable/xdg-output/xdg-output-unstable-v1.xml
 
 PROTO_NAMES = $(basename $(notdir $(PROTOCOLS)))
 PROTO_HEADERS = $(PROTO_NAMES:%=build/%-client-protocol.h)
@@ -138,7 +152,7 @@ uninstall:
 # The tests build the logic on its own, with stubs for the display, the HUD and the loop. Some
 # #include the source under test so that its static internals are reachable.
 TEST_CC = $(CC) $(CFLAGS) -D_GNU_SOURCE -Wall -Wextra -Ibuild -Isrc
-TESTS = power timer probe audio hud ipc sound dnd image icon scale display alerts mem disk temp jack locks
+TESTS = power timer probe audio hud ipc sound dnd image icon sicon scale display alerts mem disk temp jack locks
 ifeq ($(I18N),1)
 TESTS += text
 endif
@@ -159,7 +173,11 @@ TEST_SRC_alerts = src/state.c
 TEST_SRC_text = src/shape.c src/utf8.c
 TEST_SRC_display = $(PROTO_OBJS)
 TEST_SRC_notify = src/notify.c src/image.c src/icon.c
-TEST_LIBS_hud = $(shell pkg-config --libs cairo) -lm
+TEST_SRC_hud = src/pngload.c src/sicon.c src/icon.c
+TEST_SRC_sicon = src/sicon.c src/icon.c src/pngload.c
+RSVG_TEST = $(if $(filter 1,$(RSVG)),-DHAVE_RSVG $(shell pkg-config --cflags --libs librsvg-2.0))
+TEST_LIBS_hud = $(shell pkg-config --libs cairo) $(RSVG_TEST) -lm
+TEST_LIBS_sicon = $(shell pkg-config --libs cairo) $(RSVG_TEST) -lm
 TEST_LIBS_text = $(shell pkg-config --cflags --libs cairo freetype2 harfbuzz fribidi) -lm
 TEST_LIBS_display = $(shell pkg-config --libs wayland-client cairo) -lm
 TEST_LIBS_notify = $(shell pkg-config --libs libsystemd 2>/dev/null)

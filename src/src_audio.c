@@ -67,6 +67,16 @@ static Track tracks[T_COUNT] = {
 static int pending = -1;   /* the track the outstanding request is for, or -1 */
 static bool announce;      /* whether the outstanding answer may show a HUD */
 
+/* The status icon for a level: the speaker with more or fewer waves, struck through when muted */
+static const char *icon_for(TrackId t, int pct, bool muted) {
+    if (t == T_SOURCE)
+        return muted ? "microphone-sensitivity-muted" : pct < 34 ? "microphone-sensitivity-low"
+             : pct < 67 ? "microphone-sensitivity-medium" : "microphone-sensitivity-high";
+    if (muted || pct <= 0) return "audio-volume-muted";
+    if (pct > 100) return "audio-volume-overamplified,audio-volume-high";
+    return pct < 34 ? "audio-volume-low" : pct < 67 ? "audio-volume-medium" : "audio-volume-high";
+}
+
 static const char *label_for(TrackId t, bool muted) {
     if (t == T_SOURCE) return muted ? _("Microphone — muted") : _("Microphone");
     return muted ? _("Volume — muted") : _("Volume");
@@ -262,7 +272,7 @@ static void handle_info(TrackId t, In *in) {
             if (announce) {
                 char msg[192];
                 snprintf(msg, sizeof msg, _("Audio output: %s"), description[0] ? description : name);
-                hud_osd_slider(msg, pct, muted, OSD_CENTER);  /* show device change with current volume */
+                hud_osd_slider(msg, pct, muted, OSD_CENTER, "audio-speakers,audio-card");  /* show device change with current volume */
             }
             k->last_pct = pct;
             k->last_muted = muted;
@@ -273,7 +283,7 @@ static void handle_info(TrackId t, In *in) {
     k->last_pct = pct;
     k->last_muted = muted;
     if (announce) {
-        hud_osd_slider(label_for(t, muted), pct, muted, OSD_CENTER);
+        hud_osd_slider(label_for(t, muted), pct, muted, OSD_CENTER, icon_for(t, pct, muted));
         if (t == T_SINK) sound_play(SOUND_VOLUME);   /* the output, not the microphone */
     }
 }

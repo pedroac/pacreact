@@ -133,3 +133,81 @@ bool icon_find(const char *spec, char *out, size_t n) {
     }
     return found;
 }
+
+/* ---- status icons ---- */
+
+static const char *const status_contexts[] = { "status", "devices", "legacy", "actions", "notifications", "apps" };
+static const int status_sizes[] = { 24, 22, 32, 16, 48 };
+
+/* The variant's file in one theme, in the layouts themes use: symbolic/CONTEXT and scalable/CONTEXT
+ * (Adwaita), CONTEXT/SIZE (Breeze), SIZExSIZE/CONTEXT (the legacy raster themes). */
+static bool status_in_theme(const char *dir, const char *variant, bool svg, char *out, size_t n) {
+    char cand[1024];
+    for (size_t c = 0; c < sizeof status_contexts / sizeof *status_contexts; c++) {
+        const char *ctx = status_contexts[c];
+        if (svg) {
+            static const char *const vector[] = { "symbolic", "scalable" };
+            for (size_t v = 0; v < 2; v++) {
+                int r = snprintf(cand, sizeof cand, "%s/%s/%s/%s.svg", dir, vector[v], ctx, variant);
+                if (r > 0 && (size_t)r < sizeof cand && readable(cand) && put(out, n, cand)) return true;
+            }
+            for (size_t s = 0; s < sizeof status_sizes / sizeof *status_sizes; s++) {
+                int r = snprintf(cand, sizeof cand, "%s/%s/%d/%s.svg", dir, ctx, status_sizes[s], variant);
+                if (r > 0 && (size_t)r < sizeof cand && readable(cand) && put(out, n, cand)) return true;
+            }
+        }
+        for (size_t s = 0; s < sizeof status_sizes / sizeof *status_sizes; s++) {
+            int r = snprintf(cand, sizeof cand, "%s/%dx%d/%s/%s.png", dir, status_sizes[s], status_sizes[s], ctx, variant);
+            if (r > 0 && (size_t)r < sizeof cand && readable(cand) && put(out, n, cand)) return true;
+            r = snprintf(cand, sizeof cand, "%s/%s/%d/%s.png", dir, ctx, status_sizes[s], variant);
+            if (r > 0 && (size_t)r < sizeof cand && readable(cand) && put(out, n, cand)) return true;
+        }
+    }
+    return false;
+}
+
+/* One name, through the themes and the places icons are kept in. */
+static bool status_one(const char *name, bool svg, char *out, size_t n, bool *symbolic) {
+    char theme[128], bases[2048], dir[1024], variant[160];
+    configured_theme(theme, sizeof theme);
+    const char *themes[5] = { theme, "hicolor", "Adwaita", "AdwaitaLegacy", NULL };
+
+    const char *home = getenv("HOME"), *xdg_home = getenv("XDG_DATA_HOME"), *xdg_dirs = getenv("XDG_DATA_DIRS");
+    char user_data[512] = "";
+    if (xdg_home && *xdg_home) snprintf(user_data, sizeof user_data, "%s", xdg_home);
+    else if (home) snprintf(user_data, sizeof user_data, "%s/.local/share", home);
+    snprintf(bases, sizeof bases, "%s:%s", user_data, xdg_dirs && *xdg_dirs ? xdg_dirs : "/usr/local/share:/usr/share");
+
+    for (int t = 0; t < 4; t++) {
+        if (!*themes[t]) continue;
+        char copy[2048];
+        snprintf(copy, sizeof copy, "%s", bases);
+        char *save, *base = strtok_r(copy, ":", &save);
+        for (; base; base = strtok_r(NULL, ":", &save)) {
+            if (!*base) continue;
+            int r = snprintf(dir, sizeof dir, "%s/icons/%s", base, themes[t]);
+            if (r <= 0 || (size_t)r >= sizeof dir) continue;
+            for (int sym = 1; sym >= 0; sym--) {   /* symbolic first */
+                snprintf(variant, sizeof variant, sym ? "%s-symbolic" : "%s", name);
+                if (status_in_theme(dir, variant, svg, out, n)) {
+                    *symbolic = sym;
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
+}
+
+bool icon_find_status(const char *names, bool svg, char *out, size_t n, bool *symbolic) {
+    if (!names || !*names) return false;
+    char list[256];
+    snprintf(list, sizeof list, "%s", names);
+    char *save, *name = strtok_r(list, ",", &save);
+    for (; name; name = strtok_r(NULL, ",", &save)) {
+        /* A theme name never contains a path separator: refuse anything that could wander off */
+        if (!*name || strchr(name, '/') || name[0] == '.' || strlen(name) > 100) continue;
+        if (status_one(name, svg, out, n, symbolic)) return true;
+    }
+    return false;
+}

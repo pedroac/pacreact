@@ -91,7 +91,7 @@ static int read_image(sd_bus_message *m, uint8_t *out, bool *ok) {
  * type, are skipped: apps are not trusted to send what the spec says. */
 typedef struct {
     int urgency;                    /* 0 low, 1 normal, 2 critical */
-    const char *image_path, *sound_file, *sound_name;   /* valid until the message is released */
+    const char *image_path, *sound_file, *sound_name, *category;   /* valid until the message is released */
     int suppress_sound, resident, transient;
     bool has_image;                 /* image-data was usable: its pixels are in the buffer given */
 } Hints;
@@ -125,6 +125,8 @@ static int read_hints(sd_bus_message *m, Hints *h, uint8_t *image) {
             r = sd_bus_message_read(m, "v", "s", &h->image_path);
         } else if (is_image_data(key, contents)) {
             r = read_image(m, image, &h->has_image);
+        } else if (is_hint(key, "category", contents, "s")) {
+            r = sd_bus_message_read(m, "v", "s", &h->category);
         } else if (is_hint(key, "sound-file", contents, "s")) {
             r = sd_bus_message_read(m, "v", "s", &h->sound_file);
         } else if (is_hint(key, "sound-name", contents, "s")) {
@@ -196,6 +198,8 @@ static int method_notify(sd_bus_message *m, void *ud, sd_bus_error *err) {
             .image = h.has_image ? image : NULL,
             .level = h.urgency >= 2 ? LEVEL_CRIT : LEVEL_INFO, .timeout_ms = ms,
             .actions = actions, .n_actions = n_actions, .resident = h.resident,
+            /* What must not be ignored: critical urgency, and a call that is ringing */
+            .attention = h.urgency >= 2 || (h.category && !strcmp(h.category, "call.incoming")),
         };
         hud_card(&card);
     }

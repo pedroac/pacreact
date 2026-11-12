@@ -64,24 +64,28 @@ static void note(Jack *j, bool plugged) {
 
 /* One toast for what changed: a headset (headphones and microphone together) is one thing. */
 void jack_flush(void) {
-    const char *msg = NULL;
+    const char *msg = NULL, *icon = NULL;
     int dir = 0;   /* +1 connected, -1 disconnected */
     if (pending[K_HEADPHONES] && pending[K_HEADPHONES] == pending[K_MIC]) {
         dir = pending[K_HEADPHONES];
         msg = dir > 0 ? _("Headset connected") : _("Headset disconnected");
+        icon = "audio-headset,audio-headphones";
     } else if (pending[K_HEADPHONES]) {
         dir = pending[K_HEADPHONES];
         msg = dir > 0 ? _("Headphones connected") : _("Headphones disconnected");
+        icon = "audio-headphones,audio-headset";
     } else if (pending[K_LINEOUT]) {
         dir = pending[K_LINEOUT];
         msg = dir > 0 ? _("Line out connected") : _("Line out disconnected");
+        icon = "audio-speakers";
     } else if (pending[K_MIC]) {
         dir = pending[K_MIC];
         msg = dir > 0 ? _("Microphone connected") : _("Microphone disconnected");
+        icon = "audio-input-microphone";
     }
     memset(pending, 0, sizeof pending);
     if (!msg) return;
-    hud_toast(msg, LEVEL_INFO, TOAST_MS);
+    hud_toast_icon(msg, LEVEL_INFO, TOAST_MS, icon);
     sound_play(dir > 0 ? SOUND_DEVICE_ADDED : SOUND_DEVICE_REMOVED);
 }
 

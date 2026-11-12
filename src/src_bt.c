@@ -40,7 +40,8 @@ static void announce(bool connected, const char *name) {
     char msg[160];
     snprintf(msg, sizeof msg, connected ? _("Bluetooth: %s connected") : _("Bluetooth: %s disconnected"),
              name && *name ? name : "?");
-    hud_toast(msg, LEVEL_INFO, TOAST_MS);
+    hud_toast_icon(msg, LEVEL_INFO, TOAST_MS,
+                   connected ? "bluetooth-active,bluetooth" : "bluetooth-disconnected,bluetooth-disabled,bluetooth");
     sound_play(connected ? SOUND_DEVICE_ADDED : SOUND_DEVICE_REMOVED);
 }
 

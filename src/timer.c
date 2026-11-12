@@ -209,7 +209,7 @@ static void on_fire(void *ctx, uint32_t ev) {
         const char *what = entries[i].alarm ? _("Alarm") : _("Timer done");
         if (*entries[i].label) snprintf(msg, sizeof msg, "%s — %s", what, entries[i].label);
         else snprintf(msg, sizeof msg, "%s", what);
-        hud_toast(msg, LEVEL_WARN, FIRE_MS);
+        hud_toast_icon(msg, LEVEL_WARN, FIRE_MS, "alarm,appointment-soon");
         sound_play(SOUND_ALARM);
 
         if (entries[i].days) {  /* recurring: schedule the next occurrence, skipping missed ones */
@@ -295,7 +295,7 @@ static void snooze(char *args, char *reply, size_t n) {
     char msg[LABEL_MAX + 64];
     int len = snprintf(msg, sizeof msg, _("Snoozed for %s"), spec);
     if (*last_fired.label) snprintf(msg + len, sizeof msg - len, " — %s", last_fired.label);
-    hud_toast(msg, LEVEL_INFO, 2500);
+    hud_toast_icon(msg, LEVEL_INFO, 2500, "alarm,appointment-soon");
 }
 
 static void pause_resume_extend(const char *cmd, char *args, char *reply, size_t n) {

@@ -34,6 +34,21 @@ or by a left click on its default action: it stays until it expires, is dismisse
 or the app closes or replaces it.
 .PP
 HUDs stack in one column in a corner of the screen (top right by default), newest on top, each leaving on its own timeout.
+The few things that must not be ignored are kept apart, in the attention deck at the top centre:
+notifications of critical urgency, notifications with the category
+.BR call.incoming ,
+and pachud's own critical alerts (battery, memory, disk space, temperature).
+It holds three, as a pile: the oldest unhandled one in front in full and never reordered by itself, the others as one-line strips behind it.
+When the front one leaves, the next comes forward; clicking a strip brings that card forward, and right-clicking dismisses it.
+A fourth waits for room.
+.B action ,
+.B expand
+and
+.B dismiss
+work on the front card of the deck before anything in the stack.
+The deck needs a screen at least 1204 logical pixels wide when the stack is in a top corner, so that they do not overlap; on a narrower screen, and with
+.BR PACHUD_ANCHOR=top ,
+attention items go in the stack instead.
 At most four are shown.
 Alerts (warning and critical toasts, timers, battery and memory alerts, every notification card)
 are never lost: when the column is full they wait for room.
@@ -42,7 +57,14 @@ Volume and brightness changes appear in a separate on-screen display in the midd
 .SH COMMANDS
 .TP
 .BR toast " [" \-l " " info | warn | crit "] [" \-t " \fISECONDS\fR] \fITEXT\fR..."
-Show a one-line message.
+Show a message.
+Every HUD in the stack has the same width, so long text wraps onto up to three lines.
+With
+.BI \-i " ICON"
+it has a status icon: the name of an icon of the theme, or several separated by commas, the first that exists being used.
+The same option of
+.B slider
+gives the bar one.
 .B warn
 and
 .B crit
@@ -91,7 +113,18 @@ Show timers and alarms with their ids, time left and recurrence.
 Cancel one or all.
 .TP
 .B dismiss
-Close the newest alert on screen, or the newest item if there is none.
+Close the front card of the attention deck, else the newest alert on screen, or the newest item if there is none.
+.TP
+.B expand
+Open the front card of the attention deck, else the newest notification card, to show more of its body, or close it again (it prints
+.B expanded
+or
+.BR collapsed ).
+An open card does not expire until it is closed.
+Resting the pointer on a card does the same for as long as it stays there (after a quarter of a second), and holds the card's timeout meanwhile; that needs
+.B PACHUD_CLICK
+not to be 0.
+Toasts and sliders do not open.
 .TP
 .B count
 Print how many notification cards are on screen or waiting for room.
@@ -143,6 +176,30 @@ Show HUDs on this monitor (for example
 .BR DP-1 ).
 Unset lets the compositor choose.
 An unknown name is reported once, with the names that exist.
+.TP
+.B PACHUD_ICONS
+Set to
+.B 0
+to turn the status icons off: the icon theme's icons that go with pachud's own messages (battery, network, headset, volume and the like).
+They are drawn with librsvg where it is built in, and found as SVG or PNG files in the GTK theme, hicolor, Adwaita and AdwaitaLegacy.
+.TP
+.B PACHUD_ICON_SIZE
+The size of the status icons in pixels, 12 to 128 (default 24 at the default font size, scaled with it).
+.TP
+.B PACHUD_MARGIN
+The distance from the screen's edge to the stack, and to the top of the attention deck, in pixels, 0 to 200 (default 16).
+.TP
+.B PACHUD_FONT_SIZE
+The size of the text in pixels, 10 to 48 (default 16).
+Everything scales with it: the fonts, padding, icons, bars and the width of the cards, toasts and sliders, so 20 makes the HUD 1.25 times as large.
+.TP
+.B PACHUD_WIDTH
+The width of the cards, toasts and sliders in the stack in pixels, 200 to 1200, on its own (default: follows the font size, 380 at 16).
+.TP
+.BR PACHUD_FONT ", " PACHUD_FONT_BOLD
+Font files for Latin text instead of the default; without a bold file, bold is made from the regular one.
+Other scripts keep their own fonts.
+A path that is not a readable regular file is reported and ignored.
 .TP
 .B PACHUD_SCALE
 Pin the render scale, 1 to 4, fractions allowed.

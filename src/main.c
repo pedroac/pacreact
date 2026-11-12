@@ -6,6 +6,7 @@
 #include "history.h"
 #include "ipc.h"
 #include "loop.h"
+#include "paint.h"
 #include "sound.h"
 #include "text.h"
 #ifndef NO_NOTIFY
@@ -28,8 +29,8 @@
 
 static const char usage_text[] =
 "usage: pachud                      run the daemon\n"
-    "       pachud toast [-l info|warn|crit] [-t SECONDS] TEXT...\n"
-    "       pachud slider PERCENT LABEL...\n"
+    "       pachud toast [-l info|warn|crit] [-t SECONDS] [-i ICON] TEXT...\n"
+    "       pachud slider [-i ICON] PERCENT LABEL...\n"
     "       pachud timer DURATION [LABEL...]   e.g. 90s, 5m, 1h30m\n"
     "       pachud alarm [-r daily|weekdays|weekends|mon,wed,...] [YYYY-MM-DD] HH:MM [LABEL...]\n"
     "       pachud snooze [DURATION]           re-arm the last timer/alarm that went off\n"
@@ -39,15 +40,32 @@ static const char usage_text[] =
     "       pachud dnd [on [DURATION]|off|toggle|status]\n"
     "       pachud action [N]                  invoke action N of the notification on screen\n"
     "       pachud history [N|clear]           the last notifications (kept in memory only)\n"
-    "       pachud count                       notifications on screen or waiting (for a status bar)\n";
+    "       pachud count                       notifications on screen or waiting (for a status bar)\n"
+    "       pachud expand                      show more of the newest notification, or less again\n";
 
 static int usage(void) {
     fputs(usage_text, stderr);
     return 2;
 }
 
+/* pachud slider [-i ICON] PERCENT LABEL...: the daemon takes percent, icon ("-" for none), label */
+static int client_slider(int argc, char **argv) {
+    const char *icon = "-";
+    int i = 2;
+    if (i + 1 < argc && !strcmp(argv[i], "-i")) { icon = argv[i + 1]; i += 2; }
+    if (i + 1 >= argc) return usage();
+
+    char msg[1024];
+    int n = snprintf(msg, sizeof msg, "slider\t%s\t%s\t", argv[i], icon);
+    for (i++; i < argc && n < (int)sizeof msg - 1; i++)
+        n += snprintf(msg + n, sizeof msg - n, "%s%s", argv[i], i + 1 < argc ? " " : "");
+    int r = ipc_send(msg);
+    if (r < 0) fputs(_("pachud: daemon not running\n"), stderr);
+    return r != 0;
+}
+
 static int client_toast(int argc, char **argv) {
-    const char *level = "info";
+    const char *level = "info", *icon = "-";   /* "-": no icon, since an empty field would not survive */
     double secs = DEFAULT_TIMEOUT_MS / 1000.0;
     int i = 2;
 
@@ -55,12 +73,13 @@ static int client_toast(int argc, char **argv) {
         if (i + 1 >= argc) return usage();
         if (!strcmp(argv[i], "-l")) level = argv[i + 1];
         else if (!strcmp(argv[i], "-t")) secs = atof(argv[i + 1]);
+        else if (!strcmp(argv[i], "-i")) icon = argv[i + 1];
         else return usage();
     }
     if (i >= argc || secs <= 0) return usage();
 
     char msg[1024];
-    int n = snprintf(msg, sizeof msg, "toast\t%s\t%d\t", level, (int)(secs * 1000));
+    int n = snprintf(msg, sizeof msg, "toast\t%s\t%d\t%s\t", level, (int)(secs * 1000), icon);
     for (; i < argc && n < (int)sizeof msg - 1; i++)
         n += snprintf(msg + n, sizeof msg - n, "%s%s", argv[i], i + 1 < argc ? " " : "");
 
@@ -121,21 +140,28 @@ static void handle(char *msg, char *reply, size_t n) {
     char *save, *cmd = strtok_r(msg, "\t", &save);
     if (cmd && !strcmp(cmd, "toast")) {
         char *lvl = strtok_r(NULL, "\t", &save), *ms = strtok_r(NULL, "\t", &save);
+        char *icon = strtok_r(NULL, "\t", &save);
         char *text = save;
         Level level = LEVEL_INFO;
-        if (!lvl || !ms || !*text) { snprintf(reply, n, "%s", _("bad toast message")); return; }
+        if (!lvl || !ms || !icon || !*text) { snprintf(reply, n, "%s", _("bad toast message")); return; }
         if (!strcmp(lvl, "warn")) level = LEVEL_WARN;
         else if (!strcmp(lvl, "crit")) level = LEVEL_CRIT;
         else if (strcmp(lvl, "info")) { snprintf(reply, n, "%s", _("level must be info, warn or crit")); return; }
-        hud_toast(text, level, atoi(ms));
+        hud_toast_icon(text, level, atoi(ms), strcmp(icon, "-") ? icon : NULL);
         snprintf(reply, n, "ok");
         return;
     }
     if (cmd && !strcmp(cmd, "slider")) {
-        char *pct = strtok_r(NULL, "\t", &save), *label = save;
-        if (!pct || !*label) { snprintf(reply, n, "%s", _("bad slider message")); return; }
-        hud_slider(label, atoi(pct), false);
+        char *pct = strtok_r(NULL, "\t", &save), *icon = strtok_r(NULL, "\t", &save), *label = save;
+        if (!pct || !icon || !*label) { snprintf(reply, n, "%s", _("bad slider message")); return; }
+        hud_slider(label, atoi(pct), false, strcmp(icon, "-") ? icon : NULL);
         snprintf(reply, n, "ok");
+        return;
+    }
+    if (cmd && !strcmp(cmd, "expand")) {
+        int open = hud_toggle_expand();
+        if (open < 0) snprintf(reply, n, "%s", _("no notification on screen"));
+        else snprintf(reply, n, "ok %s", open ? _("expanded") : _("collapsed"));
         return;
     }
     if (cmd && !strcmp(cmd, "count")) {
@@ -213,6 +239,7 @@ static int run_daemon(void) {
     alerts_init();
     Display *dpy = display_open();
     if (!dpy) { fputs(_("pachud: cannot connect to a Wayland compositor with layer-shell\n"), stderr); return 1; }
+    paint_init();   /* PACHUD_FONT_SIZE and PACHUD_WIDTH, before anything is measured */
     hud_init(dpy);
 
     if (loop_init() < 0) { perror("pachud: epoll"); return 1; }
@@ -262,7 +289,7 @@ int main(int argc, char **argv) {
         return 0;
     }
     if (!strcmp(argv[1], "toast")) return client_toast(argc, argv);
-    if (!strcmp(argv[1], "slider")) return client_generic(argc, argv, 2);
+    if (!strcmp(argv[1], "slider")) return client_slider(argc, argv);
     if (!strcmp(argv[1], "alarm")) return client_alarm(argc, argv);
     if (!strcmp(argv[1], "timer") || !strcmp(argv[1], "cancel") || !strcmp(argv[1], "pause") ||
         !strcmp(argv[1], "resume"))
@@ -270,7 +297,7 @@ int main(int argc, char **argv) {
     if (!strcmp(argv[1], "extend")) return client_generic(argc, argv, 2);
     if (!strcmp(argv[1], "list") || !strcmp(argv[1], "dismiss") || !strcmp(argv[1], "dnd") ||
         !strcmp(argv[1], "snooze") || !strcmp(argv[1], "action") || !strcmp(argv[1], "history") ||
-        !strcmp(argv[1], "count"))
+        !strcmp(argv[1], "count") || !strcmp(argv[1], "expand"))
         return client_generic(argc, argv, 0);
     return usage();
 }

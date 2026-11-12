@@ -75,13 +75,15 @@ static void on_settled(void *ctx, uint32_t ev) {
     if (was_online == online) return;
 
     if (!online) {
-        hud_toast(_("Offline"), LEVEL_WARN, 4000);
+        hud_toast_icon(_("Offline"), LEVEL_WARN, 4000, "network-offline,network-error");
         sound_play(SOUND_NETWORK_DOWN);
     } else {
         char name[64] = "", msg[128];
         if (!if_indextoname(dev, name)) snprintf(name, sizeof name, "%s", _("network"));
         snprintf(msg, sizeof msg, _("Online — %s"), name);
-        hud_toast(msg, LEVEL_INFO, 3000);
+        /* wlan0, wlp3s0: a wireless interface by its name; anything else is taken to be a cable */
+        hud_toast_icon(msg, LEVEL_INFO, 3000,
+                       name[0] == 'w' && name[1] == 'l' ? "network-wireless,network-wired" : "network-wired,network-idle");
         sound_play(SOUND_NETWORK_UP);
     }
 }

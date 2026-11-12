@@ -17,6 +17,12 @@ static Level last_level;
 static SoundKind last_sound = SOUND_KINDS;
 static int nsounds;
 void sound_play(SoundKind k) { last_sound = k; nsounds++; }
+static char toast_icon[96];   /* the status icon of the last toast, for the tests that care */
+void hud_toast_icon(const char *t, Level l, int ms, const char *icon) {
+    extern void hud_toast(const char *, Level, int);
+    snprintf(toast_icon, sizeof toast_icon, "%s", icon ? icon : "");
+    hud_toast(t, l, ms);
+}
 void hud_toast(const char *t, Level l, int ms) { (void)ms; snprintf(toasts[ntoasts++ % 8], sizeof toasts[0], "%s", t); last_level = l; }
 int loop_add(int fd, uint32_t ev, LoopFn fn, void *ctx) { (void)fd; (void)ev; (void)fn; (void)ctx; registered++; return 0; }
 int loop_remove(int fd) { (void)fd; removed++; return 0; }
@@ -49,6 +55,7 @@ static void test_flush(void) {
     pending[K_HEADPHONES] = 1;
     jack_flush();
     assert(ntoasts == 1 && !strcmp(toasts[0], "Headphones connected") && last_level == LEVEL_INFO);
+    assert(!strncmp(toast_icon, "audio-headphones", 16));
     assert(nsounds == 1 && last_sound == SOUND_DEVICE_ADDED);
     assert(pending[K_HEADPHONES] == 0);                                /* consumed */
     pending[K_HEADPHONES] = -1;
@@ -59,6 +66,7 @@ static void test_flush(void) {
     pending[K_HEADPHONES] = 1; pending[K_MIC] = 1;
     jack_flush();
     assert(ntoasts == 3 && !strcmp(toasts[2], "Headset connected") && last_sound == SOUND_DEVICE_ADDED);
+    assert(!strncmp(toast_icon, "audio-headset", 13));            /* a headset is not headphones */
     pending[K_HEADPHONES] = -1; pending[K_MIC] = -1;
     jack_flush();
     assert(!strcmp(toasts[3], "Headset disconnected") && last_sound == SOUND_DEVICE_REMOVED);

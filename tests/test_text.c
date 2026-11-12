@@ -3,6 +3,8 @@
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 #include "../src/text.c"
 
@@ -110,10 +112,74 @@ static void test_with_fonts(void) {
     cairo_surface_destroy(img);
 }
 
+/* PACHUD_FONT and PACHUD_FONT_BOLD: a font of the user's for Latin text. Needs two different font
+ * files from the default list to tell them apart, so it only runs where there are. */
+static void test_user_font(void) {
+    const char *a = NULL, *b = NULL;
+    for (const char *const *c = latin_fonts; *c; c++) {
+        if (access(*c, R_OK) != 0) continue;
+        if (!a) a = *c;
+        else if (!b) b = *c;
+    }
+    if (!b) { puts("text: PACHUD_FONT not tested (fewer than two Latin fonts installed)"); return; }
+
+    unsetenv("PACHUD_FONT");
+    unsetenv("PACHUD_FONT_BOLD");
+    memset(faces, 0, sizeof faces);
+    Face *f = get_face(SLOT_LATIN, false);
+    assert(f->face && !strcmp(f->path, a));                      /* the default, to compare with */
+
+    /* One font given: it is used for regular text, and for bold the same file with bold made up */
+    setenv("PACHUD_FONT", b, 1);
+    memset(faces, 0, sizeof faces);
+    f = get_face(SLOT_LATIN, false);
+    assert(f->face && !strcmp(f->path, b));
+    f = get_face(SLOT_LATIN, true);
+    assert(f->face && !strcmp(f->path, b) && f != get_face(SLOT_LATIN, false));
+
+    /* ...and it is the same size, only heavier: a face loaded with the wrong flags once came out at
+     * several times the size (font units, not pixels) */
+    double asc_r, h_r, asc_b, h_b;
+    text_extents("A notification", 15, false, &asc_r, &h_r);
+    text_extents("A notification", 15, true, &asc_b, &h_b);
+    double w_r = text_width("A notification", 14, 15, false), w_b = text_width("A notification", 14, 15, true);
+    assert(h_r > 5 && h_r < 30 && h_b > 5 && h_b < 30);
+    assert(w_r > 60 && w_r < 200 && w_b >= w_r * 0.95 && w_b < w_r * 1.3);
+    assert(asc_b < 30 && asc_r < 30);
+
+    /* A bold file of its own is used for bold */
+    setenv("PACHUD_FONT_BOLD", a, 1);
+    memset(faces, 0, sizeof faces);
+    assert(!strcmp(get_face(SLOT_LATIN, true)->path, a) && !strcmp(get_face(SLOT_LATIN, false)->path, b));
+
+    /* Something that is not a font file, or not a file at all: the default, with a word about it,
+     * and nothing that could block (a pipe is never opened) */
+    char fifo[64];
+    snprintf(fifo, sizeof fifo, "/tmp/pachud-font-%d", (int)getpid());
+    assert(mkfifo(fifo, 0600) == 0);
+    const char *bad[] = { "/nonexistent/font.ttf", "/tmp", fifo, "/etc/hostname", "/dev/null" };
+    unsetenv("PACHUD_FONT_BOLD");
+    for (size_t i = 0; i < sizeof bad / sizeof *bad; i++) {
+        setenv("PACHUD_FONT", bad[i], 1);
+        memset(faces, 0, sizeof faces);
+        f = get_face(SLOT_LATIN, false);
+        assert(f->face && !strcmp(f->path, a));
+    }
+    unlink(fifo);
+
+    /* An empty value is the same as none */
+    setenv("PACHUD_FONT", "", 1);
+    memset(faces, 0, sizeof faces);
+    assert(!strcmp(get_face(SLOT_LATIN, false)->path, a));
+    unsetenv("PACHUD_FONT");
+    memset(faces, 0, sizeof faces);
+}
+
 int main(void) {
     test_classification();
     test_split();
     test_with_fonts();
+    test_user_font();
     puts("text: ok");
     return 0;
 }

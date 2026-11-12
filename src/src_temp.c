@@ -151,7 +151,8 @@ static void alert(SensorClass c, int level, int temp) {
         snprintf(msg, sizeof msg, level == 2 ? _("CPU temperature critical — %d °C") : _("CPU temperature high — %d °C"), temp);
     else
         snprintf(msg, sizeof msg, level == 2 ? _("SSD temperature critical — %d °C") : _("SSD temperature high — %d °C"), temp);
-    hud_toast(msg, level == 2 ? LEVEL_CRIT : LEVEL_WARN, ALERT_MS);
+    hud_toast_icon(msg, level == 2 ? LEVEL_CRIT : LEVEL_WARN, ALERT_MS,
+                   level == 2 ? "dialog-error,dialog-warning" : "dialog-warning");
     sound_play(SOUND_ALERT);
 }
 

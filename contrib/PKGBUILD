@@ -11,7 +11,7 @@ pkgrel=1
 pkgdesc='Event-driven HUDs and notification daemon for Wayland'
 arch=(x86_64 aarch64)
 license=(MIT)
-depends=(wayland cairo systemd-libs freetype2 harfbuzz fribidi)
+depends=(wayland cairo systemd-libs freetype2 harfbuzz fribidi librsvg)   # librsvg: the SVG status icons themes ship
 makedepends=(wayland-protocols pkgconf gettext git)
 optdepends=(
     'pipewire-pulse: volume and microphone HUDs (any PulseAudio-compatible server works)'
@@ -46,12 +46,12 @@ prepare() {
 
 build() {
     cd "$srcdir/$pkgname"
-    make PREFIX=/usr
+    make PREFIX=/usr RSVG=1
 }
 
 check() {
     cd "$srcdir/$pkgname"
-    make PREFIX=/usr test
+    make PREFIX=/usr RSVG=1 test
 }
 
 package() {

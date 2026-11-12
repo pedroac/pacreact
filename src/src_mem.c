@@ -49,7 +49,7 @@ static void alert(Level level) {
 
     char msg[128];
     snprintf(msg, sizeof msg, _("Memory pressure — %ld MB available"), mem_available_mb(NULL));
-    hud_toast(msg, level, 6000);
+    hud_toast_icon(msg, level, 6000, level == LEVEL_CRIT ? "dialog-error,dialog-warning" : "dialog-warning");
     sound_play(SOUND_ALERT);
 }
 

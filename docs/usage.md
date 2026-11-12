@@ -8,7 +8,7 @@
 
 | Command | Effect |
 |---|---|
-| `pachud toast [-l info\|warn\|crit] [-t SECONDS] TEXT...` | One-line message. `warn` and `crit` are alerts and wait for room when the stack is full (see below). |
+| `pachud toast [-l info\|warn\|crit] [-t SECONDS] [-i ICON] TEXT...` | A message; long text wraps onto up to three lines. `warn` and `crit` are alerts and wait for room when the stack is full (see below). |
 | `pachud slider PERCENT LABEL...` | A level bar. Useful from your own keybinds. |
 | `pachud timer DURATION [LABEL...]` | `90s`, `5m`, `1h30m`, up to 30 days. A unit is required: `5` is rejected. |
 | `pachud alarm [-r RECUR] [YYYY-MM-DD] HH:MM [LABEL...]` | The next such wall-clock time, today or tomorrow. With `-r` it repeats: `daily`, `weekdays`, `weekends`, or days such as `mon,wed,fri`. With a date (`pachud alarm 2026-12-25 07:30 …`) it fires once at that moment; a dated alarm cannot repeat. A recurring alarm stays in `pachud list` (shown as `[weekdays]`) and is rescheduled after it fires; occurrences missed while the daemon was down fire once. |
@@ -17,9 +17,10 @@
 | `pachud pause ID` / `resume ID` | Freeze a timer's remaining time, then continue it. Paused timers stay paused across restarts. Alarms cannot be paused. |
 | `pachud extend ID DURATION` | Add time to a timer or alarm (to the time left if paused). Up to 30 days ahead. |
 | `pachud cancel ID\|all` | Cancel one or all. |
-| `pachud dismiss` | Close the newest alert on screen (the newest item if there is none). |
+| `pachud dismiss` | Close the front card of the [attention deck](#the-attention-deck), else the newest alert on screen (the newest item if there is none). |
 | `pachud action [N]` | Invoke action N (default 1) of the notification card on screen. See [Actions](#actions). |
 | `pachud dnd [on [DURATION]\|off\|toggle\|status]` | Do not disturb: see below. |
+| `pachud expand` | Show more of the front card of the attention deck (else the newest card), or less again: see [Reading long notifications](#reading-long-notifications). |
 | `pachud count` | How many notification cards are on screen or waiting for room, for a status bar's bell. Toasts and sliders do not count. |
 | `pachud history [N\|clear]` | The last notifications, newest first (10 by default, up to 64), or wipe them: see [History](#history). |
 
@@ -27,7 +28,7 @@ Timers and alarms survive restarts: they are stored in `$XDG_STATE_HOME/pachud/t
 
 ## How HUDs stack
 
-HUDs stack in one column, newest on top, in the top-right corner unless `PACHUD_ANCHOR` says otherwise. Each leaves on its own timeout, and the stack shows at most four.
+HUDs stack in one column, all the same width (a long toast wraps onto up to three lines rather than growing wider), newest on top, in the top-right corner unless `PACHUD_ANCHOR` says otherwise. Each leaves on its own timeout, and the stack shows at most four.
 
 - **Alerts** (warn/crit toasts, timers, battery, memory, every notification card) are never lost: when the stack is full they wait in order for room, up to 8 waiting. The same alert text is not duplicated; showing it again refreshes the one on screen.
 - **Sliders and info toasts** are ephemeral. When the stack is full the oldest ephemeral one makes room; if everything shown is an alert, a new ephemeral one is dropped.
@@ -38,9 +39,16 @@ HUDs stack in one column, newest on top, in the top-right corner unless `PACHUD_
 
 | Variable | Default | Meaning |
 |---|---|---|
+| `PACHUD_ICONS` | on | `0` turns the status icons off. See [Status icons](#status-icons). |
+| `PACHUD_ICON_SIZE` | `24` | The size of the status icons in pixels, 12 to 128; by default 24 at the default font size, larger or smaller with it. |
+| `PACHUD_MARGIN` | `16` | The distance from the screen's edge to the stack (and to the top of the attention deck), in pixels, 0 to 200. |
+| `PACHUD_FONT_SIZE` | `16` | The size of the text in pixels, 10 to 48. Everything is scaled with it: all the fonts, the padding, the icons and bars, and the width of the cards and toasts, so a 20 makes the HUD 1.25 times as large. See [Size and fonts](#size-and-fonts). |
+| `PACHUD_WIDTH` | follows the font size (380) | The width of the cards, toasts and sliders in the stack, in pixels, 200 to 1200, on its own. |
+| `PACHUD_FONT` | built in | A font file (`.ttf`, `.otf`) for Latin text instead of the default. |
+| `PACHUD_FONT_BOLD` | | The bold file of that font; without it, bold is made from the regular one. |
 | `PACHUD_SCALE` | follows the compositor | Pin the render scale, 1 to 4 and fractions allowed (`1.5`). Normally unnecessary: pachud uses the scale the compositor asks for, per monitor. |
 | `PACHUD_CLICK` | on | `0` makes the HUD fully click-through: clicking a notification card then does nothing. |
-| `PACHUD_ANCHOR` | `top-right` | Where the HUD stack sits: `top-right`, `top-left`, `top`, `bottom-right`, `bottom-left` or `bottom`. The stack keeps clear of bars and docks. |
+| `PACHUD_ANCHOR` | `top-right` | Where the HUD stack sits (the [attention deck](#the-attention-deck) is always at the top centre, except that with `top` it is the stack): `top-right`, `top-left`, `top`, `bottom-right`, `bottom-left` or `bottom`. The stack keeps clear of bars and docks. |
 | `PACHUD_OUTPUT` | unset | Show HUDs on this monitor (`DP-1`, `HDMI-A-1`, ... as in `hyprctl monitors`). Unset lets the compositor choose, usually the focused one. An unknown name is reported once on stderr with the names that exist, and the compositor's choice is used. |
 | `PACHUD_FADE_MS` | 120 | Fade in/out duration in milliseconds; `0` turns the fade off. |
 | `PACHUD_PROBE_HOST` | unset | IPv4 address to ping for the slowdown alert. Unset means the probe does not exist. |
@@ -67,6 +75,30 @@ HUDs stack in one column, newest on top, in the top-right corner unless `PACHUD_
 
 Memory pressure and a low battery describe a condition that is often still true when pachud starts, so without care every restart (a new login, a service restart) would raise the same alert again. pachud therefore remembers, per source (memory, battery), the last alert it showed and how severe it was, in `$XDG_STATE_HOME/pachud/alerts`. During the first 60 seconds after start-up an alert is left out if it is not worse than one shown in the last 30 minutes: the same alert, or a milder one that the earlier one already covered (a warning after a critical alert). A worse one always comes through, and after the grace period everything behaves as usual, so pressure that is still there a minute later can alert again. Alerts left out this way do not start the cooldown between memory alerts, so an escalation right after is not held back, and a warning never holds back the critical alert that follows it. `PACHUD_STARTUP_GRACE=0` disables all of this.
 
+## The attention deck
+
+Most notifications do not need you, and it is easy to learn to ignore them. A few do, so those do not appear in the stack at the top right but in a place of their own, at the top centre:
+
+- notifications of **critical urgency**,
+- notifications with the category **`call.incoming`** (a call that is ringing),
+- pachud's own **critical alerts**: the red ones for battery, memory, disk space and temperature.
+
+Nothing else goes there, and it cannot be configured to: warnings (the amber ones, including a battery that is merely low), timers, alarms and everything ordinary stay in the stack. A notification that is replaced by its app and becomes critical moves to the deck, and back.
+
+The deck holds **three** at most, as a pile of cards. The **front** one is the oldest that is still unhandled, shown in full, and it is never swapped for a newer one, so it does not change under your pointer when something else arrives. The others sit behind it as one-line **strips** of their summaries, tucked under the front card and each a little narrower. When the front one is dismissed, handled or expires, the next comes forward. A fourth waits out of sight until there is room.
+
+The front card is the one that `pachud action`, `pachud expand`, `pachud dismiss` and the hover and click behaviour work on, before anything in the stack. Clicking a strip brings that card to the front (that is your choice, never done on its own), and right-clicking a strip dismisses that card without touching the front one. Each keeps its own timeout wherever it is in the pile. Critical notifications with no timeout asked for do not expire; they wait for you.
+
+Do-not-disturb still lets only critical urgency through, so a call of normal urgency is held back while it is on. The deck needs room beside the stack. With the stack in a top corner, the screen has to be at least 1204 logical pixels wide (three items of 380, two margins and two gaps of 16); on a narrower screen the two would overlap, so pachud does not use the deck there and attention items go in the stack at the top right like everything else, still colour-coded by level. The width is the *logical* one, after scaling (a 1920-pixel screen at scale 2 is 960 wide), read from the compositor with the `xdg-output` protocol and followed as it changes. Which screen: the one named by `PACHUD_OUTPUT`, else the one the HUD last appeared on, else (before it has ever appeared) the narrowest. If the width is not known it is taken to be enough. With a stack at the bottom corners the deck needs no width, being at the top, and with `PACHUD_ANCHOR=top` the stack is itself at the top centre, so there is no separate place and attention items simply go in the stack.
+
+## Reading long notifications
+
+A card shows the first four lines of its body. To read more, rest the pointer on the card: after a quarter of a second it opens to show the body up to 20 lines, and it closes when the pointer leaves. While the pointer is on a card, or the card is open, its timeout waits, so it does not vanish while you read; when you let go it stays for at least two seconds more. Passing over a card without stopping opens nothing.
+
+Without the mouse, `pachud expand` opens the newest card (`ok expanded`) and the same command closes it again (`ok collapsed`). An opened card does not expire until it is closed, so bind it to a key and close it when done. If an app updates a card you opened, it stays open.
+
+Only cards open this way; toasts and sliders are short and stay click-through. Opening by pointer needs the HUD to take the pointer over cards, so `PACHUD_CLICK=0` turns it off (`pachud expand` still works). Opening moves the cards below it down, and closing moves them back, so after moving from an open card to the one below, the lower card slides up and one more movement is needed to rest on it. A body is kept up to 2048 bytes; anything longer is cut, and beyond 20 lines an opened card ends in an ellipsis.
+
 ## Do not disturb
 
 `pachud dnd on` (or `on 30m` for a limited time) stops notification cards from appearing and from making sound, except critical ones. They are not queued for later: pachud just counts them and tells you when you switch it off ("Do not disturb off — 3 notifications skipped"). Timers, alarms, battery and memory alerts and the volume and brightness sliders are not affected, except that the opt-in sounds for power, devices and network (see [Sound](#sound)) are held back while it is on. The state lives in memory, so it resets when the daemon restarts. `pachud dnd toggle` suits a keybind; `pachud dnd status` prints the state, time left and the skipped count.
@@ -89,6 +121,39 @@ The history lives in memory only, in a fixed ring of 64 entries: when it is full
 **Who can see it.** The only way to read the history is `pachud history`, over the daemon's socket: there is no D-Bus method, no file and no log line for it. The socket is mode 0600 in `$XDG_RUNTIME_DIR`, and the daemon also checks that each client runs as the same user, so other users on the machine cannot read it or clear it. Without `$XDG_RUNTIME_DIR` the socket goes in `/tmp/pachud-UID/`, a directory pachud creates mode 0700 and refuses to use if it is anyone else's or open to others. The daemon is marked non-dumpable, so a crash leaves no core dump with the history in it and other processes, even of your own user, cannot read its memory through `/proc/PID/mem` or ptrace (the service unit also sets `LimitCORE=0`). The text is cleaned before it is printed: control characters, including escape sequences and the C1 controls, become spaces, so a notification cannot change what your terminal does when you list the history.
 
 What this does not cover: root can read anything, and so can a debugger started as root; the history is ordinary memory, so it can be written to swap unless swap is encrypted; and any process of your own user can already watch notifications as they arrive on the session bus, the same way `dbus-monitor` does, which no daemon can prevent. A notification the sender marks `transient` is never kept.
+
+## Status icons
+
+pachud's own messages come with the icon theme's status icons where the theme has them: a battery on the battery alerts, a plug or a cable for the charger, the network (offline, wired or wireless), a headset, headphones or microphone when one is connected, Bluetooth, a bell struck through for do-not-disturb, an alarm for timers, a drive for a full disk, and a speaker with more or fewer waves on the volume bar (and a microphone on the microphone bar), a sun on the brightness bar. They are the symbolic icons (`battery-low-symbolic`), which have no colour of their own, drawn in the text's colour, or in the level's amber or red for warnings and critical alerts. A theme with only coloured icons has them drawn as they are.
+
+The icons come from the GTK icon theme named in `~/.config/gtk-3.0/settings.ini`, then `hicolor`, `Adwaita` and `AdwaitaLegacy`, in the user's and the system's icon directories. Most themes ship SVG now (Adwaita and Breeze do, with no PNG), so pachud needs `librsvg` to draw them; built without it (`RSVG=0`) it finds only PNG icons, which on a modern theme is next to none. An icon the theme does not have is simply left out, and the text keeps the room. They are looked for once, the first time they are needed.
+
+- `PACHUD_ICONS=0` turns them all off.
+- `PACHUD_ICON_SIZE` sets their size in pixels (12 to 128). By default they are 24 at the default font size and follow `PACHUD_FONT_SIZE` like everything else; when set, the size is what you asked for.
+- `pachud toast -i battery-low "text"` and `pachud slider -i audio-volume-high 50 Label` give your own messages an icon, by name: any icon of the theme, or several separated by commas, of which the first that exists is used (`-i battery-low,dialog-warning`). Names are theme names, not paths.
+
+The notification cards from apps keep the icon the app sent; strips of the attention deck have none. Icons are the theme's, so which ones exist and how they look is up to it. The names pachud uses are the standard freedesktop ones, for example `battery-caution`, `network-offline`, `audio-volume-medium`, `display-brightness`.
+
+## Size and fonts
+
+For larger text, set `PACHUD_FONT_SIZE`, the size in pixels of the main text (16 by default; the summary, body, actions and the like are in proportion). It scales the whole HUD together, because text that grows inside a card that does not looks broken: the fonts, the padding, the icon, the accent bar, the sliders and the on-screen display, and the width of the cards and toasts. `PACHUD_FONT_SIZE=20` is 1.25 times everything, `24` is 1.5 times, and `12` is three quarters. Values outside 10 to 48 are brought to the nearest, and anything that is not a whole number of pixels is reported on stderr and ignored.
+
+`PACHUD_WIDTH` sets the width of the stack's items by itself, from 200 to 1200 pixels, without touching the sizes of anything else, for wider cards at the default size or a set width at any size. With both, the width is the one asked for and the rest follows the font. The on-screen display (the volume bar) follows the font only. The distance from the screen's edge is its own setting, `PACHUD_MARGIN` (16 pixels by default, 0 to 200), and is not scaled with the font.
+
+`PACHUD_FONT` is the path to a font file to use for Latin text, in place of the default (Noto Sans, or DejaVu or Liberation Sans where it is missing). `PACHUD_FONT_BOLD` is its bold; without one, bold text is the same file with the bold made by the renderer. Other scripts (Arabic, Chinese, Thai and so on) keep their own fonts, so only the Latin letters change, and the font has to have those letters: a missing one shows as a box. A path that is not a readable regular file is reported and the default is used. These settings are ignored in a build without translation support (`I18N=0`), which draws with the system's default font. Readable fonts made for dyslexia, such as Atkinson Hyperlegible, are the kind of use this is for.
+
+For a systemd service, put them in a drop-in (`systemctl --user edit pachud.service`):
+
+```ini
+[Service]
+Environment=PACHUD_FONT_SIZE=22
+Environment=PACHUD_FONT=/usr/share/fonts/atkinson-hyperlegible/AtkinsonHyperlegible-Regular.ttf
+Environment=PACHUD_FONT_BOLD=/usr/share/fonts/atkinson-hyperlegible/AtkinsonHyperlegible-Bold.ttf
+```
+
+`PACHUD_SCALE` is a different thing: it pins how sharply the HUD is rendered on a high-density screen, and does not change its size.
+
+The [attention deck](#the-attention-deck) needs three item widths of room (see there), so a large font or a large width makes it fall back to the stack on a screen that would have had room at the default size.
 
 ## Sound
 

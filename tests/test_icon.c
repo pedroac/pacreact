@@ -23,6 +23,78 @@ static void touch(const char *rel) {
 
 static bool find(const char *spec, char *out) { return icon_find(spec, out, 512); }
 
+/* ---- status icons ---- */
+
+static bool status(const char *names, bool svg, char *out, bool *symbolic) {
+    return icon_find_status(names, svg, out, 512, symbolic);
+}
+
+static void test_status(void) {
+    char out[512];
+    bool sym = false;
+    snprintf(out, sizeof out, "%s/gtk-3.0/settings.ini", root);   /* whatever theme the checks before chose */
+    unlink(out);
+    /* The Adwaita layout: symbolic/CONTEXT and scalable/CONTEXT, SVG */
+    touch("data/icons/Adwaita/symbolic/status/battery-low-symbolic.svg");
+    touch("data/icons/Adwaita/scalable/status/battery-low-symbolic.svg");
+    touch("data/icons/Adwaita/symbolic/devices/audio-headset-symbolic.svg");
+    touch("data/icons/Adwaita/scalable/status/only-coloured.svg");
+    /* The Breeze layout: CONTEXT/SIZE, SVG */
+    touch("data/icons/breeze/status/22/network-offline.svg");
+    touch("data/icons/breeze/status/16/network-offline.svg");
+    /* The legacy raster layout: SIZExSIZE/CONTEXT, PNG */
+    touch("data/icons/AdwaitaLegacy/24x24/legacy/audio-volume-high.png");
+    touch("data/icons/AdwaitaLegacy/16x16/status/dialog-warning.png");
+
+    /* With an SVG renderer: the symbolic icon, in the HUD's own colour, in the contexts themes use */
+    assert(status("battery-low", true, out, &sym) && strstr(out, "/Adwaita/symbolic/status/battery-low-symbolic.svg") && sym);
+    assert(status("audio-headset", true, out, &sym) && strstr(out, "/symbolic/devices/") && sym);
+    assert(status("only-coloured", true, out, &sym) && strstr(out, "/scalable/status/only-coloured.svg") && !sym);
+
+    /* Without one: SVG files are not even looked at, and only a PNG will do */
+    assert(!status("battery-low", false, out, &sym));
+    assert(!status("only-coloured", false, out, &sym));
+    assert(status("audio-volume-high", false, out, &sym) && strstr(out, "/AdwaitaLegacy/24x24/legacy/") && !sym);
+    assert(status("dialog-warning", false, out, &sym) && strstr(out, "/16x16/status/"));
+    assert(status("audio-volume-high", true, out, &sym) && strstr(out, ".png"));   /* a PNG is fine for both */
+
+    /* Breeze is only looked in when it is the configured theme: until then, the icon is not found */
+    assert(!status("network-offline", true, out, &sym));
+    char cfg[160];
+    snprintf(cfg, sizeof cfg, "%s/gtk-3.0", root);
+    snprintf(out, sizeof out, "mkdir -p %s", cfg);
+    assert(system(out) == 0);
+    snprintf(out, sizeof out, "%s/settings.ini", cfg);
+    FILE *f = fopen(out, "w");
+    assert(f && fputs("[Settings]\ngtk-icon-theme-name=breeze\n", f) >= 0 && !fclose(f));
+    assert(status("network-offline", true, out, &sym) && strstr(out, "/breeze/status/22/network-offline.svg") && !sym);
+
+    /* The configured theme comes first, even when another has a better kind of icon */
+    touch("data/icons/breeze/status/22/battery-low.svg");
+    assert(status("battery-low", true, out, &sym) && strstr(out, "/breeze/status/22/") && !sym);
+
+    /* Several names, comma separated: the first that exists, in the order written */
+    assert(status("no-such-icon,audio-headset", true, out, &sym) && strstr(out, "audio-headset"));
+    assert(status("audio-headset,battery-low", true, out, &sym) && strstr(out, "audio-headset"));
+    assert(status("battery-low,audio-headset", true, out, &sym) && strstr(out, "battery-low"));
+    assert(!status("no-such-icon,also-missing", true, out, &sym));
+
+    /* Anything that could leave the icon directories, or is no name at all, is refused */
+    assert(!status("../../etc/passwd", true, out, &sym));
+    assert(!status("/etc/passwd", true, out, &sym));
+    assert(!status(".hidden", true, out, &sym));
+    assert(!status("a/b", true, out, &sym));
+    assert(!status("", true, out, &sym) && !status(",,", true, out, &sym) && !status(NULL, true, out, &sym));
+    char long_name[200];
+    memset(long_name, 'a', sizeof long_name - 1);
+    long_name[sizeof long_name - 1] = '\0';
+    assert(!status(long_name, true, out, &sym));
+    assert(status("no-such,../x,battery-low", true, out, &sym) && strstr(out, "battery-low"));   /* a bad one is skipped */
+
+    snprintf(out, sizeof out, "%s/settings.ini", cfg);
+    unlink(out);
+}
+
 int main(void) {
     snprintf(root, sizeof root, "/tmp/pachud-icon-XXXXXX");
     assert(mkdtemp(root));
@@ -91,6 +163,8 @@ int main(void) {
     snprintf(expect, sizeof expect, "%s/data/icons/hicolor/48x48/apps/late.png", root);
     assert(unlink(expect) == 0);
     assert(!find("late", out));
+
+    test_status();
 
     char cmd[128];
     snprintf(cmd, sizeof cmd, "rm -rf %s", root);

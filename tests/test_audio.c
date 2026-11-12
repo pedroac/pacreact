@@ -26,10 +26,12 @@ void hud_toast(const char *text, Level level, int ms) {
 static int volume_sounds, other_sounds;
 void sound_play(SoundKind k) { if (k == SOUND_VOLUME) volume_sounds++; else other_sounds++; }
 
-void hud_osd_slider(const char *label, int percent, bool dim, OsdAnchor anchor) {
+static char slider_icon[96];
+void hud_osd_slider(const char *label, int percent, bool dim, OsdAnchor anchor, const char *icon) {
     (void)anchor;
     slider_calls++;
     snprintf(slider_label, sizeof slider_label, "%s", label);
+    snprintf(slider_icon, sizeof slider_icon, "%s", icon ? icon : "");
     slider_pct = percent;
     slider_dim = dim;
 }
@@ -537,11 +539,46 @@ static void test_volume_sound(void) {
     drop_pair();
 }
 
+static void test_volume_icons(void) {
+    /* The speaker with more or fewer waves as the level rises, struck through when muted */
+    assert(!strcmp(icon_for(T_SINK, 0, false), "audio-volume-muted"));
+    assert(!strcmp(icon_for(T_SINK, 50, true), "audio-volume-muted"));
+    assert(!strcmp(icon_for(T_SINK, 1, false), "audio-volume-low"));
+    assert(!strcmp(icon_for(T_SINK, 33, false), "audio-volume-low"));
+    assert(!strcmp(icon_for(T_SINK, 34, false), "audio-volume-medium"));
+    assert(!strcmp(icon_for(T_SINK, 66, false), "audio-volume-medium"));
+    assert(!strcmp(icon_for(T_SINK, 67, false), "audio-volume-high"));
+    assert(!strcmp(icon_for(T_SINK, 100, false), "audio-volume-high"));
+    assert(!strncmp(icon_for(T_SINK, 101, false), "audio-volume-overamplified", 26));   /* with a fallback */
+    assert(strstr(icon_for(T_SINK, 150, false), "audio-volume-high"));
+    /* the microphone has its own set */
+    assert(!strcmp(icon_for(T_SOURCE, 80, true), "microphone-sensitivity-muted"));
+    assert(!strcmp(icon_for(T_SOURCE, 10, false), "microphone-sensitivity-low"));
+    assert(!strcmp(icon_for(T_SOURCE, 50, false), "microphone-sensitivity-medium"));
+    assert(!strcmp(icon_for(T_SOURCE, 90, false), "microphone-sensitivity-high"));
+
+    /* and is what the bar is shown with */
+    connect_pair(S_READY);
+    read_reply(T_SINK, sink_info_named(0x4000, '0', "out", "Speakers"), false);      /* 25% */
+    read_reply(T_SINK, sink_info_named(0x8000, '0', "out", "Speakers"), true);       /* 50% */
+    assert(!strcmp(slider_icon, "audio-volume-medium"));
+    read_reply(T_SINK, sink_info_named(0x8000, '1', "out", "Speakers"), true);       /* muted */
+    assert(!strcmp(slider_icon, "audio-volume-muted"));
+    read_reply(T_SINK, sink_info_named(0x4000, '0', "out", "Speakers"), true);       /* 25% */
+    assert(!strcmp(slider_icon, "audio-volume-low"));
+    read_reply(T_SINK, sink_info_named(0x4000, '0', "out2", "Headset"), true);       /* another output */
+    assert(strstr(slider_icon, "audio-speakers") && !strcmp(slider_label, "Audio output: Headset"));
+    read_reply(T_SOURCE, sink_info_named(0xC000, '0', "mic", "Mic"), true);          /* 75% */
+    assert(!strcmp(slider_icon, "microphone-sensitivity-high") && !strcmp(slider_label, "Microphone"));
+    drop_pair();
+}
+
 int main(void) {
     test_handshake_packets();
     test_sink_info_parsing();
     test_output_change();
     test_volume_sound();
+    test_volume_icons();
     test_microphone_track();
     test_request_queue();
     test_events();

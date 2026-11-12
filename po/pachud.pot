@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: pachud\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-12 01:30+0000\n"
+"POT-Creation-Date: 2026-11-12 04:36+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -102,6 +102,18 @@ msgstr ""
 
 #: src/main.c
 msgid "bad slider message"
+msgstr ""
+
+#: src/main.c
+msgid "no notification on screen"
+msgstr ""
+
+#: src/main.c
+msgid "expanded"
+msgstr ""
+
+#: src/main.c
+msgid "collapsed"
 msgstr ""
 
 #: src/main.c

@@ -4,6 +4,7 @@
 #include "scale.h"
 #include "viewporter-client-protocol.h"
 #include "xdg-activation-v1-client-protocol.h"
+#include "xdg-output-unstable-v1-client-protocol.h"
 #include "wlr-layer-shell-unstable-v1-client-protocol.h"
 #include <errno.h>
 #include <linux/input-event-codes.h>
@@ -14,9 +15,11 @@
 #include <unistd.h>
 #include <wayland-client.h>
 
-#define MARGIN 16
+#define DEFAULT_MARGIN 16   /* from the screen's edge, in pixels; PACHUD_MARGIN */
+#define MARGIN_MAX 200
 #define DEFAULT_FADE_MS 120
 #define MAX_OUTPUTS 8
+#define DECK_GAP 16   /* the least space between the deck and the stack for them to count as apart */
 
 struct Buf {
     struct wl_buffer *wl;
@@ -30,6 +33,8 @@ struct Buf {
 typedef struct {
     uint32_t global;            /* registry name, to notice when it goes away */
     struct wl_output *proxy;    /* NULL: slot unused */
+    struct zxdg_output_v1 *xdg; /* what tells us the logical size, when the compositor has xdg-output */
+    int logical_w;              /* in logical pixels, 0 until told */
     char name[64];              /* "DP-1", "HDMI-A-1", ... */
 } Output;
 
@@ -45,6 +50,8 @@ struct Surface {
     Buf *pending;      /* waiting for the next configure */
     bool configured, mapped;
     int w, h;          /* logical size last sent to the compositor */
+    ClickRect rects[CLICK_RECTS_MAX];      /* where it takes clicks: the rest is click-through */
+    int nrects;
     void (*attach)(Surface *s, Buf *b);    /* shows a buffer; the stack also fades in on the first */
     void (*destroy)(Surface *s);           /* the compositor closed it */
 };
@@ -65,18 +72,21 @@ struct Display {
     struct wl_pointer *pointer;
     struct wl_surface *pointer_surface;  /* the surface the pointer is over, if it is ours */
     double px, py;                /* the pointer, in that surface's logical pixels */
-    ClickRect rects[CLICK_RECTS_MAX];
-    int nrects;
-    void (*click_cb)(int x, int y, bool secondary);
+    void (*click_cb)(int area, int x, int y, bool secondary);
+    void (*hover_cb)(int area, int x, int y, bool over);
     uint32_t click_serial;        /* the input serial of the click being handled */
+    struct zxdg_output_manager_v1 *xdg_manager;   /* optional: without it the screen's size is not known */
+    int last_out;                 /* 1 + the index of the output the HUD last appeared on, 0 for none yet */
     struct xdg_activation_v1 *activation;   /* optional: without it clicks carry no token */
     struct xdg_activation_token_v1 *token;  /* a request waiting for the compositor's answer */
     void (*token_fn)(const char *token, void *ctx);
     void *token_ctx;
+    int margin;                   /* the distance of the stack, and the deck's top, from the screen's edge */
     uint32_t anchor;              /* where the notification stack sits: PACHUD_ANCHOR */
     int align;                    /* 0 left, 1 centre, 2 right: how items line up in the stack */
 
     Surface main;      /* the notification stack */
+    Surface deck;      /* the attention deck, at the top centre */
     Surface osd;       /* the on-screen display: volume, brightness, device changes */
     OsdAnchor osd_anchor;
     int scale120;        /* what new buffers are rendered at, in 120ths */
@@ -133,6 +143,37 @@ static const struct wl_output_listener output_listener = {
     .name = out_name, .description = out_description,
 };
 
+/* xdg-output: the logical size of an output, which is what layer surfaces are measured in: the
+ * physical size divided by the scale (fractional ones too) and turned for a rotated screen. */
+static void xdg_position(void *data, struct zxdg_output_v1 *x, int32_t px, int32_t py) {
+    (void)data; (void)x; (void)px; (void)py;
+}
+static void xdg_size(void *data, struct zxdg_output_v1 *x, int32_t w, int32_t h) {
+    (void)x; (void)h;
+    ((Output *)data)->logical_w = w;
+}
+static void xdg_done(void *data, struct zxdg_output_v1 *x) { (void)data; (void)x; }
+static void xdg_name(void *data, struct zxdg_output_v1 *x, const char *name) { (void)data; (void)x; (void)name; }
+static void xdg_description(void *data, struct zxdg_output_v1 *x, const char *d) { (void)data; (void)x; (void)d; }
+
+static const struct zxdg_output_v1_listener xdg_output_listener = {
+    .logical_position = xdg_position, .logical_size = xdg_size, .done = xdg_done,
+    .name = xdg_name, .description = xdg_description,
+};
+
+/* Starts listening for the size of an output, once there is both the output and the manager */
+static void watch_output(Display *d, Output *o) {
+    if (!d->xdg_manager || !o->proxy || o->xdg) return;
+    o->xdg = zxdg_output_manager_v1_get_xdg_output(d->xdg_manager, o->proxy);
+    zxdg_output_v1_add_listener(o->xdg, &xdg_output_listener, o);
+}
+
+/* Which of the HUD's areas a surface is, or -1 if it is not ours (or has no input at all) */
+static int area_of(Display *d, struct wl_surface *s) {
+    if (!s) return -1;
+    return s == d->deck.wl ? DISPLAY_AREA_DECK : s == d->main.wl ? DISPLAY_AREA_STACK : -1;
+}
+
 static void ptr_enter(void *data, struct wl_pointer *p, uint32_t serial, struct wl_surface *s,
                       wl_fixed_t x, wl_fixed_t y) {
     Display *d = data;
@@ -140,26 +181,33 @@ static void ptr_enter(void *data, struct wl_pointer *p, uint32_t serial, struct 
     d->pointer_surface = s;
     d->px = wl_fixed_to_double(x);
     d->py = wl_fixed_to_double(y);
+    int area = area_of(d, s);
+    if (area >= 0 && d->hover_cb) d->hover_cb(area, (int)d->px, (int)d->py, true);
 }
 static void ptr_leave(void *data, struct wl_pointer *p, uint32_t serial, struct wl_surface *s) {
     Display *d = data;
     (void)p; (void)serial; (void)s;
+    int area = area_of(d, d->pointer_surface);
     d->pointer_surface = NULL;
+    if (area >= 0 && d->hover_cb) d->hover_cb(area, 0, 0, false);
 }
 static void ptr_motion(void *data, struct wl_pointer *p, uint32_t time, wl_fixed_t x, wl_fixed_t y) {
     Display *d = data;
     (void)p; (void)time;
     d->px = wl_fixed_to_double(x);
     d->py = wl_fixed_to_double(y);
+    int area = area_of(d, d->pointer_surface);
+    if (area >= 0 && d->hover_cb) d->hover_cb(area, (int)d->px, (int)d->py, true);
 }
 static void ptr_button(void *data, struct wl_pointer *p, uint32_t serial, uint32_t time,
                        uint32_t button, uint32_t state) {
     Display *d = data;
     (void)p; (void)time;
     d->click_serial = serial;
+    int area = area_of(d, d->pointer_surface);
     if ((button == BTN_LEFT || button == BTN_RIGHT) && state == WL_POINTER_BUTTON_STATE_PRESSED &&
-        d->main.wl && d->pointer_surface == d->main.wl && d->click_cb)
-        d->click_cb((int)d->px, (int)d->py, button == BTN_RIGHT);
+        area >= 0 && d->click_cb)
+        d->click_cb(area, (int)d->px, (int)d->py, button == BTN_RIGHT);
 }
 static void ptr_axis(void *data, struct wl_pointer *p, uint32_t time, uint32_t axis, wl_fixed_t v) {
     (void)data; (void)p; (void)time; (void)axis; (void)v;
@@ -191,7 +239,9 @@ static void registry_global(void *data, struct wl_registry *reg, uint32_t name,
             d->outputs[i].global = name;
             d->outputs[i].name[0] = '\0';
             d->outputs[i].proxy = wl_registry_bind(reg, name, &wl_output_interface, 4);
+            d->outputs[i].logical_w = 0;
             wl_output_add_listener(d->outputs[i].proxy, &output_listener, &d->outputs[i]);
+            watch_output(d, &d->outputs[i]);
             break;
         }
         return;
@@ -209,7 +259,10 @@ static void registry_global(void *data, struct wl_registry *reg, uint32_t name,
         d->frac_mgr = wl_registry_bind(reg, name, &wp_fractional_scale_manager_v1_interface, 1);
     else if (!strcmp(iface, wp_viewporter_interface.name))
         d->viewporter = wl_registry_bind(reg, name, &wp_viewporter_interface, 1);
-    else if (!strcmp(iface, xdg_activation_v1_interface.name))
+    else if (!strcmp(iface, zxdg_output_manager_v1_interface.name)) {
+        d->xdg_manager = wl_registry_bind(reg, name, &zxdg_output_manager_v1_interface, 1);
+        for (int i = 0; i < MAX_OUTPUTS; i++) watch_output(d, &d->outputs[i]);   /* outputs that came first */
+    } else if (!strcmp(iface, xdg_activation_v1_interface.name))
         d->activation = wl_registry_bind(reg, name, &xdg_activation_v1_interface, 1);
     else if (!strcmp(iface, wp_alpha_modifier_v1_interface.name))
         d->alpha_mgr = wl_registry_bind(reg, name, &wp_alpha_modifier_v1_interface, 1);
@@ -220,9 +273,13 @@ static void registry_remove(void *data, struct wl_registry *reg, uint32_t name) 
     (void)reg;
     for (int i = 0; i < MAX_OUTPUTS; i++) {
         if (d->outputs[i].proxy && d->outputs[i].global == name) {  /* a monitor was unplugged */
+            if (d->outputs[i].xdg) zxdg_output_v1_destroy(d->outputs[i].xdg);
             wl_output_release(d->outputs[i].proxy);
             d->outputs[i].proxy = NULL;
+            d->outputs[i].xdg = NULL;
+            d->outputs[i].logical_w = 0;
             d->outputs[i].name[0] = '\0';
+            if (d->last_out == i + 1) d->last_out = 0;
         }
     }
 }
@@ -304,6 +361,23 @@ static void parse_anchor(Display *d, const char *name) {
                     "bottom-right, bottom-left, bottom\n", name);
 }
 
+/* PACHUD_MARGIN: pixels from the screen's edge, 0 to 200; anything else is said so and the default stays */
+static void parse_margin(Display *d, const char *value) {
+    d->margin = DEFAULT_MARGIN;
+    if (!value || !*value) return;
+    char *end;
+    long n = strtol(value, &end, 10);
+    if (*end || n < 0) {
+        fprintf(stderr, "pachud: PACHUD_MARGIN must be a whole number of pixels, not \"%s\"; ignored\n", value);
+        return;
+    }
+    if (n > MARGIN_MAX) {
+        fprintf(stderr, "pachud: PACHUD_MARGIN=%ld is outside 0 to %d; using %d\n", n, MARGIN_MAX, MARGIN_MAX);
+        n = MARGIN_MAX;
+    }
+    d->margin = (int)n;
+}
+
 Display *display_open(void) {
     Display *d = calloc(1, sizeof *d);
     if (!d) return NULL;
@@ -324,6 +398,7 @@ Display *display_open(void) {
     const char *want = getenv("PACHUD_OUTPUT");
     d->want_output = want && *want ? want : NULL;
     parse_anchor(d, getenv("PACHUD_ANCHOR"));
+    parse_margin(d, getenv("PACHUD_MARGIN"));
 
     int fixed = parse_scale120(getenv("PACHUD_SCALE"));  /* e.g. 1.5, 2; unset follows the compositor */
     d->scale120 = fixed ? fixed : SCALE_UNIT;
@@ -339,16 +414,21 @@ Display *display_open(void) {
 }
 
 static void surf_destroy(Surface *s);
+static void deck_destroy(Surface *s);
 
 void display_close(Display *d) {
     if (!d) return;
     destroy_surface(d);
+    deck_destroy(&d->deck);
     surf_destroy(&d->osd);
     if (d->alpha_mgr) wp_alpha_modifier_v1_destroy(d->alpha_mgr);
     if (d->frac_mgr) wp_fractional_scale_manager_v1_destroy(d->frac_mgr);
     if (d->viewporter) wp_viewporter_destroy(d->viewporter);
-    for (int i = 0; i < MAX_OUTPUTS; i++)
+    for (int i = 0; i < MAX_OUTPUTS; i++) {
+        if (d->outputs[i].xdg) zxdg_output_v1_destroy(d->outputs[i].xdg);
         if (d->outputs[i].proxy) wl_output_release(d->outputs[i].proxy);
+    }
+    if (d->xdg_manager) zxdg_output_manager_v1_destroy(d->xdg_manager);
     if (d->token) xdg_activation_token_v1_destroy(d->token);
     if (d->activation) xdg_activation_v1_destroy(d->activation);
     if (d->pointer) wl_pointer_destroy(d->pointer);
@@ -424,7 +504,7 @@ static void preferred_scale(void *data, struct wp_fractional_scale_v1 *f, uint32
     (void)f;
     if (d->scale_fixed || scale < SCALE_MIN || scale > SCALE_MAX || (int)scale == d->scale120) return;
     d->scale120 = (int)scale;  /* later HUDs start at the right scale */
-    if (d->main.wl && d->rescale_cb) d->rescale_cb();  /* and the one on screen is drawn again */
+    if ((d->main.wl || d->deck.wl) && d->rescale_cb) d->rescale_cb();  /* and the one on screen is drawn again */
 }
 
 static const struct wp_fractional_scale_v1_listener fractional_listener = {
@@ -448,20 +528,21 @@ static struct wl_output *pick_output(Display *d) {
     return NULL;
 }
 
-/* An empty input region makes the HUD click-through; clicks are taken only inside the rectangles. */
-static void apply_click_region(Display *d) {
-    if (!d->main.wl) return;
-    struct wl_region *region = wl_compositor_create_region(d->compositor);
-    for (int i = 0; d->click && i < d->nrects; i++)
-        wl_region_add(region, d->rects[i].x, d->rects[i].y, d->rects[i].w, d->rects[i].h);
-    wl_surface_set_input_region(d->main.wl, region);
+/* An empty input region makes a surface click-through; clicks are taken only inside its rectangles. */
+static void apply_click_region(Surface *s) {
+    if (!s->wl) return;
+    struct wl_region *region = wl_compositor_create_region(s->d->compositor);
+    for (int i = 0; s->d->click && i < s->nrects; i++)
+        wl_region_add(region, s->rects[i].x, s->rects[i].y, s->rects[i].w, s->rects[i].h);
+    wl_surface_set_input_region(s->wl, region);
     wl_region_destroy(region);
 }
 
-void display_set_click_rects(Display *d, const ClickRect *rects, int n) {
-    d->nrects = n > CLICK_RECTS_MAX ? CLICK_RECTS_MAX : n;
-    for (int i = 0; i < d->nrects; i++) d->rects[i] = rects[i];
-    apply_click_region(d);
+void display_set_click_rects(Display *d, int area, const ClickRect *rects, int n) {
+    Surface *s = area == DISPLAY_AREA_DECK ? &d->deck : &d->main;
+    s->nrects = n > CLICK_RECTS_MAX ? CLICK_RECTS_MAX : n;
+    for (int i = 0; i < s->nrects; i++) s->rects[i] = rects[i];
+    apply_click_region(s);
 }
 
 static void token_done(void *data, struct xdg_activation_token_v1 *t, const char *token) {
@@ -476,19 +557,21 @@ static void token_done(void *data, struct xdg_activation_token_v1 *t, const char
 static const struct xdg_activation_token_v1_listener token_listener = { .done = token_done };
 
 bool display_request_token(Display *d, void (*fn)(const char *token, void *ctx), void *ctx) {
-    if (!d->activation || !d->seat || !d->main.wl || d->token) return false;
+    struct wl_surface *clicked = d->pointer_surface;   /* the surface of the click being handled */
+    if (!d->activation || !d->seat || !clicked || d->token) return false;
     d->token = xdg_activation_v1_get_activation_token(d->activation);
     xdg_activation_token_v1_add_listener(d->token, &token_listener, d);
     xdg_activation_token_v1_set_serial(d->token, d->click_serial, d->seat);
     xdg_activation_token_v1_set_app_id(d->token, "pachud");
-    xdg_activation_token_v1_set_surface(d->token, d->main.wl);
+    xdg_activation_token_v1_set_surface(d->token, clicked);
     xdg_activation_token_v1_commit(d->token);
     d->token_fn = fn;
     d->token_ctx = ctx;
     return true;
 }
 
-void display_on_click(Display *d, void (*fn)(int x, int y, bool secondary)) { d->click_cb = fn; }
+void display_on_click(Display *d, void (*fn)(int area, int x, int y, bool secondary)) { d->click_cb = fn; }
+void display_on_hover(Display *d, void (*fn)(int area, int x, int y, bool over)) { d->hover_cb = fn; }
 
 static void buf_finish(Buf *b, cairo_t *cr) {
     cairo_destroy(cr);
@@ -529,6 +612,18 @@ static const struct zwlr_layer_surface_v1_listener layer_listener = {
     .closed = layer_closed,
 };
 
+/* The output a surface is on: where the HUD appears is what its width is judged by */
+static void surface_enter(void *data, struct wl_surface *wl, struct wl_output *output) {
+    Surface *s = data;
+    (void)wl;
+    for (int i = 0; i < MAX_OUTPUTS; i++)
+        if (s->d->outputs[i].proxy == output) s->d->last_out = i + 1;
+}
+static void surface_leave(void *data, struct wl_surface *wl, struct wl_output *output) {
+    (void)data; (void)wl; (void)output;
+}
+static const struct wl_surface_listener surface_listener = { .enter = surface_enter, .leave = surface_leave };
+
 /* A click-through overlay surface; the caller adds what is particular to it. */
 static void surf_open(Display *d, Surface *s, const char *name, uint32_t anchor,
                       void (*attach)(Surface *, Buf *), void (*destroy)(Surface *)) {
@@ -536,6 +631,7 @@ static void surf_open(Display *d, Surface *s, const char *name, uint32_t anchor,
     s->attach = attach;
     s->destroy = destroy;
     s->wl = wl_compositor_create_surface(d->compositor);
+    wl_surface_add_listener(s->wl, &surface_listener, s);
     s->layer = zwlr_layer_shell_v1_get_layer_surface(d->layer_shell, s->wl, pick_output(d),
                                                      ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY, name);
     zwlr_layer_surface_v1_set_anchor(s->layer, anchor);
@@ -602,7 +698,7 @@ static void stack_gone(Surface *s) { destroy_surface(s->d); }
 
 static void create_surface(Display *d) {
     surf_open(d, &d->main, "pachud", d->anchor, stack_attach, stack_gone);
-    zwlr_layer_surface_v1_set_margin(d->main.layer, MARGIN, MARGIN, MARGIN, MARGIN);
+    zwlr_layer_surface_v1_set_margin(d->main.layer, d->margin, d->margin, d->margin, d->margin);
 
     if (d->alpha_mgr) {  /* start invisible; the first buffer fades in */
         d->alpha = wp_alpha_modifier_v1_get_surface(d->alpha_mgr, d->main.wl);
@@ -612,7 +708,7 @@ static void create_surface(Display *d) {
         d->cur_alpha = 1;
     }
 
-    apply_click_region(d);
+    apply_click_region(&d->main);
 }
 
 void display_present(Display *d, Buf *b, cairo_t *cr) {
@@ -644,6 +740,57 @@ void display_hide(Display *d) {
         return;
     }
     if (!d->hiding) destroy_surface(d);
+}
+
+/* ---- the attention deck ---- */
+
+static void deck_attach(Surface *s, Buf *b) {
+    surf_attach_buffer(s, b);
+    wl_surface_commit(s->wl);
+}
+
+/* Closed by the compositor or hidden by us: the pointer can no longer be over it */
+static void deck_destroy(Surface *s) {
+    if (!s->wl) return;   /* never opened (s->d is not set yet) */
+    if (s->d->pointer_surface == s->wl) s->d->pointer_surface = NULL;
+    surf_destroy(s);
+}
+
+void display_deck_present(Display *d, Buf *b, cairo_t *cr) {
+    buf_finish(b, cr);
+    if (!d->deck.wl) {
+        surf_open(d, &d->deck, "pachud-attention", EDGE_T, deck_attach, deck_destroy);
+        zwlr_layer_surface_v1_set_margin(d->deck.layer, d->margin, 0, 0, 0);
+        apply_click_region(&d->deck);
+    }
+    surf_show(&d->deck, b, false);
+}
+
+void display_deck_hide(Display *d) { deck_destroy(&d->deck); }
+
+int display_output_width(Display *d) {
+    if (d->want_output) {
+        for (int i = 0; i < MAX_OUTPUTS; i++)
+            if (d->outputs[i].proxy && !strcmp(d->outputs[i].name, d->want_output)) return d->outputs[i].logical_w;
+        return 0;
+    }
+    if (d->last_out && d->outputs[d->last_out - 1].proxy) return d->outputs[d->last_out - 1].logical_w;
+    int narrowest = 0;   /* never shown yet, and no way to know where it will be: be careful */
+    for (int i = 0; i < MAX_OUTPUTS; i++) {
+        int w = d->outputs[i].proxy ? d->outputs[i].logical_w : 0;
+        if (w > 0 && (!narrowest || w < narrowest)) narrowest = w;
+    }
+    return narrowest;
+}
+
+bool display_deck_apart(Display *d, int item_width) {
+    if (d->anchor == EDGE_T) return false;       /* the stack is where the deck would be */
+    if (!(d->anchor & EDGE_T)) return true;      /* the stack is at the bottom: the top is free */
+    int w = display_output_width(d);
+    if (w <= 0) return true;                     /* not known: take it to be enough */
+    /* The stack in a top corner, the deck in the middle: the deck's far edge, a gap and the stack's
+     * near edge must fit, that is two margins, two gaps and three items across the screen */
+    return w >= 3 * item_width + 2 * d->margin + 2 * DECK_GAP;
 }
 
 /* ---- the on-screen display ---- */

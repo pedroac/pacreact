@@ -43,7 +43,7 @@ static void turn_on(long secs, const char *spec) {
     char msg[96];
     if (secs > 0) snprintf(msg, sizeof msg, _("Do not disturb on for %s"), spec);
     else snprintf(msg, sizeof msg, "%s", _("Do not disturb on"));
-    hud_toast(msg, LEVEL_INFO, NOTE_MS);
+    hud_toast_icon(msg, LEVEL_INFO, NOTE_MS, "notifications-disabled");
 }
 
 static void turn_off(void) {
@@ -60,7 +60,7 @@ static void turn_off(void) {
                  missed);
     else
         snprintf(msg, sizeof msg, "%s", _("Do not disturb off"));
-    hud_toast(msg, LEVEL_INFO, NOTE_MS);
+    hud_toast_icon(msg, LEVEL_INFO, NOTE_MS, "notifications,preferences-system-notifications");
 }
 
 static void on_timer(void *ctx, uint32_t ev) {

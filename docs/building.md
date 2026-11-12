@@ -8,6 +8,7 @@
 | `cairo` | drawing |
 | `libsystemd` | sd-bus, for notifications only (`NOTIFY=0` drops it) |
 | `freetype2`, `harfbuzz`, `fribidi` | per-language fonts and Arabic/Hebrew shaping (`I18N=0` drops them) |
+| `librsvg` | drawing the SVG status icons that most icon themes ship now (optional: `RSVG=0` drops it, and icons are then only found as PNG files; the default `RSVG=auto` uses it when installed) |
 | `gettext` (`msgfmt`) | building the translation catalogs at build time |
 | `pkgconf`, a C compiler, `make` | build |
 
@@ -19,6 +20,7 @@ There is no build or runtime dependency on `libpulse` or `pactl`: volume is read
 make                 # everything
 make NOTIFY=0        # no notification daemon, no libsystemd
 make I18N=0          # English only: no catalogs, FreeType, HarfBuzz or FriBidi
+make RSVG=0          # no librsvg: status icons only from PNG files (Adwaita and Breeze ship SVG only)
 make LOCALEDIR=$PWD/build/locale   # development: find catalogs in the build tree
 make test            # unit tests (no display needed)
 ```
@@ -72,4 +74,4 @@ Several suites `#include` the source file under test so that its static internal
 
 The rest was checked by running the daemon on a real Wayland session, with isolated environments so nothing else was affected: a private session bus for notifications (`dbus-run-session`) and a private network namespace for network and probe behaviour (`unshare -Urn`).
 
-Checks that need a Wayland session (and `grim`) live in `tests/manual/` and write screenshots to `build/shots/`: `i18n_test.sh` (translations, scripts, right-to-left; build with `make LOCALEDIR=$PWD/build/locale` first), `fade_test.sh` (fade and surface cleanup, Hyprland only), `dnd_test.sh` and `notify_features_test.sh` (run under `dbus-run-session`: do not disturb, actions, icon names, `image-data`), `startup_grace_test.sh` (a real memory-pressure alert across restarts; needs a machine that is actually under pressure), `stack_test.sh` (several HUDs stacked, at the default and a bottom-left anchor), `click_test.sh` (clicking a card with a virtual pointer, with and without `PACHUD_CLICK=0`; run under `dbus-run-session`), `spec_test.sh` (`CloseNotification` and its error, the signal for a notification do-not-disturb suppressed, a critical card that outlives 15 s, and `pachud history`; run under `dbus-run-session`), and `output_test.sh` and `scale_test.sh` (two virtual outputs and the viewport path in a nested headless `labwc`).
+Checks that need a Wayland session (and `grim`) live in `tests/manual/` and write screenshots to `build/shots/`: `i18n_test.sh` (translations, scripts, right-to-left; build with `make LOCALEDIR=$PWD/build/locale` first), `fade_test.sh` (fade and surface cleanup, Hyprland only), `dnd_test.sh` and `notify_features_test.sh` (run under `dbus-run-session`: do not disturb, actions, icon names, `image-data`), `startup_grace_test.sh` (a real memory-pressure alert across restarts; needs a machine that is actually under pressure), `stack_test.sh` (several HUDs stacked, at the default and a bottom-left anchor), `icons_test.sh` (status icons, `PACHUD_ICONS`, `PACHUD_ICON_SIZE` and `PACHUD_MARGIN`, measured in screenshots with the installed theme), `size_test.sh` (`PACHUD_FONT_SIZE`, `PACHUD_WIDTH` and `PACHUD_FONT`: the same card measured at several sizes and with another font), `deck_test.sh` (ordinary notifications at the top right; critical ones, calls and critical system toasts at the top centre as a pile; clicking a strip; run under `dbus-run-session`), `expand_test.sh` (a long notification opening on hover and with `pachud expand`, measured in screenshots), `click_test.sh` (clicking a card with a virtual pointer, with and without `PACHUD_CLICK=0`; run under `dbus-run-session`), `spec_test.sh` (`CloseNotification` and its error, the signal for a notification do-not-disturb suppressed, a critical card that outlives 15 s, and `pachud history`; run under `dbus-run-session`), and `output_test.sh` and `scale_test.sh` (two virtual outputs and the viewport path in a nested headless `labwc`).

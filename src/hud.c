@@ -21,13 +21,15 @@ static long long now_ms(void) {
 }
 
 static void on_rescale(void);
-static void on_click(int x, int y, bool secondary);
+static void on_click(int area, int x, int y, bool secondary);
+static void on_hover(int area, int x, int y, bool over);
 
 void hud_init(Display *d) {
     dpy = d;
     if (d) {
         display_on_rescale(d, on_rescale);
         display_on_click(d, on_click);
+        display_on_hover(d, on_hover);
     }
 }
 
@@ -36,13 +38,14 @@ void hud_init(Display *d) {
  * they wait in a queue for room. Ephemeral items (slider, info toast) never wait: a full stack
  * makes room by dropping the oldest ephemeral one, or the new one is dropped if there is none. */
 typedef struct {
-    bool slider, dim, card, has_default, resident;
+    bool slider, dim, card, has_default, resident, expanded, attention;
     Level level;
     int ms, percent;
     long long deadline;   /* when it leaves the screen, on the monotonic clock */
     uint32_t id;
     char text[256];   /* toast text, slider label or card summary */
-    char body[512];
+    char icon[64];    /* a toast's or slider's status icon: a name, or a few, comma separated */
+    char body[PAINT_BODY_MAX];
     int nact;
     char act_key[HUD_MAX_ACTIONS][64];
     char act_label[HUD_MAX_ACTIONS][64];
@@ -51,12 +54,21 @@ typedef struct {
 } Item;
 
 #define STACK_MAX 4
-#define STACK_GAP 8
+#define DECK_MAX 3
+#define ITEMS_MAX (STACK_MAX + DECK_MAX)
+#define STACK_GAP paint_px(8)
 #define QUEUE_MAX 8
 #define SLIDER_MS 1500
 
-static Item stack[STACK_MAX], queue[QUEUE_MAX];
-static int nstack, queued;
+/* Everything on screen, in one array: first the stack's items, newest first, then the deck's, the
+ * front one first (the oldest of them). `ndeck` is how many of the last ones are the deck's. */
+static Item stack[ITEMS_MAX], queue[QUEUE_MAX];
+static int nstack, ndeck, queued;
+
+#define NSTACK (nstack - ndeck)
+#define DECK_FRONT (nstack - ndeck)   /* the index of the deck's front item, when there is one */
+
+static bool apart(void) { return display_deck_apart(dpy, PAINT_ITEM_W); }
 
 static long long deadline_for(int ms) { return ms == HUD_NEVER ? LLONG_MAX : now_ms() + ms; }
 
@@ -80,36 +92,60 @@ static void closed(const Item *it, int reason) {
     if (it->id && closed_cb && reason) closed_cb(it->id, reason);
 }
 
+/* Reading a long notification. The pointer over a card holds it (its timeout waits) and, after a
+ * moment, opens it to show more of its body; `pachud expand` does the same from the keyboard, for
+ * as long as it is not toggled again. When a card stops being held it stays at least this long. */
+#define HOVER_DELAY_MS 250
+#define HOLD_GRACE_MS 2000
+
+static uint32_t hover_id;      /* the card the pointer is over, or 0 */
+static uint32_t hover_open;    /* the card opened by the hover: the same one, once the delay has passed */
+static long long hover_since;
+static bool ptr_over;          /* the pointer is on the HUD, here, in this area */
+static int ptr_area, ptr_x, ptr_y;
+
+static bool held(const Item *it) { return it->card && (it->expanded || it->id == hover_id); }
+
 static void paint_item(cairo_t *cr, const Item *it, int *w, int *h) {
-    if (it->slider) paint_slider(cr, it->text, it->percent, it->dim, w, h);
+    if (it->slider) paint_slider(cr, it->text, it->percent, it->dim, it->icon, PAINT_ITEM_W, w, h);
     else if (it->card) {
         CardPaint c = { .summary = it->text, .body = it->body, .level = it->level,
-                        .image = it->has_image ? it->image : NULL, .nact = it->nact };
+                        .image = it->has_image ? it->image : NULL, .nact = it->nact,
+                        .expanded = it->expanded || it->id == hover_open };
         for (int i = 0; i < it->nact; i++) c.act_label[i] = it->act_label[i];
         paint_card(cr, &c, w, h);
     }
-    else paint_toast(cr, it->text, it->level, w, h);
+    else paint_toast(cr, it->text, it->level, it->icon, w, h);
 }
 
-/* Where each card is in the surface, from the last redraw: what a click is matched against. */
+/* Where each card is in its surface, from the last redraw: what a click is matched against. The
+ * deck has its own table, which also holds its strips. */
 static ClickRect hit[STACK_MAX];
 static uint32_t hit_id[STACK_MAX];
 static int nhit;
+static ClickRect dhit[DECK_MAX];
+static uint32_t dhit_id[DECK_MAX];
+static bool dhit_strip[DECK_MAX];
+static int ndhit;
 
-/* Draws the whole stack into one buffer, so a change in any item is one redraw. */
-static void render(void) {
+static void rehover(void);
+static const Item *by_id(uint32_t id);
+
+/* The stack: one buffer, so a change in any item is one redraw. */
+static void render_stack(void) {
+    int n = NSTACK;
     nhit = 0;
-    if (!nstack) {
-        display_set_click_rects(dpy, NULL, 0);
+    if (!n) {
+        display_set_click_rects(dpy, DISPLAY_AREA_STACK, NULL, 0);
         display_hide(dpy);
         return;
     }
     int w[STACK_MAX], h[STACK_MAX], x[STACK_MAX], y[STACK_MAX], cw = 0, ch = 0;
-    for (int i = 0; i < nstack; i++) {
+    for (int i = 0; i < n; i++) {
         paint_item(NULL, &stack[i], &w[i], &h[i]);
         if (w[i] > cw) cw = w[i];
     }
-    for (int i = 0; i < nstack; i++) {
+    for (int i = 0; i < n; i++) {
         x[i] = (int)((cw - w[i]) * display_align(dpy) / 2.0);
         y[i] = ch;
         ch += h[i] + STACK_GAP;
@@ -119,19 +155,77 @@ static void render(void) {
         nhit++;
     }
     ch -= STACK_GAP;
-    display_set_click_rects(dpy, hit, nhit);
+    display_set_click_rects(dpy, DISPLAY_AREA_STACK, hit, nhit);
 
     cairo_t *cr;
     Buf *buf = display_buf(dpy, cw, ch, &cr);
-    if (!buf) return;
-    for (int i = 0; i < nstack; i++) {
-        int dw, dh;
-        cairo_save(cr);
-        cairo_translate(cr, x[i], y[i]);
-        paint_item(cr, &stack[i], &dw, &dh);
-        cairo_restore(cr);
+    if (buf) {
+        for (int i = 0; i < n; i++) {
+            int dw, dh;
+            cairo_save(cr);
+            cairo_translate(cr, x[i], y[i]);
+            paint_item(cr, &stack[i], &dw, &dh);
+            cairo_restore(cr);
+        }
+        display_present(dpy, buf, cr);
     }
-    display_present(dpy, buf, cr);
+}
+
+/* The deck: the front item in full, and the others as strips tucked under it, each a little
+ * narrower, so the pile reads as cards behind one another. */
+static void render_deck(void) {
+    ndhit = 0;
+    if (!ndeck) {
+        display_set_click_rects(dpy, DISPLAY_AREA_DECK, NULL, 0);
+        display_deck_hide(dpy);
+        return;
+    }
+    const Item *front = &stack[DECK_FRONT];
+    int fw, fh, behind = ndeck - 1;
+    paint_item(NULL, front, &fw, &fh);
+
+    int sx[DECK_MAX], sy[DECK_MAX], sw[DECK_MAX], total = fh;
+    for (int k = 1; k <= behind; k++) {
+        sw[k] = fw - 2 * PAINT_STRIP_INSET * k;
+        sx[k] = (fw - sw[k]) / 2;
+        sy[k] = fh - PAINT_STRIP_TUCK + (k - 1) * (PAINT_STRIP_H - PAINT_STRIP_TUCK);
+        total = sy[k] + PAINT_STRIP_H;
+    }
+
+    if (front->card) {
+        dhit[ndhit] = (ClickRect){ 0, 0, fw, fh };
+        dhit_id[ndhit] = front->id;
+        dhit_strip[ndhit++] = false;
+    }
+    for (int k = 1; k <= behind; k++) {   /* only what shows of a strip takes clicks */
+        dhit[ndhit] = (ClickRect){ sx[k], sy[k] + PAINT_STRIP_TUCK, sw[k], PAINT_STRIP_H - PAINT_STRIP_TUCK };
+        dhit_id[ndhit] = stack[DECK_FRONT + k].id;
+        dhit_strip[ndhit++] = true;
+    }
+    display_set_click_rects(dpy, DISPLAY_AREA_DECK, dhit, ndhit);
+
+    cairo_t *cr;
+    Buf *buf = display_buf(dpy, fw, total, &cr);
+    if (buf) {
+        for (int k = behind; k >= 1; k--) {   /* the back first, the front over them */
+            const Item *it = &stack[DECK_FRONT + k];
+            int dw, dh;
+            cairo_save(cr);
+            cairo_translate(cr, sx[k], sy[k]);
+            paint_strip(cr, it->text, it->level, sw[k], &dw, &dh);
+            cairo_restore(cr);
+        }
+        int dw, dh;
+        paint_item(cr, front, &dw, &dh);
+        display_deck_present(dpy, buf, cr);
+    }
+}
+
+static void render(void) {
+    if (hover_id && !by_id(hover_id)) hover_id = hover_open = 0;   /* the card is gone */
+    render_stack();
+    render_deck();
+    rehover();   /* the layout moved: the pointer may be over something else now */
 }
 
 /* The compositor wants a different scale: draw what is on screen again, timers untouched. */
@@ -141,23 +235,27 @@ static void stack_insert(int at, const Item *it) {
     for (int i = nstack; i > at; i--) item_copy(&stack[i], &stack[i - 1]);
     item_copy(&stack[at], it);
     nstack++;
+    if (it->attention) ndeck++;
 }
 
 /* Leaves the stack (reason 0: silently). */
 static void stack_remove_at(int i, int reason) {
     closed(&stack[i], reason);
+    if (stack[i].attention) ndeck--;
     for (; i + 1 < nstack; i++) item_copy(&stack[i], &stack[i + 1]);
     nstack--;
 }
 
-/* Room appeared: the oldest waiting alerts take it, below what is already shown. */
+/* Room appeared: the oldest waiting alerts take it, below what is already shown in their place. */
 static void refill(void) {
-    while (nstack < STACK_MAX && queued) {
+    for (int i = 0; i < queued;) {
+        bool room = queue[i].attention ? ndeck < DECK_MAX : NSTACK < STACK_MAX;
+        if (!room) { i++; continue; }
         static Item next;
-        item_copy(&next, &queue[0]);
-        queue_remove_at(0);
+        item_copy(&next, &queue[i]);
+        queue_remove_at(i);
         next.deadline = deadline_for(next.ms);
-        stack_insert(nstack, &next);
+        stack_insert(next.attention ? nstack : NSTACK, &next);
     }
 }
 
@@ -198,17 +296,26 @@ static void submit(const Item *in) {
     add.deadline = deadline_for(add.ms);
 
     int same = find_same(&add);
-    if (same >= 0) {  /* refreshed where it is, with a new timeout */
+    if (same >= 0 && stack[same].attention == add.attention) {
+        /* refreshed where it is, with a new timeout, and as open as it was */
+        bool expanded = stack[same].expanded;
         item_copy(&stack[same], &add);
+        stack[same].expanded = expanded;
         render();
         return;
     }
+    if (same >= 0) stack_remove_at(same, 0);   /* it changes places: leaves one, arrives in the other */
     if (add.id) {
         for (int i = 0; i < queued; i++)
             if (queue[i].id == add.id) { item_copy(&queue[i], &add); return; }
     }
 
-    if (nstack == STACK_MAX) {
+    if (add.attention) {
+        if (ndeck == DECK_MAX) {   /* what is in the deck is not made to leave: this waits */
+            if (add.card || !queued_text(add.text)) enqueue(&add);
+            return;
+        }
+    } else if (NSTACK == STACK_MAX) {
         int old = oldest_ephemeral();
         if (old >= 0) {
             stack_remove_at(old, 0);
@@ -217,20 +324,24 @@ static void submit(const Item *in) {
             return;
         }
     }
-    stack_insert(0, &add);
+    stack_insert(add.attention ? nstack : 0, &add);
     render();
 }
 
-void hud_toast(const char *text, Level level, int timeout_ms) {
+void hud_toast_icon(const char *text, Level level, int timeout_ms, const char *icon) {
     static Item it;
     memset(&it, 0, offsetof(Item, image));
     it.level = level;
     it.ms = timeout_ms;
+    it.attention = level == LEVEL_CRIT && apart();   /* the system's critical alerts */
     snprintf(it.text, sizeof it.text, "%s", text);
+    snprintf(it.icon, sizeof it.icon, "%s", icon ? icon : "");
     submit(&it);
 }
 
-void hud_slider(const char *label, int percent, bool dim) {
+void hud_toast(const char *text, Level level, int timeout_ms) { hud_toast_icon(text, level, timeout_ms, NULL); }
+
+void hud_slider(const char *label, int percent, bool dim, const char *icon) {
     static Item it;
     memset(&it, 0, offsetof(Item, image));
     it.slider = true;
@@ -238,6 +349,7 @@ void hud_slider(const char *label, int percent, bool dim) {
     it.ms = SLIDER_MS;
     it.percent = percent;
     snprintf(it.text, sizeof it.text, "%s", label);
+    snprintf(it.icon, sizeof it.icon, "%s", icon ? icon : "");
     submit(&it);
 }
 
@@ -276,6 +388,7 @@ void hud_card(const HudCard *c) {
     it.level = c->level;
     it.ms = c->timeout_ms;
     it.resident = c->resident;
+    it.attention = c->attention && apart();
     snprintf(it.text, sizeof it.text, "%s", c->summary);
     snprintf(it.body, sizeof it.body, "%s", c->body);
     if (c->image) {
@@ -288,14 +401,20 @@ void hud_card(const HudCard *c) {
     submit(&it);
 }
 
-const char *hud_action_key(int n, uint32_t *id) {
-    for (int i = 0; i < nstack; i++) {
-        if (!stack[i].card) continue;
-        if (n < 1 || n > stack[i].nact) return NULL;
-        *id = stack[i].id;
-        return stack[i].act_key[n - 1];
-    }
+/* The card that actions, expansion and the like apply to: the deck's front one, which is what is
+ * asking for attention, else the newest in the stack. */
+static Item *front_card(void) {
+    if (ndeck && stack[DECK_FRONT].card) return &stack[DECK_FRONT];
+    for (int i = 0; i < NSTACK; i++)
+        if (stack[i].card) return &stack[i];
     return NULL;
+}
+
+const char *hud_action_key(int n, uint32_t *id) {
+    const Item *it = front_card();
+    if (!it || n < 1 || n > it->nact) return NULL;
+    *id = it->id;
+    return it->act_key[n - 1];
 }
 
 void hud_on_closed(HudClosedFn fn) { closed_cb = fn; }
@@ -307,6 +426,74 @@ static const Item *by_id(uint32_t id) {
     for (int i = 0; id && i < nstack; i++)
         if (stack[i].id == id) return &stack[i];
     return NULL;
+}
+
+static Item *find_card(uint32_t id) {
+    for (int i = 0; id && i < nstack; i++)
+        if (stack[i].id == id && stack[i].card) return &stack[i];
+    return NULL;
+}
+
+/* A card that is no longer held (the pointer left, or it was collapsed) is not to vanish at once:
+ * what was being read gets a little more time. */
+static void release(uint32_t id) {
+    Item *it = find_card(id);
+    if (!it || held(it) || it->deadline == LLONG_MAX) return;
+    long long least = now_ms() + HOLD_GRACE_MS;
+    if (it->deadline < least) it->deadline = least;
+}
+
+static bool inside(const ClickRect *r, int px, int py) {
+    return px >= r->x && py >= r->y && px < r->x + r->w && py < r->y + r->h;
+}
+
+/* What is at a point of an area: a card (then `strip` is false) or a strip of the deck, or nothing */
+static uint32_t hit_at(int area, int px, int py, bool *strip) {
+    *strip = false;
+    if (area == DISPLAY_AREA_DECK) {
+        for (int k = 0; k < ndhit; k++)
+            if (inside(&dhit[k], px, py)) { *strip = dhit_strip[k]; return dhit_id[k]; }
+        return 0;
+    }
+    for (int k = 0; k < nhit; k++)
+        if (inside(&hit[k], px, py)) return hit_id[k];
+    return 0;
+}
+
+static uint32_t card_at(int area, int px, int py) {
+    bool strip;
+    uint32_t id = hit_at(area, px, py, &strip);
+    return strip ? 0 : id;
+}
+
+static void set_hover(uint32_t id) {
+    if (id == hover_id) return;
+    uint32_t old = hover_id;
+    bool was_open = hover_open != 0;
+    hover_id = id;
+    hover_open = 0;
+    hover_since = now_ms();
+    if (old) release(old);
+    if (was_open) render();   /* it closes */
+}
+
+static void rehover(void) { set_hover(ptr_over ? card_at(ptr_area, ptr_x, ptr_y) : 0); }
+
+static void on_hover(int area, int x, int y, bool over) {
+    ptr_over = over;
+    ptr_area = area;
+    ptr_x = x;
+    ptr_y = y;
+    rehover();
+}
+
+int hud_toggle_expand(void) {
+    Item *it = front_card();
+    if (!it) return -1;
+    it->expanded = !it->expanded;
+    if (!it->expanded) release(it->id);
+    render();
+    return it->expanded;
 }
 
 void hud_action_invoked(uint32_t id) {
@@ -328,21 +515,36 @@ static void click_default(uint32_t id, const char *token) {
 
 static void token_ready(const char *token, void *ctx) { click_default((uint32_t)(uintptr_t)ctx, token); }
 
-static void on_click(int px, int py, bool secondary) {
-    for (int k = 0; k < nhit; k++) {
-        if (px < hit[k].x || py < hit[k].y || px >= hit[k].x + hit[k].w || py >= hit[k].y + hit[k].h)
-            continue;
-        uint32_t id = hit_id[k];  /* the redraw that closing causes replaces the table */
-        const Item *it = by_id(id);
-        if (!secondary && it && it->has_default) {
-            if (token_pending && now_ms() - token_since < TOKEN_WAIT_MS) return;
-            token_pending = true;
-            token_since = now_ms();
-            if (!display_request_token(dpy, token_ready, (void *)(uintptr_t)id)) click_default(id, NULL);
-        } else {
-            hud_dismiss_id(id);
-        }
+/* Brings a card of the deck to the front: the user's own choice, never done on its own. */
+static void raise_in_deck(uint32_t id) {
+    int at = -1;
+    for (int i = DECK_FRONT; ndeck && i < nstack; i++)
+        if (stack[i].id == id) at = i;
+    if (at <= DECK_FRONT) return;
+    static Item moved;
+    item_copy(&moved, &stack[at]);
+    for (int i = at; i > DECK_FRONT; i--) item_copy(&stack[i], &stack[i - 1]);
+    item_copy(&stack[DECK_FRONT], &moved);
+    render();
+}
+
+static void on_click(int area, int px, int py, bool secondary) {
+    bool strip;
+    uint32_t id = hit_at(area, px, py, &strip);   /* the redraw that closing causes replaces the tables */
+    if (!id) return;
+    if (strip) {   /* a card behind the front one: bring it forward, or with the right button, get rid of it */
+        if (secondary) hud_dismiss_id(id);
+        else raise_in_deck(id);
         return;
+    }
+    const Item *it = by_id(id);
+    if (!secondary && it && it->has_default) {
+        if (token_pending && now_ms() - token_since < TOKEN_WAIT_MS) return;
+        token_pending = true;
+        token_since = now_ms();
+        if (!display_request_token(dpy, token_ready, (void *)(uintptr_t)id)) click_default(id, NULL);
+    } else {
+        hud_dismiss_id(id);
     }
 }
 
@@ -389,8 +591,8 @@ int hud_card_count(void) {
 
 void hud_dismiss(void) {
     if (!nstack) return;
-    int i = 0;
-    for (int k = 0; k < nstack; k++) {
+    int i = ndeck ? DECK_FRONT : 0;   /* what asks for attention first */
+    for (int k = 0; !ndeck && k < NSTACK; k++) {
         if (is_alert(&stack[k])) { i = k; break; }
     }
     stack_remove_at(i, HUD_CLOSED_DISMISSED);
@@ -400,8 +602,10 @@ void hud_dismiss(void) {
 int hud_timeout_ms(void) {
     long long soonest = -1;
     for (int i = 0; i < nstack; i++)
-        if (stack[i].deadline != LLONG_MAX && (soonest < 0 || stack[i].deadline < soonest))
+        if (!held(&stack[i]) && stack[i].deadline != LLONG_MAX && (soonest < 0 || stack[i].deadline < soonest))
             soonest = stack[i].deadline;
+    long long open_at = hover_since + HOVER_DELAY_MS;   /* the pointer has lingered: open the card then */
+    if (hover_id && !hover_open && (soonest < 0 || open_at < soonest)) soonest = open_at;
     if (osd_visible && (soonest < 0 || osd_deadline_ms < soonest)) soonest = osd_deadline_ms;
     if (soonest < 0) return -1;
     long long left = soonest - now_ms();
@@ -412,25 +616,29 @@ void hud_tick(void) {
     long long now = now_ms();
     bool changed = false;
     for (int i = nstack - 1; i >= 0; i--) {
-        if (now >= stack[i].deadline) {
+        if (!held(&stack[i]) && now >= stack[i].deadline) {
             stack_remove_at(i, HUD_CLOSED_EXPIRED);
             changed = true;
         }
     }
     if (changed) left_the_stack();
+    if (hover_id && !hover_open && now >= hover_since + HOVER_DELAY_MS) {
+        hover_open = hover_id;
+        render();
+    }
     if (osd_visible && now >= osd_deadline_ms) hud_osd_hide();
 }
 
 /* ---- OSD (on-screen display): center-positioned user feedback ---- */
 
 
-void hud_osd_slider(const char *label, int percent, bool dim, OsdAnchor anchor) {
+void hud_osd_slider(const char *label, int percent, bool dim, OsdAnchor anchor, const char *icon) {
     int w, h;
-    paint_slider(NULL, label, percent, dim, &w, &h);
+    paint_slider(NULL, label, percent, dim, icon, PAINT_OSD_W, &w, &h);
     cairo_t *cr;
     Buf *buf = display_osd_buf(dpy, w, h, &cr);
     if (!buf) return;
-    paint_slider(cr, label, percent, dim, &w, &h);
+    paint_slider(cr, label, percent, dim, icon, PAINT_OSD_W, &w, &h);
     display_osd_present(dpy, buf, cr, anchor);
     osd_visible = true;
     osd_deadline_ms = now_ms() + OSD_TIMEOUT_MS;

@@ -37,13 +37,13 @@ void battery_update(int capacity, bool discharging) {
         critical = warned = true;
         if (!alert_allowed("battery", LEVEL_CRIT)) return;
         snprintf(msg, sizeof msg, _("Battery critical — %d%%"), capacity);
-        hud_toast(msg, LEVEL_CRIT, ALERT_MS);
+        hud_toast_icon(msg, LEVEL_CRIT, ALERT_MS, "battery-caution,battery-low");
         sound_play(SOUND_ALERT);
     } else if (capacity <= WARN_PCT && !warned) {
         warned = true;
         if (!alert_allowed("battery", LEVEL_WARN)) return;
         snprintf(msg, sizeof msg, _("Battery low — %d%%"), capacity);
-        hud_toast(msg, LEVEL_WARN, ALERT_MS);
+        hud_toast_icon(msg, LEVEL_WARN, ALERT_MS, "battery-low,battery-caution");
         sound_play(SOUND_ALERT);
     }
 }
@@ -52,7 +52,8 @@ void charger_update(bool online) {
     int prev = ac;
     ac = online;
     if (prev >= 0 && prev != ac) {
-        hud_toast(online ? _("Charger connected") : _("Charger disconnected"), LEVEL_INFO, 2500);
+        hud_toast_icon(online ? _("Charger connected") : _("Charger disconnected"), LEVEL_INFO, 2500,
+                       online ? "ac-adapter,battery-full-charging" : "battery,battery-full");
         sound_play(online ? SOUND_POWER_PLUGGED : SOUND_POWER_UNPLUGGED);
     }
 }

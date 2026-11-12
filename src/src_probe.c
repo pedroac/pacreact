@@ -37,14 +37,14 @@ void probe_result(bool ok, int rtt_ms) {
             degraded = true;
             if (ok) snprintf(msg, sizeof msg, _("Network slow — %d ms"), rtt_ms);
             else snprintf(msg, sizeof msg, _("Network not answering — no reply from %s"), host_name);
-            hud_toast(msg, LEVEL_WARN, 6000);
+            hud_toast_icon(msg, LEVEL_WARN, 6000, "network-error,dialog-warning");
         }
     } else {
         bad = 0;
         if (degraded && ++good >= GOOD_TO_CLEAR) {
             degraded = false;
             good = 0;
-            hud_toast(_("Network back to normal"), LEVEL_INFO, 3000);
+            hud_toast_icon(_("Network back to normal"), LEVEL_INFO, 3000, "network-idle,network-wired");
         }
     }
 }

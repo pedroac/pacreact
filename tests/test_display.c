@@ -14,9 +14,122 @@ static Display *fresh(void) {
     Display *d = calloc(1, sizeof *d);
     assert(d);
     d->scale120 = SCALE_UNIT;
+    d->margin = DEFAULT_MARGIN;
     d->rescale_cb = on_rescale;
     rescales = 0;
     return d;
+}
+
+/* Whether the attention deck can sit apart from the stack: it needs the screen to be wide enough
+ * for the stack in its corner and the deck in the middle, on the right output. */
+/* PACHUD_MARGIN: pixels from the edge */
+static void test_margin(void) {
+    Display *d = fresh();
+    parse_margin(d, NULL);
+    assert(d->margin == 16);
+    parse_margin(d, "");
+    assert(d->margin == 16);
+    parse_margin(d, "30");
+    assert(d->margin == 30);
+    parse_margin(d, "0");                       /* flush with the edge is allowed */
+    assert(d->margin == 0);
+    parse_margin(d, "200");
+    assert(d->margin == 200);
+    parse_margin(d, "999");                     /* too much: the most */
+    assert(d->margin == 200);
+    const char *bad[] = { "abc", "-5", "10px", "1.5", "5 " };
+    for (size_t i = 0; i < sizeof bad / sizeof *bad; i++) {
+        parse_margin(d, bad[i]);                /* said so, and the default stays */
+        assert(d->margin == 16);
+    }
+    parse_margin(d, " 12");                     /* a stray space in front is forgiven */
+    assert(d->margin == 12);
+    free(d);
+}
+
+static void test_deck_apart(void) {
+    Display *d = fresh();
+    int out[3];
+    d->anchor = EDGE_T | EDGE_R;
+
+    /* Nothing known about the screen: assume it is enough */
+    assert(display_output_width(d) == 0 && display_deck_apart(d, 380));
+
+    d->outputs[0].proxy = (struct wl_output *)&out[0];
+    snprintf(d->outputs[0].name, sizeof d->outputs[0].name, "BIG");
+    d->outputs[0].logical_w = 1920;
+    d->outputs[1].proxy = (struct wl_output *)&out[1];
+    snprintf(d->outputs[1].name, sizeof d->outputs[1].name, "SMALL");
+    d->outputs[1].logical_w = 1000;
+
+    /* Not shown anywhere yet, and not told where it will be: the narrowest is what counts */
+    assert(display_output_width(d) == 1000 && !display_deck_apart(d, 380));
+
+    /* Once the HUD has appeared on an output, that is the one that counts */
+    Surface sf = { .d = d };
+    surface_enter(&sf, NULL, (struct wl_output *)&out[0]);
+    assert(d->last_out == 1 && display_output_width(d) == 1920 && display_deck_apart(d, 380));
+    surface_enter(&sf, NULL, (struct wl_output *)&out[1]);
+    assert(d->last_out == 2 && display_output_width(d) == 1000 && !display_deck_apart(d, 380));
+    surface_enter(&sf, NULL, (struct wl_output *)&out[2]);          /* an output we do not know: ignored */
+    assert(d->last_out == 2);
+
+    /* PACHUD_OUTPUT decides, whatever happened before; an unknown name tells nothing */
+    d->want_output = "BIG";
+    assert(display_output_width(d) == 1920 && display_deck_apart(d, 380));
+    d->want_output = "SMALL";
+    assert(display_output_width(d) == 1000 && !display_deck_apart(d, 380));
+    d->want_output = "NOPE";
+    assert(display_output_width(d) == 0 && display_deck_apart(d, 380));
+
+    /* The line is exactly three items, two margins and two gaps: 380 * 3 + 32 + 32 */
+    d->want_output = "BIG";
+    d->margin = DEFAULT_MARGIN;
+    d->outputs[0].logical_w = 3 * 380 + 2 * DEFAULT_MARGIN + 2 * DECK_GAP;
+    assert(d->outputs[0].logical_w == 1204 && display_deck_apart(d, 380));
+    d->outputs[0].logical_w = 1203;
+    assert(!display_deck_apart(d, 380));
+    d->outputs[0].logical_w = 1280;                                  /* a common laptop: fine */
+    assert(display_deck_apart(d, 380));
+    assert(!display_deck_apart(d, 420));                             /* wider items need a wider screen */
+
+    /* The same in the other top corner; the bottom corners never share the top, narrow or not */
+    d->outputs[0].logical_w = 800;
+    d->anchor = EDGE_T | EDGE_L;
+    assert(!display_deck_apart(d, 380));
+    d->outputs[0].logical_w = 1280;
+    assert(display_deck_apart(d, 380));
+    d->outputs[0].logical_w = 800;
+    d->anchor = EDGE_B | EDGE_R;
+    assert(display_deck_apart(d, 380));
+    d->anchor = EDGE_B | EDGE_L;
+    assert(display_deck_apart(d, 380));
+
+    /* A stack at the top centre is exactly where the deck would be, however wide the screen */
+    d->outputs[0].logical_w = 3840;
+    d->anchor = EDGE_T;
+    assert(!display_deck_apart(d, 380));
+    d->anchor = EDGE_B;
+    assert(display_deck_apart(d, 380));
+
+    /* The compositor tells the size, and tells again when it changes */
+    d->anchor = EDGE_T | EDGE_R;
+    xdg_size(&d->outputs[0], NULL, 1280, 720);
+    assert(d->outputs[0].logical_w == 1280 && display_deck_apart(d, 380));
+    xdg_size(&d->outputs[0], NULL, 960, 540);                        /* the scale was raised */
+    assert(d->outputs[0].logical_w == 960 && !display_deck_apart(d, 380));
+
+    /* The margin is part of the sum: a wider one needs a wider screen, a narrower one less */
+    d->outputs[0].logical_w = 3 * 380 + 2 * DEFAULT_MARGIN + 2 * DECK_GAP;
+    assert(display_deck_apart(d, 380));
+    d->margin = 40;
+    assert(!display_deck_apart(d, 380));
+    d->outputs[0].logical_w = 3 * 380 + 2 * 40 + 2 * DECK_GAP;
+    assert(display_deck_apart(d, 380));
+    d->margin = 0;
+    d->outputs[0].logical_w = 3 * 380 + 2 * DECK_GAP;
+    assert(display_deck_apart(d, 380));
+    free(d);
 }
 
 int main(void) {
@@ -62,7 +175,53 @@ int main(void) {
     preferred_scale(d, NULL, 200);
     assert(d->scale120 == 200);
 
+    /* The pointer over the HUD: position as it enters and moves, and the end of it as it leaves; the
+     * HUD's own surface only */
+    static int hovers, hx, hy, harea = -1;
+    static bool hover_over;
+    void on_hover_cb(int area, int x, int y, bool over) { hovers++; harea = area; hx = x; hy = y; hover_over = over; }
+    d->hover_cb = on_hover_cb;
+    struct wl_surface *other = (struct wl_surface *)&hovers;
+    d->main.wl = surface;
+
+    ptr_enter(d, NULL, 1, surface, wl_fixed_from_int(10), wl_fixed_from_int(20));
+    assert(hovers == 1 && hx == 10 && hy == 20 && hover_over);
+    ptr_motion(d, NULL, 5, wl_fixed_from_int(30), wl_fixed_from_int(40));
+    assert(hovers == 2 && hx == 30 && hy == 40 && hover_over);
+    ptr_leave(d, NULL, 2, surface);
+    assert(hovers == 3 && !hover_over);
+    ptr_leave(d, NULL, 3, surface);                           /* a second leave is not another event */
+    assert(hovers == 3);
+    ptr_motion(d, NULL, 6, wl_fixed_from_int(1), wl_fixed_from_int(1));   /* motion with no pointer on us */
+    assert(hovers == 3);
+
+    ptr_enter(d, NULL, 4, other, wl_fixed_from_int(5), wl_fixed_from_int(5));   /* someone else's window */
+    ptr_motion(d, NULL, 7, wl_fixed_from_int(6), wl_fixed_from_int(6));
+    ptr_leave(d, NULL, 5, other);
+    assert(hovers == 3);
+
+    /* The deck is its own surface and says so */
+    struct wl_surface *deck = (struct wl_surface *)&harea;
+    d->deck.wl = deck;
+    ptr_enter(d, NULL, 8, deck, wl_fixed_from_int(7), wl_fixed_from_int(8));
+    assert(hovers == 4 && harea == DISPLAY_AREA_DECK && hx == 7 && hy == 8 && hover_over);
+    ptr_leave(d, NULL, 9, deck);
+    assert(hovers == 5 && harea == DISPLAY_AREA_DECK && !hover_over);
+    ptr_enter(d, NULL, 10, surface, wl_fixed_from_int(1), wl_fixed_from_int(2));
+    assert(harea == DISPLAY_AREA_STACK && hovers == 6);
+    ptr_leave(d, NULL, 11, surface);
+    d->deck.wl = NULL;
+    hovers = 3;
+
+    d->hover_cb = NULL;                                       /* nobody listening: still fine */
+    ptr_enter(d, NULL, 6, surface, wl_fixed_from_int(1), wl_fixed_from_int(1));
+    ptr_motion(d, NULL, 8, wl_fixed_from_int(2), wl_fixed_from_int(2));
+    ptr_leave(d, NULL, 7, surface);
+    assert(hovers == 3);
+
     free(d);
+    test_margin();
+    test_deck_apart();
     puts("display: ok");
     return 0;
 }

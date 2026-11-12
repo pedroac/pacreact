@@ -6,7 +6,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: pachud\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-12 09:53+0000\n"
+"POT-Creation-Date: 2026-11-12 11:12+0000\n"
 "PO-Revision-Date: 2026-11-10 00:00+0000\n"
 "Last-Translator: \n"
 "Language-Team: Dutch\n"
@@ -280,6 +280,78 @@ msgstr "Oplader aangesloten"
 msgid "Charger disconnected"
 msgstr "Oplader losgekoppeld"
 
+#: src/src_print.c
+msgid "Document"
+msgstr "Document"
+
+#: src/src_print.c
+#, c-format
+msgid "Printed with errors — %s"
+msgstr "Afgedrukt met fouten — %s"
+
+#: src/src_print.c
+#, c-format
+msgid "Printed — %s"
+msgstr "Afgedrukt — %s"
+
+#: src/src_print.c
+#, c-format
+msgid "Print failed — %s"
+msgstr "Afdrukken mislukt — %s"
+
+#: src/src_print.c
+#, c-format
+msgid "Printing — %s"
+msgstr "Afdrukken — %s"
+
+#: src/src_print.c
+#, c-format
+msgid "%s: out of paper"
+msgstr "%s: papier op"
+
+#: src/src_print.c
+#, c-format
+msgid "%s: paper jam"
+msgstr "%s: papierstoring"
+
+#: src/src_print.c
+#, c-format
+msgid "%s: out of ink or toner"
+msgstr "%s: inkt of toner op"
+
+#: src/src_print.c
+#, c-format
+msgid "%s: ink or toner low"
+msgstr "%s: inkt of toner bijna op"
+
+#: src/src_print.c
+#, c-format
+msgid "%s: cover open"
+msgstr "%s: klep open"
+
+#: src/src_print.c
+#, c-format
+msgid "%s: offline"
+msgstr "%s: offline"
+
+#: src/src_print.c
+#, c-format
+msgid "%s: stopped"
+msgstr "%s: gestopt"
+
+#: src/src_print.c
+#, c-format
+msgid "%s: ready"
+msgstr "%s: gereed"
+
+#: src/src_print.c
+msgid "no print jobs"
+msgstr "geen afdruktaken"
+
+#: src/src_print.c
+msgid "cannot reach the print system (CUPS)"
+msgstr "printsysteem (CUPS) niet bereikbaar"
+
 #: src/src_probe.c
 #, c-format
 msgid "Network slow — %d ms"
@@ -313,6 +385,20 @@ msgstr "Batterij kritiek — %d%%"
 #, c-format
 msgid "SSD temperature high — %d °C"
 msgstr ""
+
+#: src/src_usb.c
+msgid "USB device"
+msgstr "USB-apparaat"
+
+#: src/src_usb.c
+#, c-format
+msgid "%s connected"
+msgstr "%s aangesloten"
+
+#: src/src_usb.c
+#, c-format
+msgid "%s disconnected"
+msgstr "%s losgekoppeld"
 
 #: src/timer.c
 #, c-format

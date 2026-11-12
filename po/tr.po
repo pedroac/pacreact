@@ -6,7 +6,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: pachud\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-12 09:53+0000\n"
+"POT-Creation-Date: 2026-11-12 11:12+0000\n"
 "PO-Revision-Date: 2026-11-10 00:00+0000\n"
 "Last-Translator: \n"
 "Language-Team: Turkish\n"
@@ -279,6 +279,78 @@ msgstr "Şarj cihazı bağlandı"
 msgid "Charger disconnected"
 msgstr "Şarj cihazı çıkarıldı"
 
+#: src/src_print.c
+msgid "Document"
+msgstr "Belge"
+
+#: src/src_print.c
+#, c-format
+msgid "Printed with errors — %s"
+msgstr "Hatalarla yazdırıldı — %s"
+
+#: src/src_print.c
+#, c-format
+msgid "Printed — %s"
+msgstr "Yazdırıldı — %s"
+
+#: src/src_print.c
+#, c-format
+msgid "Print failed — %s"
+msgstr "Yazdırma başarısız — %s"
+
+#: src/src_print.c
+#, c-format
+msgid "Printing — %s"
+msgstr "Yazdırılıyor — %s"
+
+#: src/src_print.c
+#, c-format
+msgid "%s: out of paper"
+msgstr "%s: kağıt bitti"
+
+#: src/src_print.c
+#, c-format
+msgid "%s: paper jam"
+msgstr "%s: kağıt sıkıştı"
+
+#: src/src_print.c
+#, c-format
+msgid "%s: out of ink or toner"
+msgstr "%s: mürekkep veya toner bitti"
+
+#: src/src_print.c
+#, c-format
+msgid "%s: ink or toner low"
+msgstr "%s: mürekkep veya toner azaldı"
+
+#: src/src_print.c
+#, c-format
+msgid "%s: cover open"
+msgstr "%s: kapak açık"
+
+#: src/src_print.c
+#, c-format
+msgid "%s: offline"
+msgstr "%s: çevrimdışı"
+
+#: src/src_print.c
+#, c-format
+msgid "%s: stopped"
+msgstr "%s: durdu"
+
+#: src/src_print.c
+#, c-format
+msgid "%s: ready"
+msgstr "%s: hazır"
+
+#: src/src_print.c
+msgid "no print jobs"
+msgstr "yazdırma işi yok"
+
+#: src/src_print.c
+msgid "cannot reach the print system (CUPS)"
+msgstr "yazdırma sistemine (CUPS) ulaşılamıyor"
+
 #: src/src_probe.c
 #, c-format
 msgid "Network slow — %d ms"
@@ -312,6 +384,20 @@ msgstr "Pil kritik — %%%d"
 #, c-format
 msgid "SSD temperature high — %d °C"
 msgstr ""
+
+#: src/src_usb.c
+msgid "USB device"
+msgstr "USB aygıtı"
+
+#: src/src_usb.c
+#, c-format
+msgid "%s connected"
+msgstr "%s bağlandı"
+
+#: src/src_usb.c
+#, c-format
+msgid "%s disconnected"
+msgstr "%s çıkarıldı"
 
 #: src/timer.c
 #, c-format

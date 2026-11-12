@@ -114,6 +114,7 @@ static void on_uevent(void *ctx, uint32_t ev) {
     while ((n = recv(*(int *)ctx, buf, sizeof buf - 1, MSG_DONTWAIT)) > 0) {
         buf[n] = '\0';
         power_uevent(buf, n);
+        usb_uevent(buf, n);
         if (*bat_dir) check_battery();
     }
 }

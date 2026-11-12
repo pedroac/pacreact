@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: pachud\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-12 09:53+0000\n"
+"POT-Creation-Date: 2026-11-12 11:12+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -277,6 +277,78 @@ msgstr ""
 msgid "Charger disconnected"
 msgstr ""
 
+#: src/src_print.c
+msgid "Document"
+msgstr ""
+
+#: src/src_print.c
+#, c-format
+msgid "Printed with errors — %s"
+msgstr ""
+
+#: src/src_print.c
+#, c-format
+msgid "Printed — %s"
+msgstr ""
+
+#: src/src_print.c
+#, c-format
+msgid "Print failed — %s"
+msgstr ""
+
+#: src/src_print.c
+#, c-format
+msgid "Printing — %s"
+msgstr ""
+
+#: src/src_print.c
+#, c-format
+msgid "%s: out of paper"
+msgstr ""
+
+#: src/src_print.c
+#, c-format
+msgid "%s: paper jam"
+msgstr ""
+
+#: src/src_print.c
+#, c-format
+msgid "%s: out of ink or toner"
+msgstr ""
+
+#: src/src_print.c
+#, c-format
+msgid "%s: ink or toner low"
+msgstr ""
+
+#: src/src_print.c
+#, c-format
+msgid "%s: cover open"
+msgstr ""
+
+#: src/src_print.c
+#, c-format
+msgid "%s: offline"
+msgstr ""
+
+#: src/src_print.c
+#, c-format
+msgid "%s: stopped"
+msgstr ""
+
+#: src/src_print.c
+#, c-format
+msgid "%s: ready"
+msgstr ""
+
+#: src/src_print.c
+msgid "no print jobs"
+msgstr ""
+
+#: src/src_print.c
+msgid "cannot reach the print system (CUPS)"
+msgstr ""
+
 #: src/src_probe.c
 #, c-format
 msgid "Network slow — %d ms"
@@ -309,6 +381,20 @@ msgstr ""
 #: src/src_temp.c
 #, c-format
 msgid "SSD temperature high — %d °C"
+msgstr ""
+
+#: src/src_usb.c
+msgid "USB device"
+msgstr ""
+
+#: src/src_usb.c
+#, c-format
+msgid "%s connected"
+msgstr ""
+
+#: src/src_usb.c
+#, c-format
+msgid "%s disconnected"
 msgstr ""
 
 #: src/timer.c

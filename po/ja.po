@@ -6,7 +6,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: pachud\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-12 09:53+0000\n"
+"POT-Creation-Date: 2026-11-12 11:12+0000\n"
 "PO-Revision-Date: 2026-11-10 00:00+0000\n"
 "Last-Translator: \n"
 "Language-Team: Japanese\n"
@@ -277,6 +277,78 @@ msgstr "充電器を接続しました"
 msgid "Charger disconnected"
 msgstr "充電器を取り外しました"
 
+#: src/src_print.c
+msgid "Document"
+msgstr "ドキュメント"
+
+#: src/src_print.c
+#, c-format
+msgid "Printed with errors — %s"
+msgstr "エラーありで印刷しました — %s"
+
+#: src/src_print.c
+#, c-format
+msgid "Printed — %s"
+msgstr "印刷しました — %s"
+
+#: src/src_print.c
+#, c-format
+msgid "Print failed — %s"
+msgstr "印刷に失敗しました — %s"
+
+#: src/src_print.c
+#, c-format
+msgid "Printing — %s"
+msgstr "印刷中 — %s"
+
+#: src/src_print.c
+#, c-format
+msgid "%s: out of paper"
+msgstr "%s: 用紙切れ"
+
+#: src/src_print.c
+#, c-format
+msgid "%s: paper jam"
+msgstr "%s: 紙詰まり"
+
+#: src/src_print.c
+#, c-format
+msgid "%s: out of ink or toner"
+msgstr "%s: インクまたはトナー切れ"
+
+#: src/src_print.c
+#, c-format
+msgid "%s: ink or toner low"
+msgstr "%s: インクまたはトナー残量わずか"
+
+#: src/src_print.c
+#, c-format
+msgid "%s: cover open"
+msgstr "%s: カバーが開いています"
+
+#: src/src_print.c
+#, c-format
+msgid "%s: offline"
+msgstr "%s: オフライン"
+
+#: src/src_print.c
+#, c-format
+msgid "%s: stopped"
+msgstr "%s: 停止中"
+
+#: src/src_print.c
+#, c-format
+msgid "%s: ready"
+msgstr "%s: 準備完了"
+
+#: src/src_print.c
+msgid "no print jobs"
+msgstr "印刷ジョブはありません"
+
+#: src/src_print.c
+msgid "cannot reach the print system (CUPS)"
+msgstr "印刷システム (CUPS) に接続できません"
+
 #: src/src_probe.c
 #, c-format
 msgid "Network slow — %d ms"
@@ -310,6 +382,20 @@ msgstr "バッテリー残量わずか — %d%%"
 #, c-format
 msgid "SSD temperature high — %d °C"
 msgstr ""
+
+#: src/src_usb.c
+msgid "USB device"
+msgstr "USB デバイス"
+
+#: src/src_usb.c
+#, c-format
+msgid "%s connected"
+msgstr "%s を接続しました"
+
+#: src/src_usb.c
+#, c-format
+msgid "%s disconnected"
+msgstr "%s を取り外しました"
 
 #: src/timer.c
 #, c-format

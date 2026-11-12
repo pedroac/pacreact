@@ -40,7 +40,7 @@ PROTO_OBJS = $(PROTO_NAMES:%=build/%-client-protocol.o)
 
 SRCS = $(wildcard src/*.c)
 ifneq ($(NOTIFY),1)
-SRCS := $(filter-out src/notify.c src/src_bt.c src/history.c,$(SRCS))
+SRCS := $(filter-out src/notify.c src/src_bt.c src/src_print.c src/history.c,$(SRCS))
 ALL_CFLAGS += -DNO_NOTIFY
 endif
 ifneq ($(I18N),1)
@@ -140,12 +140,12 @@ uninstall:
 # The tests build the logic on its own, with stubs for the display, the HUD and the loop. Some
 # #include the source under test so that its static internals are reachable.
 TEST_CC = $(CC) $(CFLAGS) -D_GNU_SOURCE -Wall -Wextra -Ibuild -Isrc
-TESTS = power timer probe audio activity hud ipc sound dnd image icon sicon scale display alerts mem disk temp jack locks util
+TESTS = power timer probe audio activity usb hud ipc sound dnd image icon sicon scale display alerts mem disk temp jack locks util
 ifeq ($(I18N),1)
 TESTS += text
 endif
 ifeq ($(NOTIFY),1)
-TESTS += notify bt history
+TESTS += notify bt history print
 endif
 
 TEST_SRC_power = src/src_power.c
@@ -173,6 +173,7 @@ TEST_LIBS_text = $(shell pkg-config --cflags --libs cairo freetype2 harfbuzz fri
 TEST_LIBS_display = $(shell pkg-config --libs wayland-client cairo) -lm
 TEST_LIBS_notify = $(shell pkg-config --libs libsystemd 2>/dev/null)
 TEST_LIBS_bt = $(shell pkg-config --libs libsystemd 2>/dev/null)
+TEST_LIBS_print = $(shell pkg-config --libs libsystemd 2>/dev/null)
 
 test: $(TESTS:%=build/test_%)
 	@set -e; for t in $^; do $$t; done

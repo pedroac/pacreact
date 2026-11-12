@@ -31,6 +31,7 @@ static int nsounds;
 void sound_play(SoundKind k) { last_sound = k; nsounds++; }
 static int pokes;
 void temp_poke(void) { pokes++; }
+void usb_uevent(const char *msg, size_t len) { (void)msg; (void)len; }
 static bool alerts_open = true;
 bool alert_allowed(const char *source, int level) { (void)source; (void)level; return alerts_open; }
 int loop_add(int fd, unsigned ev, void *fn, void *ctx) { (void)fd; (void)ev; (void)fn; (void)ctx; return 0; }

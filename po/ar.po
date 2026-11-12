@@ -6,7 +6,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: pachud\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-12 09:53+0000\n"
+"POT-Creation-Date: 2026-11-12 11:12+0000\n"
 "PO-Revision-Date: 2026-11-10 00:00+0000\n"
 "Last-Translator: \n"
 "Language-Team: Arabic\n"
@@ -283,6 +283,78 @@ msgstr "تم توصيل الشاحن"
 msgid "Charger disconnected"
 msgstr "تم فصل الشاحن"
 
+#: src/src_print.c
+msgid "Document"
+msgstr "مستند"
+
+#: src/src_print.c
+#, c-format
+msgid "Printed with errors — %s"
+msgstr "تمت الطباعة مع أخطاء — %s"
+
+#: src/src_print.c
+#, c-format
+msgid "Printed — %s"
+msgstr "تمت الطباعة — %s"
+
+#: src/src_print.c
+#, c-format
+msgid "Print failed — %s"
+msgstr "فشلت الطباعة — %s"
+
+#: src/src_print.c
+#, c-format
+msgid "Printing — %s"
+msgstr "جارٍ الطباعة — %s"
+
+#: src/src_print.c
+#, c-format
+msgid "%s: out of paper"
+msgstr "%s: نفد الورق"
+
+#: src/src_print.c
+#, c-format
+msgid "%s: paper jam"
+msgstr "%s: انحشار الورق"
+
+#: src/src_print.c
+#, c-format
+msgid "%s: out of ink or toner"
+msgstr "%s: نفد الحبر أو المسحوق"
+
+#: src/src_print.c
+#, c-format
+msgid "%s: ink or toner low"
+msgstr "%s: الحبر أو المسحوق منخفض"
+
+#: src/src_print.c
+#, c-format
+msgid "%s: cover open"
+msgstr "%s: الغطاء مفتوح"
+
+#: src/src_print.c
+#, c-format
+msgid "%s: offline"
+msgstr "%s: غير متصلة"
+
+#: src/src_print.c
+#, c-format
+msgid "%s: stopped"
+msgstr "%s: متوقفة"
+
+#: src/src_print.c
+#, c-format
+msgid "%s: ready"
+msgstr "%s: جاهزة"
+
+#: src/src_print.c
+msgid "no print jobs"
+msgstr "لا توجد مهام طباعة"
+
+#: src/src_print.c
+msgid "cannot reach the print system (CUPS)"
+msgstr "تعذر الوصول إلى نظام الطباعة (CUPS)"
+
 #: src/src_probe.c
 #, c-format
 msgid "Network slow — %d ms"
@@ -316,6 +388,20 @@ msgstr "البطارية حرجة — %d%%"
 #, c-format
 msgid "SSD temperature high — %d °C"
 msgstr ""
+
+#: src/src_usb.c
+msgid "USB device"
+msgstr "جهاز USB"
+
+#: src/src_usb.c
+#, c-format
+msgid "%s connected"
+msgstr "تم توصيل %s"
+
+#: src/src_usb.c
+#, c-format
+msgid "%s disconnected"
+msgstr "تم فصل %s"
 
 #: src/timer.c
 #, c-format

@@ -110,6 +110,10 @@ minutes without input, and starts over after a break of
 minutes.
 This needs the compositor's idle notifications; without them it counts the time since the daemon started.
 .TP
+.B print
+List the print jobs that have not finished: id, state, queue and name.
+Asks CUPS when run.
+.TP
 .B time
 Show the time and the date in the middle of the screen for a moment.
 .TP
@@ -250,6 +254,23 @@ Minutes without keyboard or pointer input after which you count as away from the
 .B PACHUD_PEEK_BREAK
 Minutes away that start the count of use over, 1 to 720 (default 15).
 .TP
+.B PACHUD_PRINT
+.B 0
+turns the printing toasts (a job printing, finished or failed, a printer out of paper, jammed, low on ink, offline) off;
+.B done
+leaves out the one for a job starting to print.
+.TP
+.B PACHUD_PRINT_DEBUG
+.B 1
+prints what CUPS and the system bus said, on standard error.
+.TP
+.B PACHUD_USB
+.B 0
+turns the toasts for USB devices (webcams, printers, drawing tablets, drives, headsets, keyboards and mice) off.
+A comma separated list of kinds
+.RB ( camera ", " printer ", " tablet ", " storage ", " audio ", " input ", " other )
+announces only those.
+.TP
 .B PACHUD_JACKS
 .B 0
 turns the audio-jack toasts (headphones, headset, microphone, line out) off.
@@ -283,7 +304,7 @@ anything else is a sound name or an absolute path.
 Do-not-disturb does not hold it back.
 .TP
 .BR PACHUD_SOUND_POWER ", " PACHUD_SOUND_DEVICES ", " PACHUD_SOUND_NETWORK
-Sounds for the charger being plugged or unplugged, for a headset, headphones, microphone or Bluetooth device
+Sounds for the charger being plugged or unplugged, for a headset, headphones, microphone, USB device or Bluetooth device
 connecting or disconnecting, and for the network coming online or going offline.
 All are off by default, and only changes make a sound, not the state at start-up.
 .B 1

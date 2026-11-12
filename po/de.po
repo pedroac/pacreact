@@ -6,7 +6,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: pachud\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-12 09:53+0000\n"
+"POT-Creation-Date: 2026-11-12 11:12+0000\n"
 "PO-Revision-Date: 2026-11-10 00:00+0000\n"
 "Last-Translator: \n"
 "Language-Team: German\n"
@@ -280,6 +280,78 @@ msgstr "Ladegerät angeschlossen"
 msgid "Charger disconnected"
 msgstr "Ladegerät getrennt"
 
+#: src/src_print.c
+msgid "Document"
+msgstr "Dokument"
+
+#: src/src_print.c
+#, c-format
+msgid "Printed with errors — %s"
+msgstr "Mit Fehlern gedruckt — %s"
+
+#: src/src_print.c
+#, c-format
+msgid "Printed — %s"
+msgstr "Gedruckt — %s"
+
+#: src/src_print.c
+#, c-format
+msgid "Print failed — %s"
+msgstr "Druck fehlgeschlagen — %s"
+
+#: src/src_print.c
+#, c-format
+msgid "Printing — %s"
+msgstr "Wird gedruckt — %s"
+
+#: src/src_print.c
+#, c-format
+msgid "%s: out of paper"
+msgstr "%s: Papier leer"
+
+#: src/src_print.c
+#, c-format
+msgid "%s: paper jam"
+msgstr "%s: Papierstau"
+
+#: src/src_print.c
+#, c-format
+msgid "%s: out of ink or toner"
+msgstr "%s: Tinte oder Toner leer"
+
+#: src/src_print.c
+#, c-format
+msgid "%s: ink or toner low"
+msgstr "%s: Tinte oder Toner wird knapp"
+
+#: src/src_print.c
+#, c-format
+msgid "%s: cover open"
+msgstr "%s: Abdeckung offen"
+
+#: src/src_print.c
+#, c-format
+msgid "%s: offline"
+msgstr "%s: offline"
+
+#: src/src_print.c
+#, c-format
+msgid "%s: stopped"
+msgstr "%s: angehalten"
+
+#: src/src_print.c
+#, c-format
+msgid "%s: ready"
+msgstr "%s: bereit"
+
+#: src/src_print.c
+msgid "no print jobs"
+msgstr "keine Druckaufträge"
+
+#: src/src_print.c
+msgid "cannot reach the print system (CUPS)"
+msgstr "Drucksystem (CUPS) nicht erreichbar"
+
 #: src/src_probe.c
 #, c-format
 msgid "Network slow — %d ms"
@@ -313,6 +385,20 @@ msgstr "Akku kritisch — %d%%"
 #, c-format
 msgid "SSD temperature high — %d °C"
 msgstr ""
+
+#: src/src_usb.c
+msgid "USB device"
+msgstr "USB-Gerät"
+
+#: src/src_usb.c
+#, c-format
+msgid "%s connected"
+msgstr "%s angeschlossen"
+
+#: src/src_usb.c
+#, c-format
+msgid "%s disconnected"
+msgstr "%s getrennt"
 
 #: src/timer.c
 #, c-format

@@ -13,6 +13,12 @@ void probe_init(void);      /* opt-in latency probe (PACHUD_PROBE_HOST) */
 void backlight_init(void);  /* screen brightness, from sysfs notifications */
 void bt_init(void);         /* Bluetooth devices connecting (needs sd-bus; not in NOTIFY=0 builds) */
 void locks_init(void);     /* Caps Lock / Num Lock (opt-in: PACHUD_LOCK_KEYS=1) */
+void usb_init(void);        /* USB devices connecting: webcams, printers, tablets, drives (kernel uevents and sysfs) */
+void usb_uevent(const char *msg, size_t len);   /* one kernel uevent, from the shared socket in src_power.c */
+void print_init(void);       /* print jobs and printer problems, from CUPS (needs sd-bus; not in NOTIFY=0 builds) */
+void print_shutdown(void);   /* gives CUPS its subscription back */
+/* Handles "print": the jobs that have not finished. Returns false if cmd is not "print". */
+bool print_command(const char *cmd, char *args, char *reply, size_t n);
 void jack_init(void);       /* audio jacks: headphones, headset, microphone, line out */
 void temp_init(void);       /* CPU and SSD temperature: hwmon sensors, thermal events, adaptive timer */
 void temp_poke(void);       /* a kernel thermal event happened: look now */

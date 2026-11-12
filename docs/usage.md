@@ -14,6 +14,7 @@
 | `pachud alarm [-r RECUR] [YYYY-MM-DD] HH:MM [LABEL...]` | The next such wall-clock time, today or tomorrow. With `-r` it repeats: `daily`, `weekdays`, `weekends`, or days such as `mon,wed,fri`. With a date (`pachud alarm 2026-12-25 07:30 …`) it fires once at that moment; a dated alarm cannot repeat. A recurring alarm stays in `pachud list` (shown as `[weekdays]`) and is rescheduled after it fires; occurrences missed while the daemon was down fire once. |
 | `pachud peek [-r RECUR] HH:MM [LABEL...]` | Show the time quietly at that time of day, like glancing at a clock: a small toast, no sound. Repeats with `-r` like an alarm. See [Peeking at the time](#peeking-at-the-time). |
 | `pachud peek every DURATION [LABEL...]` | Show the time after that much time at the computer, again and again: `30m`, `1h`. At least `1m`. |
+| `pachud print` | The print jobs that have not finished, one per line: id, state (`waiting`, `held`, `printing`, `stopped`), queue and name. Asks CUPS when run. |
 | `pachud time` | Show the time and the date in the middle of the screen for a moment. For a key. |
 | `pachud list` | Pending timers, alarms and peeks with their ids and time left. |
 | `pachud snooze [DURATION]` | Re-arm the timer or alarm that last went off as a new one-shot (default 5m, same label). A snoozed recurring alarm still comes back on its schedule. |
@@ -62,6 +63,8 @@ Settings that are numbers are read strictly: the whole value must be a whole num
 | `PACHUD_STARTUP_GRACE` | 60 | Seconds after start-up during which an alert that is not worse than one shown in the last 30 minutes is not shown again. `0` turns it off. See [Alerts at start-up](#alerts-at-start-up). |
 | `PACHUD_PEEK_IDLE` | `5` | Minutes without touching the keyboard or the pointer after which you count as away from the computer, 1 to 120. Only for [peeks after use](#peeking-at-the-time). |
 | `PACHUD_PEEK_BREAK` | `15` | Minutes away that count as a break: the use counted so far starts over, 1 to 720. |
+| `PACHUD_PRINT` | on | `0` turns the printing toasts off; `done` leaves out the one for a job starting to print. See [Printing](#printing). |
+| `PACHUD_USB` | all | `0` turns the USB device toasts off. A comma separated list of kinds (`camera`, `printer`, `tablet`, `storage`, `audio`, `input`, `other`) announces only those. See [USB devices](#usb-devices). |
 | `PACHUD_JACKS` | auto | `0` turns the audio-jack toasts off. `generic` makes every headphone or microphone jack plug say "Audio device connected" or "Audio device disconnected". See [Audio jacks](#audio-jacks). |
 | `PACHUD_JACKS_DEBUG` | off | `1` prints each jack switch event, port change and decision, with timestamps, on standard error. For bug reports. |
 | `PACHUD_SOUND` | on | `0` turns all sound off. |
@@ -71,7 +74,7 @@ Settings that are numbers are read strictly: the whole value must be a whole num
 | `PACHUD_ALERT_SOUND` | none | Sound for battery and memory alerts. |
 | `PACHUD_SOUND_VOLUME` | none | Sound when the output volume or mute changes: `1` for the theme's `audio-volume-change`, or a sound name or path. |
 | `PACHUD_SOUND_POWER` | none | Sound when the charger is plugged in or unplugged. See [Sound](#sound) for the values. |
-| `PACHUD_SOUND_DEVICES` | none | Sound when a headset, headphones, microphone or Bluetooth device connects or disconnects. |
+| `PACHUD_SOUND_DEVICES` | none | Sound when a headset, headphones, microphone, USB device or Bluetooth device connects or disconnects. |
 | `PACHUD_SOUND_NETWORK` | none | Sound when the network comes online or goes offline. |
 
 ## Thresholds (compiled in)
@@ -107,6 +110,34 @@ A card shows the first four lines of its body. To read more, rest the pointer on
 Without the mouse, `pachud expand` opens the newest card (`ok expanded`) and the same command closes it again (`ok collapsed`). An opened card does not expire until it is closed, so bind it to a key and close it when done. If an app updates a card you opened, it stays open.
 
 Only cards open this way; toasts and sliders are short and stay click-through. Opening by pointer needs the HUD to take the pointer over cards, so `PACHUD_CLICK=0` turns it off (`pachud expand` still works). Opening moves the cards below it down, and closing moves them back, so after moving from an open card to the one below, the lower card slides up and one more movement is needed to rest on it. A body is kept up to 2048 bytes; anything longer is cut, and beyond 20 lines an opened card ends in an ellipsis.
+
+## Printing
+
+pachud tells you what a printer does when you are not looking at it:
+
+- `Printing — Quarterly report.pdf` when a job goes to the printer (`PACHUD_PRINT=done` leaves this one out), then `Printed — Quarterly report.pdf` when it finishes, `Printed with errors — …` when it finishes with warnings, and `Print failed — …` when it aborts (a warning, in amber).
+- When a printer needs attention: `HP ENVY 4520 series: out of paper`, `paper jam`, `out of ink or toner`, `ink or toner low`, `cover open`, `offline` or `stopped`, each once when it starts, and `ready` when everything is well again. Ink running low is information; the others are warnings that wait for room like any other alert.
+- Not a job you cancelled yourself. A printer you paused on purpose is not a problem.
+
+`pachud print` lists the jobs that have not finished, for a key or a status bar. It asks CUPS when you run it, so it costs nothing in between.
+
+CUPS announces these on the system bus, but only to a program that has asked. pachud asks over CUPS's socket (`/run/cups/cups.sock`, or the path in `CUPS_SERVER`) the way GNOME's print notifications do, marks its request with its process id, renews it before its 24 hour lease runs out, and gives it back when it stops. If it was killed without that, the next start cancels the leftover, and only one whose process no longer runs, so CUPS does not send everything twice (a pachud that is running keeps its own). While nothing prints, nothing wakes the daemon. If CUPS is not installed, pachud does nothing; if it starts later, pachud keeps trying with longer and longer pauses. Where CUPS starts on demand, pachud's first question starts it; `PACHUD_PRINT=0` avoids that. A job's name is whatever the program called it, so it is shown on one line, cut if long. `PACHUD_PRINT_DEBUG=1` prints what CUPS and the bus said, on standard error.
+
+Scanning has no such announcements: nothing outside the scanning program is told when a scan starts or ends, so there is nothing to show. A scanner being plugged in is reported with the other [USB devices](#usb-devices).
+
+## USB devices
+
+Plugging a USB device in or out gives a toast with its name and an icon for what it is: a webcam, a printer, a drawing tablet, a USB drive, a headset, a keyboard or mouse, a phone. For example `HP ENVY 4520 series connected`, `Wacom Intuos BT M disconnected`. The name is the one the device reports about itself (its maker, if the product name does not already say it), shown with any control characters replaced, since a device chooses its own strings.
+
+What it announces:
+
+- Not what is already plugged in when pachud starts, though unplugging one of those is announced.
+- Not hubs, Bluetooth adapters (the devices on them are reported as [Bluetooth](#sound) devices), or devices the kernel says are built in, such as a laptop's own webcam: they are not things you connect.
+- A device that goes out and comes straight back within a second (waking from sleep, a loose cable) is not announced; one that is swapped for another in the same port is.
+
+Each device is one of seven kinds, from what it says it is: `camera` (a video interface, even when it has a microphone too), `printer`, `storage` (a USB drive or a card reader), `audio`, `tablet`, `input` (a keyboard, mouse or game controller, with its own icon) and `other`. A drawing tablet is an ordinary HID device to the kernel; pachud finds it by the pen it reports, whoever makes it, and by the maker (Wacom, Huion, XP-Pen, UC-Logic, Waltop) when that is not there yet. `PACHUD_USB=camera,printer,tablet` announces only those kinds, and `PACHUD_USB=0` turns all of it off. A name that is not a kind is reported on standard error and left out. `PACHUD_SOUND_DEVICES` makes a sound for these too, like the jacks and Bluetooth.
+
+It reports the connection, not that a drive is mounted and ready. It does not see SD cards in a built-in reader, Thunderbolt or FireWire, or a printer on the network, which does not connect.
 
 ## Peeking at the time
 
@@ -188,7 +219,7 @@ If the headphone contact of a combo jack lags like that, the fix is in the kerne
 
 pachud links no audio library: it starts an external player (`pw-play` or `paplay`) with the sound file. By default only timers and alarms make a sound, once when they fire; everything else is silent until you opt in with the variables above. Sound names are looked up as `NAME.oga`, `.ogg` or `.wav` in `sounds/freedesktop/stereo` under `$XDG_DATA_HOME` and `$XDG_DATA_DIRS`, so `message`, `bell` or `dialog-warning` work with the standard sound theme. Several sounds within 400 ms play once.
 
-Things that merely happen are silent unless you ask: `PACHUD_SOUND_POWER` (charger plugged or unplugged), `PACHUD_SOUND_DEVICES` (a headset, headphones, microphone or Bluetooth device connects or disconnects) and `PACHUD_SOUND_NETWORK` (online or offline). Each takes one of:
+Things that merely happen are silent unless you ask: `PACHUD_SOUND_POWER` (charger plugged or unplugged), `PACHUD_SOUND_DEVICES` (a headset, headphones, microphone, USB device or Bluetooth device connects or disconnects) and `PACHUD_SOUND_NETWORK` (online or offline). Each takes one of:
 
 | Value | Plays |
 |---|---|

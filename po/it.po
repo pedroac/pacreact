@@ -6,7 +6,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: pachud\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-12 09:53+0000\n"
+"POT-Creation-Date: 2026-11-12 11:12+0000\n"
 "PO-Revision-Date: 2026-11-10 00:00+0000\n"
 "Last-Translator: \n"
 "Language-Team: Italian\n"
@@ -279,6 +279,78 @@ msgstr "Caricabatterie collegato"
 msgid "Charger disconnected"
 msgstr "Caricabatterie scollegato"
 
+#: src/src_print.c
+msgid "Document"
+msgstr "Documento"
+
+#: src/src_print.c
+#, c-format
+msgid "Printed with errors — %s"
+msgstr "Stampato con errori — %s"
+
+#: src/src_print.c
+#, c-format
+msgid "Printed — %s"
+msgstr "Stampato — %s"
+
+#: src/src_print.c
+#, c-format
+msgid "Print failed — %s"
+msgstr "Stampa non riuscita — %s"
+
+#: src/src_print.c
+#, c-format
+msgid "Printing — %s"
+msgstr "Stampa in corso — %s"
+
+#: src/src_print.c
+#, c-format
+msgid "%s: out of paper"
+msgstr "%s: carta esaurita"
+
+#: src/src_print.c
+#, c-format
+msgid "%s: paper jam"
+msgstr "%s: inceppamento della carta"
+
+#: src/src_print.c
+#, c-format
+msgid "%s: out of ink or toner"
+msgstr "%s: inchiostro o toner esaurito"
+
+#: src/src_print.c
+#, c-format
+msgid "%s: ink or toner low"
+msgstr "%s: inchiostro o toner in esaurimento"
+
+#: src/src_print.c
+#, c-format
+msgid "%s: cover open"
+msgstr "%s: coperchio aperto"
+
+#: src/src_print.c
+#, c-format
+msgid "%s: offline"
+msgstr "%s: non in linea"
+
+#: src/src_print.c
+#, c-format
+msgid "%s: stopped"
+msgstr "%s: ferma"
+
+#: src/src_print.c
+#, c-format
+msgid "%s: ready"
+msgstr "%s: pronta"
+
+#: src/src_print.c
+msgid "no print jobs"
+msgstr "nessun lavoro di stampa"
+
+#: src/src_print.c
+msgid "cannot reach the print system (CUPS)"
+msgstr "impossibile raggiungere il sistema di stampa (CUPS)"
+
 #: src/src_probe.c
 #, c-format
 msgid "Network slow — %d ms"
@@ -312,6 +384,20 @@ msgstr "Batteria critica — %d%%"
 #, c-format
 msgid "SSD temperature high — %d °C"
 msgstr ""
+
+#: src/src_usb.c
+msgid "USB device"
+msgstr "Dispositivo USB"
+
+#: src/src_usb.c
+#, c-format
+msgid "%s connected"
+msgstr "%s collegato"
+
+#: src/src_usb.c
+#, c-format
+msgid "%s disconnected"
+msgstr "%s scollegato"
 
 #: src/timer.c
 #, c-format

@@ -6,7 +6,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: pachud\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-12 09:53+0000\n"
+"POT-Creation-Date: 2026-11-12 11:12+0000\n"
 "PO-Revision-Date: 2026-11-10 00:00+0000\n"
 "Last-Translator: \n"
 "Language-Team: Korean\n"
@@ -277,6 +277,78 @@ msgstr "충전기 연결됨"
 msgid "Charger disconnected"
 msgstr "충전기 분리됨"
 
+#: src/src_print.c
+msgid "Document"
+msgstr "문서"
+
+#: src/src_print.c
+#, c-format
+msgid "Printed with errors — %s"
+msgstr "오류와 함께 인쇄됨 — %s"
+
+#: src/src_print.c
+#, c-format
+msgid "Printed — %s"
+msgstr "인쇄됨 — %s"
+
+#: src/src_print.c
+#, c-format
+msgid "Print failed — %s"
+msgstr "인쇄 실패 — %s"
+
+#: src/src_print.c
+#, c-format
+msgid "Printing — %s"
+msgstr "인쇄 중 — %s"
+
+#: src/src_print.c
+#, c-format
+msgid "%s: out of paper"
+msgstr "%s: 용지 없음"
+
+#: src/src_print.c
+#, c-format
+msgid "%s: paper jam"
+msgstr "%s: 용지 걸림"
+
+#: src/src_print.c
+#, c-format
+msgid "%s: out of ink or toner"
+msgstr "%s: 잉크 또는 토너 없음"
+
+#: src/src_print.c
+#, c-format
+msgid "%s: ink or toner low"
+msgstr "%s: 잉크 또는 토너 부족"
+
+#: src/src_print.c
+#, c-format
+msgid "%s: cover open"
+msgstr "%s: 덮개 열림"
+
+#: src/src_print.c
+#, c-format
+msgid "%s: offline"
+msgstr "%s: 오프라인"
+
+#: src/src_print.c
+#, c-format
+msgid "%s: stopped"
+msgstr "%s: 중지됨"
+
+#: src/src_print.c
+#, c-format
+msgid "%s: ready"
+msgstr "%s: 준비됨"
+
+#: src/src_print.c
+msgid "no print jobs"
+msgstr "인쇄 작업 없음"
+
+#: src/src_print.c
+msgid "cannot reach the print system (CUPS)"
+msgstr "인쇄 시스템(CUPS)에 연결할 수 없습니다"
+
 #: src/src_probe.c
 #, c-format
 msgid "Network slow — %d ms"
@@ -310,6 +382,20 @@ msgstr "배터리 위험 — %d%%"
 #, c-format
 msgid "SSD temperature high — %d °C"
 msgstr ""
+
+#: src/src_usb.c
+msgid "USB device"
+msgstr "USB 장치"
+
+#: src/src_usb.c
+#, c-format
+msgid "%s connected"
+msgstr "%s 연결됨"
+
+#: src/src_usb.c
+#, c-format
+msgid "%s disconnected"
+msgstr "%s 분리됨"
 
 #: src/timer.c
 #, c-format

@@ -6,7 +6,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: pachud\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-12 09:53+0000\n"
+"POT-Creation-Date: 2026-11-12 11:12+0000\n"
 "PO-Revision-Date: 2026-11-10 00:00+0000\n"
 "Last-Translator: \n"
 "Language-Team: Chinese (Simplified)\n"
@@ -277,6 +277,78 @@ msgstr "已连接充电器"
 msgid "Charger disconnected"
 msgstr "已断开充电器"
 
+#: src/src_print.c
+msgid "Document"
+msgstr "文档"
+
+#: src/src_print.c
+#, c-format
+msgid "Printed with errors — %s"
+msgstr "已打印，但有错误 — %s"
+
+#: src/src_print.c
+#, c-format
+msgid "Printed — %s"
+msgstr "已打印 — %s"
+
+#: src/src_print.c
+#, c-format
+msgid "Print failed — %s"
+msgstr "打印失败 — %s"
+
+#: src/src_print.c
+#, c-format
+msgid "Printing — %s"
+msgstr "正在打印 — %s"
+
+#: src/src_print.c
+#, c-format
+msgid "%s: out of paper"
+msgstr "%s：缺纸"
+
+#: src/src_print.c
+#, c-format
+msgid "%s: paper jam"
+msgstr "%s：卡纸"
+
+#: src/src_print.c
+#, c-format
+msgid "%s: out of ink or toner"
+msgstr "%s：墨水或墨粉用尽"
+
+#: src/src_print.c
+#, c-format
+msgid "%s: ink or toner low"
+msgstr "%s：墨水或墨粉不足"
+
+#: src/src_print.c
+#, c-format
+msgid "%s: cover open"
+msgstr "%s：盖子已打开"
+
+#: src/src_print.c
+#, c-format
+msgid "%s: offline"
+msgstr "%s：离线"
+
+#: src/src_print.c
+#, c-format
+msgid "%s: stopped"
+msgstr "%s：已停止"
+
+#: src/src_print.c
+#, c-format
+msgid "%s: ready"
+msgstr "%s：就绪"
+
+#: src/src_print.c
+msgid "no print jobs"
+msgstr "没有打印任务"
+
+#: src/src_print.c
+msgid "cannot reach the print system (CUPS)"
+msgstr "无法连接打印系统 (CUPS)"
+
 #: src/src_probe.c
 #, c-format
 msgid "Network slow — %d ms"
@@ -310,6 +382,20 @@ msgstr "电量严重不足 — %d%%"
 #, c-format
 msgid "SSD temperature high — %d °C"
 msgstr ""
+
+#: src/src_usb.c
+msgid "USB device"
+msgstr "USB 设备"
+
+#: src/src_usb.c
+#, c-format
+msgid "%s connected"
+msgstr "已连接 %s"
+
+#: src/src_usb.c
+#, c-format
+msgid "%s disconnected"
+msgstr "已断开 %s"
 
 #: src/timer.c
 #, c-format

@@ -45,6 +45,7 @@ static const char usage_text[] =
     "       pachud dnd [on [DURATION]|off|toggle|status]\n"
     "       pachud action [N]                  invoke action N of the notification on screen\n"
     "       pachud history [N|clear]           the last notifications (kept in memory only)\n"
+    "       pachud print                       the print jobs that have not finished\n"
     "       pachud count                       notifications on screen or waiting (for a status bar)\n"
     "       pachud expand                      show more of the newest notification, or less again\n";
 
@@ -230,6 +231,14 @@ static void handle(char *msg, char *reply, size_t n) {
         return;
     }
 #endif
+#ifndef NO_NOTIFY
+    if (cmd && print_command(cmd, save ? save : (char *)"", reply, n)) return;
+#else
+    if (cmd && !strcmp(cmd, "print")) {
+        snprintf(reply, n, "%s", _("this build has no notification support"));
+        return;
+    }
+#endif
     if (cmd && timer_command(cmd, save ? save : (char *)"", reply, n)) return;
     snprintf(reply, n, "%s", _("unknown command"));
 }
@@ -291,9 +300,11 @@ static int run_daemon(void) {
     disk_init();
     temp_init();
     jack_init();
+    usb_init();
     locks_init();
 #ifndef NO_NOTIFY
     bt_init();
+    print_init();
 #endif
     backlight_init();
     audio_init();
@@ -314,6 +325,9 @@ static int run_daemon(void) {
         hud_tick();
     }
 
+#ifndef NO_NOTIFY
+    print_shutdown();
+#endif
     display_close(dpy);
     text_finish();
     return 0;
@@ -339,7 +353,8 @@ int main(int argc, char **argv) {
     if (!strcmp(argv[1], "extend")) return client_generic(argc, argv, 2);
     if (!strcmp(argv[1], "list") || !strcmp(argv[1], "dismiss") || !strcmp(argv[1], "dnd") ||
         !strcmp(argv[1], "snooze") || !strcmp(argv[1], "action") || !strcmp(argv[1], "history") ||
-        !strcmp(argv[1], "count") || !strcmp(argv[1], "expand") || !strcmp(argv[1], "time"))
+        !strcmp(argv[1], "count") || !strcmp(argv[1], "expand") || !strcmp(argv[1], "time") ||
+        !strcmp(argv[1], "print"))
         return client_generic(argc, argv, 0);
     return usage();
 }

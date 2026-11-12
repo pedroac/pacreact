@@ -6,7 +6,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: pachud\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-12 09:53+0000\n"
+"POT-Creation-Date: 2026-11-12 11:12+0000\n"
 "PO-Revision-Date: 2026-11-10 00:00+0000\n"
 "Last-Translator: \n"
 "Language-Team: French\n"
@@ -280,6 +280,78 @@ msgstr "Chargeur branché"
 msgid "Charger disconnected"
 msgstr "Chargeur débranché"
 
+#: src/src_print.c
+msgid "Document"
+msgstr "Document"
+
+#: src/src_print.c
+#, c-format
+msgid "Printed with errors — %s"
+msgstr "Imprimé avec des erreurs — %s"
+
+#: src/src_print.c
+#, c-format
+msgid "Printed — %s"
+msgstr "Imprimé — %s"
+
+#: src/src_print.c
+#, c-format
+msgid "Print failed — %s"
+msgstr "Échec de l'impression — %s"
+
+#: src/src_print.c
+#, c-format
+msgid "Printing — %s"
+msgstr "Impression en cours — %s"
+
+#: src/src_print.c
+#, c-format
+msgid "%s: out of paper"
+msgstr "%s : plus de papier"
+
+#: src/src_print.c
+#, c-format
+msgid "%s: paper jam"
+msgstr "%s : bourrage papier"
+
+#: src/src_print.c
+#, c-format
+msgid "%s: out of ink or toner"
+msgstr "%s : plus d'encre ou de toner"
+
+#: src/src_print.c
+#, c-format
+msgid "%s: ink or toner low"
+msgstr "%s : niveau d'encre ou de toner bas"
+
+#: src/src_print.c
+#, c-format
+msgid "%s: cover open"
+msgstr "%s : capot ouvert"
+
+#: src/src_print.c
+#, c-format
+msgid "%s: offline"
+msgstr "%s : hors ligne"
+
+#: src/src_print.c
+#, c-format
+msgid "%s: stopped"
+msgstr "%s : arrêtée"
+
+#: src/src_print.c
+#, c-format
+msgid "%s: ready"
+msgstr "%s : prête"
+
+#: src/src_print.c
+msgid "no print jobs"
+msgstr "aucun travail d'impression"
+
+#: src/src_print.c
+msgid "cannot reach the print system (CUPS)"
+msgstr "système d'impression (CUPS) inaccessible"
+
 #: src/src_probe.c
 #, c-format
 msgid "Network slow — %d ms"
@@ -313,6 +385,20 @@ msgstr "Batterie critique — %d%%"
 #, c-format
 msgid "SSD temperature high — %d °C"
 msgstr ""
+
+#: src/src_usb.c
+msgid "USB device"
+msgstr "Périphérique USB"
+
+#: src/src_usb.c
+#, c-format
+msgid "%s connected"
+msgstr "%s branché"
+
+#: src/src_usb.c
+#, c-format
+msgid "%s disconnected"
+msgstr "%s débranché"
 
 #: src/timer.c
 #, c-format

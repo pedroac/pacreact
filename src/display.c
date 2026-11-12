@@ -5,6 +5,7 @@
 #include "viewporter-client-protocol.h"
 #include "wlr-layer-shell-unstable-v1-client-protocol.h"
 #include <errno.h>
+#include <linux/input-event-codes.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -42,6 +43,14 @@ struct Display {
     Output outputs[MAX_OUTPUTS];  /* every monitor, so PACHUD_OUTPUT can pick one by name */
     const char *want_output;      /* PACHUD_OUTPUT, or NULL to let the compositor choose */
     bool warned_output;
+    bool click;                   /* PACHUD_CLICK is not 0 */
+    struct wl_seat *seat;
+    struct wl_pointer *pointer;
+    struct wl_surface *pointer_surface;  /* the surface the pointer is over, if it is ours */
+    double px, py;                /* the pointer, in that surface's logical pixels */
+    ClickRect rects[CLICK_RECTS_MAX];
+    int nrects;
+    void (*click_cb)(int x, int y);
     uint32_t anchor;              /* where the notification stack sits: PACHUD_ANCHOR */
     int align;                    /* 0 left, 1 centre, 2 right: how items line up in the stack */
 
@@ -117,6 +126,54 @@ static const struct wl_output_listener output_listener = {
     .name = out_name, .description = out_description,
 };
 
+static void ptr_enter(void *data, struct wl_pointer *p, uint32_t serial, struct wl_surface *s,
+                      wl_fixed_t x, wl_fixed_t y) {
+    Display *d = data;
+    (void)p; (void)serial;
+    d->pointer_surface = s;
+    d->px = wl_fixed_to_double(x);
+    d->py = wl_fixed_to_double(y);
+}
+static void ptr_leave(void *data, struct wl_pointer *p, uint32_t serial, struct wl_surface *s) {
+    Display *d = data;
+    (void)p; (void)serial; (void)s;
+    d->pointer_surface = NULL;
+}
+static void ptr_motion(void *data, struct wl_pointer *p, uint32_t time, wl_fixed_t x, wl_fixed_t y) {
+    Display *d = data;
+    (void)p; (void)time;
+    d->px = wl_fixed_to_double(x);
+    d->py = wl_fixed_to_double(y);
+}
+static void ptr_button(void *data, struct wl_pointer *p, uint32_t serial, uint32_t time,
+                       uint32_t button, uint32_t state) {
+    Display *d = data;
+    (void)p; (void)serial; (void)time;
+    if (button == BTN_LEFT && state == WL_POINTER_BUTTON_STATE_PRESSED && d->surface &&
+        d->pointer_surface == d->surface && d->click_cb)
+        d->click_cb((int)d->px, (int)d->py);
+}
+static void ptr_axis(void *data, struct wl_pointer *p, uint32_t time, uint32_t axis, wl_fixed_t v) {
+    (void)data; (void)p; (void)time; (void)axis; (void)v;
+}
+static const struct wl_pointer_listener pointer_listener = {
+    .enter = ptr_enter, .leave = ptr_leave, .motion = ptr_motion, .button = ptr_button, .axis = ptr_axis,
+};
+
+static void seat_caps(void *data, struct wl_seat *seat, uint32_t caps) {
+    Display *d = data;
+    bool has = caps & WL_SEAT_CAPABILITY_POINTER;
+    if (has && !d->pointer) {
+        d->pointer = wl_seat_get_pointer(seat);
+        wl_pointer_add_listener(d->pointer, &pointer_listener, d);
+    } else if (!has && d->pointer) {
+        wl_pointer_destroy(d->pointer);
+        d->pointer = NULL;
+        d->pointer_surface = NULL;
+    }
+}
+static const struct wl_seat_listener seat_listener = { .capabilities = seat_caps };
+
 static void registry_global(void *data, struct wl_registry *reg, uint32_t name,
                             const char *iface, uint32_t version) {
     Display *d = data;
@@ -133,7 +190,10 @@ static void registry_global(void *data, struct wl_registry *reg, uint32_t name,
     }
     if (!strcmp(iface, wl_compositor_interface.name))
         d->compositor = wl_registry_bind(reg, name, &wl_compositor_interface, version < 4 ? version : 4);
-    else if (!strcmp(iface, wl_shm_interface.name))
+    else if (!strcmp(iface, wl_seat_interface.name) && d->click && !d->seat) {
+        d->seat = wl_registry_bind(reg, name, &wl_seat_interface, 1);
+        wl_seat_add_listener(d->seat, &seat_listener, d);
+    } else if (!strcmp(iface, wl_shm_interface.name))
         d->shm = wl_registry_bind(reg, name, &wl_shm_interface, 1);
     else if (!strcmp(iface, zwlr_layer_shell_v1_interface.name))
         d->layer_shell = wl_registry_bind(reg, name, &zwlr_layer_shell_v1_interface, version < 4 ? version : 4);
@@ -272,6 +332,8 @@ static void parse_anchor(Display *d, const char *name) {
 Display *display_open(void) {
     Display *d = calloc(1, sizeof *d);
     if (!d) return NULL;
+    const char *click = getenv("PACHUD_CLICK");
+    d->click = !(click && !strcmp(click, "0"));
     d->wl = wl_display_connect(NULL);
     if (!d->wl) { free(d); return NULL; }
 
@@ -312,6 +374,8 @@ void display_close(Display *d) {
     if (d->viewporter) wp_viewporter_destroy(d->viewporter);
     for (int i = 0; i < MAX_OUTPUTS; i++)
         if (d->outputs[i].proxy) wl_output_release(d->outputs[i].proxy);
+    if (d->pointer) wl_pointer_destroy(d->pointer);
+    if (d->seat) wl_seat_destroy(d->seat);
     if (d->layer_shell) zwlr_layer_shell_v1_destroy(d->layer_shell);
     if (d->shm) wl_shm_destroy(d->shm);
     if (d->compositor) wl_compositor_destroy(d->compositor);
@@ -407,6 +471,24 @@ static struct wl_output *pick_output(Display *d) {
     return NULL;
 }
 
+/* An empty input region makes the HUD click-through; clicks are taken only inside the rectangles. */
+static void apply_click_region(Display *d) {
+    if (!d->surface) return;
+    struct wl_region *region = wl_compositor_create_region(d->compositor);
+    for (int i = 0; d->click && i < d->nrects; i++)
+        wl_region_add(region, d->rects[i].x, d->rects[i].y, d->rects[i].w, d->rects[i].h);
+    wl_surface_set_input_region(d->surface, region);
+    wl_region_destroy(region);
+}
+
+void display_set_click_rects(Display *d, const ClickRect *rects, int n) {
+    d->nrects = n > CLICK_RECTS_MAX ? CLICK_RECTS_MAX : n;
+    for (int i = 0; i < d->nrects; i++) d->rects[i] = rects[i];
+    apply_click_region(d);
+}
+
+void display_on_click(Display *d, void (*fn)(int x, int y)) { d->click_cb = fn; }
+
 static void create_surface(Display *d) {
     d->surface = wl_compositor_create_surface(d->compositor);
     d->layer = zwlr_layer_shell_v1_get_layer_surface(d->layer_shell, d->surface, pick_output(d),
@@ -432,10 +514,7 @@ static void create_surface(Display *d) {
         d->cur_alpha = 1;
     }
 
-    /* An empty input region makes the HUD click-through. */
-    struct wl_region *empty = wl_compositor_create_region(d->compositor);
-    wl_surface_set_input_region(d->surface, empty);
-    wl_region_destroy(empty);
+    apply_click_region(d);
 }
 
 void display_present(Display *d, Buf *b, cairo_t *cr) {
@@ -464,6 +543,7 @@ void display_present(Display *d, Buf *b, cairo_t *cr) {
 }
 
 static void destroy_surface(Display *d) {
+    if (d->pointer_surface == d->surface) d->pointer_surface = NULL;
     if (d->frame) wl_callback_destroy(d->frame);
     if (d->viewport) wp_viewport_destroy(d->viewport);
     if (d->frac) wp_fractional_scale_v1_destroy(d->frac);

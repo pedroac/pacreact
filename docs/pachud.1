@@ -20,7 +20,10 @@ timers and alarms, and desktop notifications, and it replaces the notification d
 Run without arguments it is the daemon.
 With a command it is a client of the running daemon, which it reaches through the socket
 .IR $XDG_RUNTIME_DIR/pachud.sock .
-HUDs cannot be clicked: they are closed and acted on with these commands, typically from compositor keybinds.
+HUDs are closed and acted on with these commands, typically from compositor keybinds.
+A left click on a notification card also dismisses it (the app is sent its
+.B default
+action first, if it offered one); everything else on the HUD passes clicks through.
 .PP
 HUDs stack in one column in a corner of the screen (top right by default), newest on top, each leaving on its own timeout.
 At most four are shown.
@@ -99,6 +102,11 @@ Cards list their actions as numbered hints, for example
 Commands exit with status 0 on success, 1 if the daemon refused the request (the reason is printed to
 standard error) or cannot be reached, and 2 for a usage error.
 .SH ENVIRONMENT
+.TP
+.B PACHUD_CLICK
+Set to
+.B 0
+to make the whole HUD click-through, cards included.
 .TP
 .B PACHUD_ANCHOR
 Where the HUD stack sits:
@@ -183,8 +191,15 @@ service, so only one notification daemon can run at a time.
 It supports summary and body (tags removed), urgency, replacement by id, sound hints, actions,
 and icons as raw pixels, as PNG paths or as icon-theme names (PNG only).
 .PP
-Cards stay up 3 s (low urgency), 6 s (normal) or 15 s (critical); an explicit timeout is honoured between
-1.5 and 30 s.
+With no timeout requested (\-1) cards stay up 3 s (low urgency) or 6 s (normal); critical cards never expire.
+A timeout of 0 means never expire, for any urgency; any other value is honoured as asked, but never below 1.5 s.
+A card that never expires stays until it is clicked, dismissed with
+.BR "pachud dismiss" ,
+closed by the app or replaced.
+.PP
+.B CloseNotification
+for an id that is not on screen returns a D-Bus error.
+A notification suppressed by do-not-disturb is closed at once with reason 4, so apps that wait for it do not hang.
 .SH EXAMPLES
 .nf
 pachud timer 5m tea

@@ -17,12 +17,10 @@
 #define IFACE "org.freedesktop.Notifications"
 
 #define MIN_MS 1500
-#define MAX_MS 30000  /* nothing can click a card away, so "never expire" is capped */
 #define LOW_MS 3000
 #define NORMAL_MS 6000
-#define CRITICAL_MS 15000
 
-enum { REASON_CLOSED_BY_CALL = 3 };
+enum { REASON_CLOSED_BY_CALL = 3, REASON_UNDEFINED = 4 };
 
 /* One "default" action plus the ones the card can show, as key/label pairs */
 #define MAX_ACTION_STRINGS ((HUD_MAX_ACTIONS + 1) * 2)
@@ -46,11 +44,17 @@ static void emit_closed(uint32_t id, int reason) {
     if (bus) sd_bus_emit_signal(bus, PATH, IFACE, "NotificationClosed", "uu", id, (uint32_t)reason);
 }
 
+/* A click on a card is the spec's "default" action, for apps that offered one. */
+static void on_card_click(uint32_t id, bool has_default) {
+    if (has_default && bus) sd_bus_emit_signal(bus, PATH, IFACE, "ActionInvoked", "us", id, "default");
+}
+
+/* The spec: -1 leaves it to the server (low and normal get a sane timeout; critical ones "should
+ * not automatically expire"), 0 never expires, anything else is a number of milliseconds. */
 int notify_timeout_ms(int urgency, int32_t expire) {
-    int ms = urgency >= 2 ? CRITICAL_MS : urgency == 0 ? LOW_MS : NORMAL_MS;
-    if (expire > 0) ms = expire < MIN_MS ? MIN_MS : expire;
-    else if (expire == 0 && urgency < 2) ms = MAX_MS;  /* "never": as long as we dare */
-    return ms > MAX_MS ? MAX_MS : ms;
+    if (expire > 0) return expire < MIN_MS ? MIN_MS : expire;
+    if (expire == 0 || urgency >= 2) return HUD_NEVER;
+    return urgency == 0 ? LOW_MS : NORMAL_MS;
 }
 
 /* An image-data hint: (width, height, rowstride, has_alpha, bits, channels, pixels). Returns a
@@ -148,8 +152,10 @@ static int method_notify(sd_bus_message *m, void *ud, sd_bus_error *err) {
     uint32_t id = replaces ? replaces : next_id++;
     if (next_id == 0) next_id = 1;
 
-    /* Do-not-disturb: the app still gets an id, but nothing is shown or played. */
+    /* Do-not-disturb: the app still gets an id, but nothing is shown or played. A card it
+     * replaces is withdrawn, since what it showed is out of date. */
     bool shown = !dnd_suppress(urgency);
+    if (!shown && replaces) hud_remove(id);
     if (shown) {
         /* Icon: raw pixels first, then the image-path hint, then app_icon (a path or a theme name) */
         char icon_file[512] = "";
@@ -170,7 +176,11 @@ static int method_notify(sd_bus_message *m, void *ud, sd_bus_error *err) {
         else sound_play(SOUND_NOTIFY);
     }
     (void)app;
-    return sd_bus_reply_method_return(m, "u", id);
+    r = sd_bus_reply_method_return(m, "u", id);
+    /* After the reply, so the app has the id the signal is about: nothing will ever be shown
+     * for it, so tell it the notification is closed rather than leave it waiting. */
+    if (!shown) emit_closed(id, REASON_UNDEFINED);
+    return r;
 }
 
 bool notify_invoke_action(int n, char *reply, size_t reply_n) {
@@ -187,11 +197,15 @@ bool notify_invoke_action(int n, char *reply, size_t reply_n) {
 }
 
 static int method_close(sd_bus_message *m, void *ud, sd_bus_error *err) {
-    (void)ud; (void)err;
+    (void)ud;
     uint32_t id;
     int r = sd_bus_message_read(m, "u", &id);
     if (r < 0) return r;
-    if (hud_remove(id)) emit_closed(id, REASON_CLOSED_BY_CALL);
+    /* The spec: the method emits NotificationClosed, and a notification that no longer exists
+     * gets an error back. */
+    if (!hud_remove(id))
+        return sd_bus_error_setf(err, SD_BUS_ERROR_INVALID_ARGS, "no notification with id %u", id);
+    emit_closed(id, REASON_CLOSED_BY_CALL);
     return sd_bus_reply_method_return(m, "");
 }
 
@@ -234,6 +248,7 @@ void notify_init(void) {
     }
 
     hud_on_closed(emit_closed);
+    hud_on_click(on_card_click);
     loop_add(sd_bus_get_fd(bus), EPOLLIN, on_bus, NULL);
     while (sd_bus_process(bus, NULL) > 0) {}  /* anything already queued */
 }

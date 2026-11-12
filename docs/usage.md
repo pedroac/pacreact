@@ -30,13 +30,14 @@ HUDs stack in one column, newest on top, in the top-right corner unless `PACHUD_
 - **Alerts** (warn/crit toasts, timers, battery, memory, every notification card) are never lost: when the stack is full they wait in order for room, up to 8 waiting. The same alert text is not duplicated; showing it again refreshes the one on screen.
 - **Sliders and info toasts** are ephemeral. When the stack is full the oldest ephemeral one makes room; if everything shown is an alert, a new ephemeral one is dropped.
 - **Volume, microphone, audio output and brightness changes** are not part of the stack: they use a separate on-screen display in the middle of the screen, one at a time, gone a second after the last change.
-- Nothing can be clicked: the HUD is click-through, so use `pachud dismiss` on a key to close it early.
+- Clicking a notification card dismisses it, and sends the app its `default` action first if it offered one. Everything else is click-through (the gaps between cards, toasts, sliders and the on-screen display), so a click anywhere else reaches the window underneath. `PACHUD_CLICK=0` makes the whole HUD click-through. `pachud dismiss` on a key closes the newest alert without the mouse.
 
 ## Environment variables
 
 | Variable | Default | Meaning |
 |---|---|---|
 | `PACHUD_SCALE` | follows the compositor | Pin the render scale, 1 to 4 and fractions allowed (`1.5`). Normally unnecessary: pachud uses the scale the compositor asks for, per monitor. |
+| `PACHUD_CLICK` | on | `0` makes the HUD fully click-through: clicking a notification card then does nothing. |
 | `PACHUD_ANCHOR` | `top-right` | Where the HUD stack sits: `top-right`, `top-left`, `top`, `bottom-right`, `bottom-left` or `bottom`. The stack keeps clear of bars and docks. |
 | `PACHUD_OUTPUT` | unset | Show HUDs on this monitor (`DP-1`, `HDMI-A-1`, ... as in `hyprctl monitors`). Unset lets the compositor choose, usually the focused one. An unknown name is reported once on stderr with the names that exist, and the compositor's choice is used. |
 | `PACHUD_FADE_MS` | 120 | Fade in/out duration in milliseconds; `0` turns the fade off. |
@@ -111,7 +112,7 @@ Summary and body (tags stripped, entities decoded), the `urgency` hint, replacem
 
 ### Actions
 
-The HUD cannot be clicked, so a card with actions shows them as numbered hints, `[1] Reply  [2] Archive`, and you invoke one from a keybind:
+A card with actions shows them as numbered hints (a click only dismisses it, or triggers `default`), `[1] Reply  [2] Archive`, and you invoke one from a keybind:
 
 ```bash
 pachud action 2      # the second action of the card on screen
@@ -125,4 +126,6 @@ hl.bind("SUPER + 1", hl.dsp.exec_cmd("~/.local/bin/pachud action 1"))
 hl.bind("SUPER + 2", hl.dsp.exec_cmd("~/.local/bin/pachud action 2"))
 ```
 
-Timeouts: low urgency 3 s, normal 6 s, critical 15 s. An explicit timeout is honoured between 1.5 and 30 s, and "never expire" is capped at 30 s because nothing can be clicked to close a card.
+Timeouts follow the specification. `-1` leaves it to pachud: 3 s for low urgency, 6 s for normal, and critical cards never expire. `0` means never expire for any urgency. Any other value is the number of milliseconds the app asked for, though never less than 1.5 s so a card can be read. A card that never expires stays until you click it, close it with `pachud dismiss`, the app closes it, or the app replaces it, and it takes one of the four slots in the stack meanwhile.
+
+`CloseNotification` closes the card and sends `NotificationClosed` (reason 3); for an id that is not on screen (already expired, dismissed, or never shown) it returns a D-Bus error, as the specification says. A notification that do-not-disturb suppressed is answered with an id and then immediately closed with reason 4 (undefined), so apps that wait for it do not hang; if it replaced a card that was on screen, that card is withdrawn.

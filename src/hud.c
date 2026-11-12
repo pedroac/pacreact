@@ -1,6 +1,7 @@
 #include "hud.h"
 #include "i18n.h"
 #include "text.h"
+#include <limits.h>
 #include <math.h>
 #include <stddef.h>
 #include <stdio.h>
@@ -63,10 +64,14 @@ static void paint_bg(cairo_t *cr, int w, int h) {
 }
 
 static void on_rescale(void);
+static void on_click(int x, int y);
 
 void hud_init(Display *d) {
     dpy = d;
-    if (d) display_on_rescale(d, on_rescale);
+    if (d) {
+        display_on_rescale(d, on_rescale);
+        display_on_click(d, on_click);
+    }
 }
 
 static void ellipsize(const char *in, double w, double size, bool bold, char *out, size_t n);
@@ -154,7 +159,7 @@ static void paint_slider(cairo_t *cr, const char *label, int percent, bool dim, 
  * they wait in a queue for room. Ephemeral items (slider, info toast) never wait: a full stack
  * makes room by dropping the oldest ephemeral one, or the new one is dropped if there is none. */
 typedef struct {
-    bool slider, dim, card;
+    bool slider, dim, card, has_default;
     Level level;
     int ms, percent;
     long long deadline;   /* when it leaves the screen, on the monotonic clock */
@@ -176,6 +181,8 @@ typedef struct {
 
 static Item stack[STACK_MAX], queue[QUEUE_MAX];
 static int nstack, queued;
+
+static long long deadline_for(int ms) { return ms == HUD_NEVER ? LLONG_MAX : now_ms() + ms; }
 
 /* Items carry a 16 KB icon buffer that most of them do not use, so copies leave it out. */
 static void item_copy(Item *dst, const Item *src) {
@@ -384,29 +391,46 @@ static void paint_item(cairo_t *cr, const Item *it, int *w, int *h) {
     else paint_toast(cr, it->text, it->level, w, h);
 }
 
+/* Where each card is in the surface, from the last redraw: what a click is matched against. */
+static ClickRect hit[STACK_MAX];
+static uint32_t hit_id[STACK_MAX];
+static bool hit_default[STACK_MAX];
+static int nhit;
+
 /* Draws the whole stack into one buffer, so a change in any item is one redraw. */
 static void render(void) {
+    nhit = 0;
     if (!nstack) {
+        display_set_click_rects(dpy, NULL, 0);
         display_hide(dpy);
         return;
     }
-    int w[STACK_MAX], h[STACK_MAX], cw = 0, ch = 0;
+    int w[STACK_MAX], h[STACK_MAX], x[STACK_MAX], y[STACK_MAX], cw = 0, ch = 0;
     for (int i = 0; i < nstack; i++) {
         paint_item(NULL, &stack[i], &w[i], &h[i]);
         if (w[i] > cw) cw = w[i];
-        ch += h[i] + (i ? STACK_GAP : 0);
     }
+    for (int i = 0; i < nstack; i++) {
+        x[i] = (int)((cw - w[i]) * display_align(dpy) / 2.0);
+        y[i] = ch;
+        ch += h[i] + STACK_GAP;
+        if (!stack[i].card) continue;
+        hit[nhit] = (ClickRect){ x[i], y[i], w[i], h[i] };
+        hit_id[nhit] = stack[i].id;
+        hit_default[nhit++] = stack[i].has_default;
+    }
+    ch -= STACK_GAP;
+    display_set_click_rects(dpy, hit, nhit);
+
     cairo_t *cr;
     Buf *buf = display_buf(dpy, cw, ch, &cr);
     if (!buf) return;
-    int y = 0;
     for (int i = 0; i < nstack; i++) {
         int dw, dh;
         cairo_save(cr);
-        cairo_translate(cr, (cw - w[i]) * display_align(dpy) / 2.0, y);
+        cairo_translate(cr, x[i], y[i]);
         paint_item(cr, &stack[i], &dw, &dh);
         cairo_restore(cr);
-        y += h[i] + STACK_GAP;
     }
     display_present(dpy, buf, cr);
 }
@@ -433,7 +457,7 @@ static void refill(void) {
         static Item next;
         item_copy(&next, &queue[0]);
         queue_remove_at(0);
-        next.deadline = now_ms() + next.ms;
+        next.deadline = deadline_for(next.ms);
         stack_insert(nstack, &next);
     }
 }
@@ -472,7 +496,7 @@ static int oldest_ephemeral(void) {
 static void submit(const Item *in) {
     static Item add;
     item_copy(&add, in);
-    add.deadline = now_ms() + add.ms;
+    add.deadline = deadline_for(add.ms);
 
     int same = find_same(&add);
     if (same >= 0) {  /* refreshed where it is, with a new timeout */
@@ -530,6 +554,9 @@ static void add_action(Item *it, const char *key, const char *label) {
  * "the user clicked the notification"), unless that is all there is. */
 static void set_actions(Item *it, const char *const *a, int n) {
     it->nact = 0;
+    it->has_default = false;
+    for (int i = 0; a && i + 1 < n; i += 2)
+        if (!strcmp(a[i], "default")) it->has_default = true;
     for (int i = 0; a && i + 1 < n && it->nact < HUD_MAX_ACTIONS; i += 2)
         if (strcmp(a[i], "default") != 0) add_action(it, a[i], a[i + 1]);
     if (it->nact) return;
@@ -571,6 +598,20 @@ const char *hud_action_key(int n, uint32_t *id) {
 }
 
 void hud_on_closed(HudClosedFn fn) { closed_cb = fn; }
+
+static HudClickFn click_cb;
+void hud_on_click(HudClickFn fn) { click_cb = fn; }
+
+static void on_click(int px, int py) {
+    for (int k = 0; k < nhit; k++) {
+        if (px < hit[k].x || py < hit[k].y || px >= hit[k].x + hit[k].w || py >= hit[k].y + hit[k].h)
+            continue;
+        uint32_t id = hit_id[k];  /* the redraw below replaces the table */
+        if (click_cb) click_cb(id, hit_default[k]);
+        hud_dismiss_id(id);
+        return;
+    }
+}
 
 static void left_the_stack(void) {
     refill();
@@ -619,7 +660,8 @@ void hud_dismiss(void) {
 int hud_timeout_ms(void) {
     long long soonest = -1;
     for (int i = 0; i < nstack; i++)
-        if (soonest < 0 || stack[i].deadline < soonest) soonest = stack[i].deadline;
+        if (stack[i].deadline != LLONG_MAX && (soonest < 0 || stack[i].deadline < soonest))
+            soonest = stack[i].deadline;
     if (osd_visible && (soonest < 0 || osd_deadline_ms < soonest)) soonest = osd_deadline_ms;
     if (soonest < 0) return -1;
     long long left = soonest - now_ms();

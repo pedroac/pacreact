@@ -27,6 +27,9 @@ void display_osd_present(Display *d, Buf *b, cairo_t *cr, OsdAnchor a) { (void)d
 void display_osd_hide(Display *d) { (void)d; }
 void display_on_rescale(Display *d, void (*fn)(void)) { (void)d; (void)fn; }
 int display_align(Display *d) { (void)d; return 2; }
+static int click_rects_set = -1;
+void display_set_click_rects(Display *d, const ClickRect *r, int n) { (void)d; (void)r; click_rects_set = n; }
+void display_on_click(Display *d, void (*fn)(int, int)) { (void)d; (void)fn; }
 
 /* Ten units per byte: easy to reason about when wrapping. */
 bool text_rtl(void) { return false; }
@@ -213,6 +216,34 @@ static void test_remove(void) {
     assert(!hud_dismiss_id(20) && !hud_dismiss_id(0));
 }
 
+static void test_never_expires(void) {
+    reset();
+    hud_on_closed(on_closed);
+    card(1, "sticky", "", LEVEL_INFO, HUD_NEVER);
+    assert(hud_timeout_ms() == -1);                /* nothing to wake up for */
+    fake_ms += 10 * 60 * 1000;
+    hud_tick();
+    assert(nstack == 1 && nevents == 0);
+
+    hud_toast("brief", LEVEL_INFO, 500);           /* others still expire around it */
+    assert(hud_timeout_ms() == 500);
+    advance_to_expiry();
+    assert(nstack == 1 && stack[0].id == 1 && hud_timeout_ms() == -1);
+
+    card(1, "sticky v2", "", LEVEL_INFO, HUD_NEVER);   /* a replacement stays too */
+    assert(nstack == 1 && hud_timeout_ms() == -1);
+    hud_dismiss();                                 /* until it is dismissed */
+    assert(!nstack && nevents == 1 && events[0].reason == HUD_CLOSED_DISMISSED);
+
+    /* A waiting never-expiring card keeps that when it comes in */
+    reset();
+    for (uint32_t id = 1; id <= STACK_MAX; id++) card(id, "x", "", LEVEL_INFO, 1000);
+    card(50, "waits", "", LEVEL_INFO, HUD_NEVER);
+    assert(queued == 1);
+    advance_to_expiry();
+    assert(nstack == 1 && stack[0].id == 50 && hud_timeout_ms() == -1);
+}
+
 static void test_dismiss_prefers_alerts(void) {
     reset();
     hud_on_closed(on_closed);
@@ -244,6 +275,45 @@ static void card_with_actions(uint32_t id, const char *const *actions, int n) {
     HudCard c = { .id = id, .summary = "mail", .body = "from bob", .icon_path = "", .level = LEVEL_INFO,
                   .timeout_ms = 1000, .actions = actions, .n_actions = n };
     hud_card(&c);
+}
+
+static struct { uint32_t id; bool has_default; } clicks[8];
+static int nclicks;
+static void on_card_click(uint32_t id, bool has_default) {
+    clicks[nclicks].id = id;
+    clicks[nclicks].has_default = has_default;
+    nclicks++;
+}
+
+static void test_click(void) {
+    reset();
+    hud_on_closed(on_closed);
+    hud_on_click(on_card_click);
+    nclicks = 0;
+
+    card(1, "plain", "", LEVEL_INFO, 1000);
+    card_with_actions(2, (const char *[]){ "default", "", "reply", "Reply" }, 4);
+    hud_toast("note", LEVEL_INFO, 1000);
+    assert(nstack == 3 && click_rects_set == 2 && nhit == 2);   /* only cards take clicks */
+    assert(stack[0].has_default == false && stack[1].has_default == true);
+
+    on_click(-5, -5);                                            /* outside every card: nothing */
+    assert(nclicks == 0 && nstack == 3);
+
+    int cx = hit[0].x + 1, cy = hit[0].y + 1;                    /* the card with `default` (id 2) */
+    assert(hit_id[0] == 2 && hit_default[0]);
+    on_click(cx, cy);
+    assert(nclicks == 1 && clicks[0].id == 2 && clicks[0].has_default);
+    assert(nstack == 2 && nevents == 1 && events[0].id == 2 && events[0].reason == HUD_CLOSED_DISMISSED);
+
+    on_click(hit[0].x + 1, hit[0].y + 1);                        /* the plain card: no default */
+    assert(nclicks == 2 && clicks[1].id == 1 && !clicks[1].has_default);
+    assert(nstack == 1 && nevents == 2 && events[1].id == 1);
+    assert(click_rects_set == 0);                                /* only the toast left: click-through */
+
+    on_click(1, 1);                                              /* a stale click is harmless */
+    assert(nstack == 1);
+    hud_on_click(NULL);
 }
 
 static void test_actions(void) {
@@ -412,6 +482,8 @@ int main(void) {
     test_stack_full();
     test_cards();
     test_remove();
+    test_never_expires();
+    test_click();
     test_dismiss_prefers_alerts();
     test_queue_overflow();
     test_actions();

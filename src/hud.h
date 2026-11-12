@@ -8,6 +8,9 @@
 
 typedef enum { LEVEL_INFO, LEVEL_WARN, LEVEL_CRIT } Level;
 
+/* A timeout_ms that never runs out: the item stays until it is closed, removed or replaced. */
+#define HUD_NEVER (-1)
+
 void hud_init(Display *dpy);
 /* Shows a one-line toast for timeout_ms, stacked with the others. The same text again refreshes
  * the one already shown. */
@@ -42,6 +45,12 @@ void hud_card(const HudCard *card);
  * action. Also gives the card's notification id. The key stays valid until the HUD changes.
  * The "default" action is only offered when it is the card's only one. */
 const char *hud_action_key(int n, uint32_t *id);
+
+/* Called when a card is clicked, before it is dismissed (reason HUD_CLOSED_DISMISSED): the app
+ * should hear `default` if the card has that action. Clicks are taken only on cards, and only
+ * where the display allows them (PACHUD_CLICK). */
+typedef void (*HudClickFn)(uint32_t id, bool has_default);
+void hud_on_click(HudClickFn fn);
 
 /* Reasons passed to the closed callback, matching the notification spec. */
 enum { HUD_CLOSED_EXPIRED = 1, HUD_CLOSED_DISMISSED = 2, HUD_CLOSED_OTHER = 4 };

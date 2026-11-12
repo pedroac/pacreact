@@ -64,7 +64,7 @@ static void paint_bg(cairo_t *cr, int w, int h) {
 }
 
 static void on_rescale(void);
-static void on_click(int x, int y);
+static void on_click(int x, int y, bool secondary);
 
 void hud_init(Display *d) {
     dpy = d;
@@ -159,7 +159,7 @@ static void paint_slider(cairo_t *cr, const char *label, int percent, bool dim, 
  * they wait in a queue for room. Ephemeral items (slider, info toast) never wait: a full stack
  * makes room by dropping the oldest ephemeral one, or the new one is dropped if there is none. */
 typedef struct {
-    bool slider, dim, card, has_default;
+    bool slider, dim, card, has_default, resident;
     Level level;
     int ms, percent;
     long long deadline;   /* when it leaves the screen, on the monotonic clock */
@@ -394,7 +394,6 @@ static void paint_item(cairo_t *cr, const Item *it, int *w, int *h) {
 /* Where each card is in the surface, from the last redraw: what a click is matched against. */
 static ClickRect hit[STACK_MAX];
 static uint32_t hit_id[STACK_MAX];
-static bool hit_default[STACK_MAX];
 static int nhit;
 
 /* Draws the whole stack into one buffer, so a change in any item is one redraw. */
@@ -417,7 +416,7 @@ static void render(void) {
         if (!stack[i].card) continue;
         hit[nhit] = (ClickRect){ x[i], y[i], w[i], h[i] };
         hit_id[nhit] = stack[i].id;
-        hit_default[nhit++] = stack[i].has_default;
+        nhit++;
     }
     ch -= STACK_GAP;
     display_set_click_rects(dpy, hit, nhit);
@@ -576,6 +575,7 @@ void hud_card(const HudCard *c) {
     it.id = c->id;
     it.level = c->level;
     it.ms = c->timeout_ms;
+    it.resident = c->resident;
     snprintf(it.text, sizeof it.text, "%s", c->summary);
     snprintf(it.body, sizeof it.body, "%s", c->body);
     snprintf(it.icon, sizeof it.icon, "%s", c->icon_path ? c->icon_path : "");
@@ -602,13 +602,29 @@ void hud_on_closed(HudClosedFn fn) { closed_cb = fn; }
 static HudClickFn click_cb;
 void hud_on_click(HudClickFn fn) { click_cb = fn; }
 
-static void on_click(int px, int py) {
+static const Item *by_id(uint32_t id) {
+    for (int i = 0; id && i < nstack; i++)
+        if (stack[i].id == id) return &stack[i];
+    return NULL;
+}
+
+void hud_action_invoked(uint32_t id) {
+    const Item *it = by_id(id);
+    if (it && !it->resident) hud_dismiss_id(id);
+}
+
+static void on_click(int px, int py, bool secondary) {
     for (int k = 0; k < nhit; k++) {
         if (px < hit[k].x || py < hit[k].y || px >= hit[k].x + hit[k].w || py >= hit[k].y + hit[k].h)
             continue;
-        uint32_t id = hit_id[k];  /* the redraw below replaces the table */
-        if (click_cb) click_cb(id, hit_default[k]);
-        hud_dismiss_id(id);
+        uint32_t id = hit_id[k];  /* the redraw that closing causes replaces the table */
+        const Item *it = by_id(id);
+        if (!secondary && it && it->has_default) {
+            if (click_cb) click_cb(id);
+            hud_action_invoked(id);
+        } else {
+            hud_dismiss_id(id);
+        }
         return;
     }
 }
@@ -645,6 +661,13 @@ bool hud_dismiss_id(uint32_t id) {
         }
     }
     return false;
+}
+
+int hud_card_count(void) {
+    int n = 0;
+    for (int i = 0; i < nstack; i++) n += stack[i].card;
+    for (int i = 0; i < queued; i++) n += queue[i].card;
+    return n;
 }
 
 void hud_dismiss(void) {

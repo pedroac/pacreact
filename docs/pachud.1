@@ -23,7 +23,15 @@ With a command it is a client of the running daemon, which it reaches through th
 HUDs are closed and acted on with these commands, typically from compositor keybinds.
 A left click on a notification card also dismisses it (the app is sent its
 .B default
-action first, if it offered one); everything else on the HUD passes clicks through.
+action first, if it offered one), and a right click dismisses it without invoking anything;
+everything else on the HUD passes clicks through.
+A card from an app that set the
+.B resident
+hint is not closed by invoking an action, whether with
+.B pachud action
+or by a left click on its default action: it stays until it expires, is dismissed with a right click or
+.BR "pachud dismiss" ,
+or the app closes or replaces it.
 .PP
 HUDs stack in one column in a corner of the screen (top right by default), newest on top, each leaving on its own timeout.
 At most four are shown.
@@ -84,6 +92,24 @@ Cancel one or all.
 .TP
 .B dismiss
 Close the newest alert on screen, or the newest item if there is none.
+.TP
+.B count
+Print how many notification cards are on screen or waiting for room.
+Toasts and sliders are not counted.
+Meant for status bars, in the way of
+.B makoctl list
+and
+.BR "dunstctl count displayed" .
+.TP
+.BR history " [\fIN\fR | " clear ]
+List the last notifications, newest first: when, what happened to it (on screen, expired, dismissed,
+closed by the app, or skipped by do-not-disturb), and the app, summary and body.
+Shows 10 by default and at most 64, as many as fit in one reply.
+.B clear
+overwrites them with zeros.
+Notifications marked transient are not kept.
+The history is a fixed ring of 64 entries held in memory only: the oldest is overwritten when it is full and
+nothing is written to disk.
 .TP
 .BR dnd " [" on " [\fIDURATION\fR] | " off " | " toggle " | " status ]
 Do not disturb.

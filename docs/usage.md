@@ -20,6 +20,8 @@
 | `pachud dismiss` | Close the newest alert on screen (the newest item if there is none). |
 | `pachud action [N]` | Invoke action N (default 1) of the notification card on screen. See [Actions](#actions). |
 | `pachud dnd [on [DURATION]\|off\|toggle\|status]` | Do not disturb: see below. |
+| `pachud count` | How many notification cards are on screen or waiting for room, for a status bar's bell. Toasts and sliders do not count. |
+| `pachud history [N\|clear]` | The last notifications, newest first (10 by default, up to 64), or wipe them: see [History](#history). |
 
 Timers and alarms survive restarts: they are stored in `$XDG_STATE_HOME/pachud/timers` (default `~/.local/state/pachud/timers`). Ones that came due while the daemon was not running fire when it starts.
 
@@ -30,7 +32,7 @@ HUDs stack in one column, newest on top, in the top-right corner unless `PACHUD_
 - **Alerts** (warn/crit toasts, timers, battery, memory, every notification card) are never lost: when the stack is full they wait in order for room, up to 8 waiting. The same alert text is not duplicated; showing it again refreshes the one on screen.
 - **Sliders and info toasts** are ephemeral. When the stack is full the oldest ephemeral one makes room; if everything shown is an alert, a new ephemeral one is dropped.
 - **Volume, microphone, audio output and brightness changes** are not part of the stack: they use a separate on-screen display in the middle of the screen, one at a time, gone a second after the last change.
-- Clicking a notification card dismisses it, and sends the app its `default` action first if it offered one. Everything else is click-through (the gaps between cards, toasts, sliders and the on-screen display), so a click anywhere else reaches the window underneath. `PACHUD_CLICK=0` makes the whole HUD click-through. `pachud dismiss` on a key closes the newest alert without the mouse.
+- Left-clicking a notification card dismisses it, and sends the app its `default` action first if it offered one. Right-clicking dismisses it without invoking anything. Everything else is click-through (the gaps between cards, toasts, sliders and the on-screen display), so a click anywhere else reaches the window underneath. `PACHUD_CLICK=0` makes the whole HUD click-through. `pachud dismiss` on a key closes the newest alert without the mouse.
 
 ## Environment variables
 
@@ -64,6 +66,25 @@ Memory pressure and a low battery describe a condition that is often still true 
 ## Do not disturb
 
 `pachud dnd on` (or `on 30m` for a limited time) stops notification cards from appearing and from making sound, except critical ones. They are not queued for later: pachud just counts them and tells you when you switch it off ("Do not disturb off — 3 notifications skipped"). Timers, alarms, battery and memory alerts and the volume and brightness sliders are not affected. The state lives in memory, so it resets when the daemon restarts. `pachud dnd toggle` suits a keybind; `pachud dnd status` prints the state, time left and the skipped count.
+
+## History
+
+`pachud history` lists the last notifications, newest first, one per line: when, what happened to it, then `[app] summary — body`. It shows 10 by default; `pachud history 30` shows more, as many as fit in one reply (a footer says how many older ones are left out). `pachud history clear` wipes it.
+
+```
+01:31  on screen  [notify-send] download — done
+01:30  dismissed  ! [notify-send] critical — stays until dismissed
+01:30  skipped (do not disturb)  [notify-send] suppressed
+01:30  closed by app  [notify-send] to close
+```
+
+What happened to each is `on screen`, `expired`, `dismissed` (by you, with a click or `pachud dismiss`), `closed by app`, `skipped (do not disturb)` (so what do-not-disturb held back can be read afterwards), or `not shown` (it never fitted on screen). A `!` marks critical ones. A card an app replaces (a download's progress, say) stays one entry with its latest text. Notifications marked `transient` are not kept, and neither are pachud's own alerts (battery, memory, timers) or sliders.
+
+The history lives in memory only, in a fixed ring of 64 entries: when it is full the oldest entry is overwritten, and it is gone when the daemon stops. Nothing is written to disk. Only text is kept, not icons or images. `clear` overwrites the entries with zeros, not just forgets them.
+
+**Who can see it.** The only way to read the history is `pachud history`, over the daemon's socket: there is no D-Bus method, no file and no log line for it. The socket is mode 0600 in `$XDG_RUNTIME_DIR`, and the daemon also checks that each client runs as the same user, so other users on the machine cannot read it or clear it. Without `$XDG_RUNTIME_DIR` the socket goes in `/tmp/pachud-UID/`, a directory pachud creates mode 0700 and refuses to use if it is anyone else's or open to others. The daemon is marked non-dumpable, so a crash leaves no core dump with the history in it and other processes, even of your own user, cannot read its memory through `/proc/PID/mem` or ptrace (the service unit also sets `LimitCORE=0`). The text is cleaned before it is printed: control characters, including escape sequences and the C1 controls, become spaces, so a notification cannot change what your terminal does when you list the history.
+
+What this does not cover: root can read anything, and so can a debugger started as root; the history is ordinary memory, so it can be written to swap unless swap is encrypted; and any process of your own user can already watch notifications as they arrive on the session bus, the same way `dbus-monitor` does, which no daemon can prevent. A notification the sender marks `transient` is never kept.
 
 ## Sound
 
@@ -108,7 +129,7 @@ To go back to mako: `systemctl --user disable --now pachud.service`, remove `~/.
 
 ## Notifications: what is supported
 
-Summary and body (tags stripped, entities decoded), the `urgency` hint, replacement by id, `CloseNotification`, sound hints, actions, and icons in three forms: raw pixels (`image-data`, and its older spellings `image_data` and `icon_data`, scaled down to 64x64), a PNG path (`app_icon` or `image-path`, also as `file://`), or an icon-theme name (`dialog-information`, `firefox`, ...). Theme names are looked up as PNG files in the user's and the system's icon directories: the GTK theme named in `~/.config/gtk-3.0/settings.ini` first, then `hicolor`, then `Adwaita`. SVG-only icons are not found and the card is shown without an icon.
+Summary and body (tags stripped, entities decoded), the `urgency` and `resident` hints, replacement by id, `CloseNotification`, sound hints, actions, and icons in three forms: raw pixels (`image-data`, and its older spellings `image_data` and `icon_data`, scaled down to 64x64), a PNG path (`app_icon` or `image-path`, also as `file://`), or an icon-theme name (`dialog-information`, `firefox`, ...). Theme names are looked up as PNG files in the user's and the system's icon directories: the GTK theme named in `~/.config/gtk-3.0/settings.ini` first, then `hicolor`, then `Adwaita`. SVG-only icons are not found and the card is shown without an icon.
 
 ### Actions
 
@@ -119,7 +140,7 @@ pachud action 2      # the second action of the card on screen
 pachud action        # the first one
 ```
 
-pachud tells the app (`ActionInvoked`) and closes the card. At most three actions are shown. The special `default` action ("the user clicked the notification") is not shown as a button unless it is the card's only action, in which case it appears as `[1] Open`. Actions apply to the newest card on screen; cards waiting for room are not available until they are shown. A Hyprland example:
+pachud tells the app (`ActionInvoked`) and closes the card, unless the app set the `resident` hint: a resident card stays on screen after an action is invoked, and so does one that is left-clicked while it has a `default` action (the click invokes it, again each time). A resident card goes away on its timeout, with a right click, with `pachud dismiss`, or when the app closes or replaces it. At most three actions are shown. The special `default` action ("the user clicked the notification") is not shown as a button unless it is the card's only action, in which case it appears as `[1] Open`. Actions apply to the newest card on screen; cards waiting for room are not available until they are shown. A Hyprland example:
 
 ```lua
 hl.bind("SUPER + 1", hl.dsp.exec_cmd("~/.local/bin/pachud action 1"))

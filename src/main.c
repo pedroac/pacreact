@@ -3,6 +3,7 @@
 #include "hud.h"
 #include "i18n.h"
 #include "dnd.h"
+#include "history.h"
 #include "ipc.h"
 #include "loop.h"
 #include "sound.h"
@@ -19,6 +20,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/prctl.h>
 #include <sys/signalfd.h>
 #include <unistd.h>
 
@@ -35,7 +37,9 @@ static const char usage_text[] =
     "       pachud list | cancel ID|all\n"
     "       pachud dismiss                     close the HUD on screen\n"
     "       pachud dnd [on [DURATION]|off|toggle|status]\n"
-    "       pachud action [N]                  invoke action N of the notification on screen\n";
+    "       pachud action [N]                  invoke action N of the notification on screen\n"
+    "       pachud history [N|clear]           the last notifications (kept in memory only)\n"
+    "       pachud count                       notifications on screen or waiting (for a status bar)\n";
 
 static int usage(void) {
     fputs(usage_text, stderr);
@@ -134,6 +138,10 @@ static void handle(char *msg, char *reply, size_t n) {
         snprintf(reply, n, "ok");
         return;
     }
+    if (cmd && !strcmp(cmd, "count")) {
+        snprintf(reply, n, "ok %d", hud_card_count());
+        return;
+    }
     if (cmd && !strcmp(cmd, "action")) {
 #ifndef NO_NOTIFY
         char *which = strtok_r(NULL, "\t", &save);
@@ -150,6 +158,14 @@ static void handle(char *msg, char *reply, size_t n) {
         return;
     }
     if (cmd && dnd_command(cmd, save ? save : (char *)"", reply, n)) return;
+#ifndef NO_NOTIFY
+    if (cmd && history_command(cmd, save ? save : (char *)"", reply, n)) return;
+#else
+    if (cmd && !strcmp(cmd, "history")) {
+        snprintf(reply, n, "%s", _("this build has no notification support"));
+        return;
+    }
+#endif
     if (cmd && timer_command(cmd, save ? save : (char *)"", reply, n)) return;
     snprintf(reply, n, "%s", _("unknown command"));
 }
@@ -177,6 +193,9 @@ static void on_signal(void *ctx, uint32_t ev) {
 }
 
 static int run_daemon(void) {
+    /* The notification history lives in this process: keep it out of core dumps and out of reach of
+     * other processes that ptrace it or read /proc/PID/mem. */
+    prctl(PR_SET_DUMPABLE, 0);
     sigset_t mask;
     sigemptyset(&mask);
     sigaddset(&mask, SIGINT);
@@ -250,7 +269,8 @@ int main(int argc, char **argv) {
         return client_generic(argc, argv, 1);
     if (!strcmp(argv[1], "extend")) return client_generic(argc, argv, 2);
     if (!strcmp(argv[1], "list") || !strcmp(argv[1], "dismiss") || !strcmp(argv[1], "dnd") ||
-        !strcmp(argv[1], "snooze") || !strcmp(argv[1], "action"))
+        !strcmp(argv[1], "snooze") || !strcmp(argv[1], "action") || !strcmp(argv[1], "history") ||
+        !strcmp(argv[1], "count"))
         return client_generic(argc, argv, 0);
     return usage();
 }

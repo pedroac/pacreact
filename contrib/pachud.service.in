@@ -8,6 +8,9 @@ ConditionEnvironment=WAYLAND_DISPLAY
 Type=simple
 ExecStart=@BINDIR@/pachud
 Restart=on-failure
+# The notification history lives in memory: no core dumps, and no gaining privileges.
+LimitCORE=0
+NoNewPrivileges=yes
 RestartSec=2
 
 [Install]

@@ -1,5 +1,6 @@
 #include "notify.h"
 #include "dnd.h"
+#include "history.h"
 #include "hud.h"
 #include "i18n.h"
 #include "icon.h"
@@ -41,12 +42,13 @@ static int method_info(sd_bus_message *m, void *ud, sd_bus_error *err) {
 }
 
 static void emit_closed(uint32_t id, int reason) {
+    history_close(id, reason);
     if (bus) sd_bus_emit_signal(bus, PATH, IFACE, "NotificationClosed", "uu", id, (uint32_t)reason);
 }
 
 /* A click on a card is the spec's "default" action, for apps that offered one. */
-static void on_card_click(uint32_t id, bool has_default) {
-    if (has_default && bus) sd_bus_emit_signal(bus, PATH, IFACE, "ActionInvoked", "us", id, "default");
+static void on_card_click(uint32_t id) {
+    if (bus) sd_bus_emit_signal(bus, PATH, IFACE, "ActionInvoked", "us", id, "default");
 }
 
 /* The spec: -1 leaves it to the server (low and normal get a sane timeout; critical ones "should
@@ -89,7 +91,7 @@ static int method_notify(sd_bus_message *m, void *ud, sd_bus_error *err) {
     int32_t expire;
     int urgency = 1;
     const char *image_path = NULL, *sound_file = NULL, *sound_name = NULL;
-    int suppress_sound = 0;
+    int suppress_sound = 0, resident = 0, transient = 0;
     static uint8_t image[IMAGE_BYTES];
     bool has_image = false;
 
@@ -131,6 +133,10 @@ static int method_notify(sd_bus_message *m, void *ud, sd_bus_error *err) {
             r = sd_bus_message_read(m, "v", "s", &sound_file);
         } else if (!strcmp(key, "sound-name") && contents && !strcmp(contents, "s")) {
             r = sd_bus_message_read(m, "v", "s", &sound_name);
+        } else if (!strcmp(key, "transient") && contents && !strcmp(contents, "b")) {
+            r = sd_bus_message_read(m, "v", "b", &transient);
+        } else if (!strcmp(key, "resident") && contents && !strcmp(contents, "b")) {
+            r = sd_bus_message_read(m, "v", "b", &resident);
         } else if (!strcmp(key, "suppress-sound") && contents && !strcmp(contents, "b")) {
             r = sd_bus_message_read(m, "v", "b", &suppress_sound);
         } else {
@@ -156,6 +162,8 @@ static int method_notify(sd_bus_message *m, void *ud, sd_bus_error *err) {
      * replaces is withdrawn, since what it showed is out of date. */
     bool shown = !dnd_suppress(urgency);
     if (!shown && replaces) hud_remove(id);
+    /* The history keeps what apps sent, except what they marked transient. */
+    if (!transient) history_record(id, app, summary, body, urgency, shown ? HIST_OPEN : HIST_SKIPPED);
     if (shown) {
         /* Icon: raw pixels first, then the image-path hint, then app_icon (a path or a theme name) */
         char icon_file[512] = "";
@@ -166,7 +174,7 @@ static int method_notify(sd_bus_message *m, void *ud, sd_bus_error *err) {
             .id = id, .summary = summary, .body = body, .icon_path = icon_file,
             .image = has_image ? image : NULL,
             .level = urgency >= 2 ? LEVEL_CRIT : LEVEL_INFO, .timeout_ms = ms,
-            .actions = actions, .n_actions = n_actions,
+            .actions = actions, .n_actions = n_actions, .resident = resident,
         };
         hud_card(&card);
     }
@@ -175,7 +183,6 @@ static int method_notify(sd_bus_message *m, void *ud, sd_bus_error *err) {
         else if (sound_name && *sound_name) sound_play_spec(sound_name);
         else sound_play(SOUND_NOTIFY);
     }
-    (void)app;
     r = sd_bus_reply_method_return(m, "u", id);
     /* After the reply, so the app has the id the signal is about: nothing will ever be shown
      * for it, so tell it the notification is closed rather than leave it waiting. */
@@ -188,10 +195,10 @@ bool notify_invoke_action(int n, char *reply, size_t reply_n) {
     const char *key = hud_action_key(n, &id);
     if (!key) { snprintf(reply, reply_n, "%s", _("no such action on screen")); return false; }
     if (!bus) { snprintf(reply, reply_n, "%s", _("notifications unavailable")); return false; }
-    /* Tell the app first (the key lives in the card), then close it: that sends
-     * NotificationClosed with the "dismissed by the user" reason. */
+    /* Tell the app first (the key lives in the card), then close it, unless the card is resident:
+     * closing sends NotificationClosed with the "dismissed by the user" reason. */
     sd_bus_emit_signal(bus, PATH, IFACE, "ActionInvoked", "us", id, key);
-    hud_dismiss_id(id);
+    hud_action_invoked(id);
     snprintf(reply, reply_n, "ok");
     return true;
 }

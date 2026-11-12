@@ -37,6 +37,7 @@ typedef struct {
     int timeout_ms;
     const char *const *actions;   /* key, label, key, label, ... */
     int n_actions;                /* the number of strings in `actions`: two per action */
+    bool resident;                /* stays after an action is invoked; see hud_action_invoked() */
 } HudCard;
 
 void hud_card(const HudCard *card);
@@ -46,10 +47,11 @@ void hud_card(const HudCard *card);
  * The "default" action is only offered when it is the card's only one. */
 const char *hud_action_key(int n, uint32_t *id);
 
-/* Called when a card is clicked, before it is dismissed (reason HUD_CLOSED_DISMISSED): the app
- * should hear `default` if the card has that action. Clicks are taken only on cards, and only
- * where the display allows them (PACHUD_CLICK). */
-typedef void (*HudClickFn)(uint32_t id, bool has_default);
+/* Called when a card with a `default` action is left-clicked: the app should hear it. The card
+ * is then handled as by hud_action_invoked(). A left click on a card without one, and any right
+ * click, dismiss the card without calling this. Clicks are taken only on cards, and only where
+ * the display allows them (PACHUD_CLICK). */
+typedef void (*HudClickFn)(uint32_t id);
 void hud_on_click(HudClickFn fn);
 
 /* Reasons passed to the closed callback, matching the notification spec. */
@@ -60,8 +62,14 @@ typedef void (*HudClosedFn)(uint32_t id, int reason);
 void hud_on_closed(HudClosedFn fn);
 /* Silently removes a card, shown or queued. Returns whether it existed. */
 bool hud_remove(uint32_t id);
+/* How many notification cards are on screen or waiting for room (toasts and sliders are not
+ * counted): what a status bar's bell wants to show. */
+int hud_card_count(void);
 /* Closes the newest alert on screen (or the newest item when there is none). */
 void hud_dismiss(void);
+/* An action of the card with this id was invoked: the card closes as dismissed by the user, unless
+ * it asked to stay (the `resident` hint). */
+void hud_action_invoked(uint32_t id);
 /* Closes the item with this id as dismissed by the user. Returns whether it was on screen. */
 bool hud_dismiss_id(uint32_t id);
 

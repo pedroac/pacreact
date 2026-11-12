@@ -33,11 +33,12 @@ void display_osd_present(Display *dpy, Buf *buf, cairo_t *cr, OsdAnchor anchor);
 void display_osd_hide(Display *dpy);
 /* Clicks (PACHUD_CLICK=0 turns them off): the areas of the HUD surface that take clicks, in
  * logical pixels from its top-left corner; everywhere else clicks pass through to the windows
- * below. fn gets the position of each left click inside one of them. */
+ * below. fn gets the position of each left or right click inside one of them; secondary is
+ * true for the right button. */
 typedef struct { int x, y, w, h; } ClickRect;
 #define CLICK_RECTS_MAX 8
 void display_set_click_rects(Display *dpy, const ClickRect *rects, int n);
-void display_on_click(Display *dpy, void (*fn)(int x, int y));
+void display_on_click(Display *dpy, void (*fn)(int x, int y, bool secondary));
 /* Where the stack sits horizontally within its surface: 0 left, 1 centre, 2 right (PACHUD_ANCHOR). */
 int display_align(Display *dpy);
 /* The scale buffers are rendered at, in 120ths (see scale.h). */

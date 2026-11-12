@@ -1,12 +1,13 @@
 /* The IPC socket: a client talking to a listener over the real unix socket, single-instance
  * detection, stale-socket cleanup, and the reply protocol. */
-#include "../src/ipc.h"
+#include "../src/ipc.c"   /* included so the statics are reachable */
 #include <assert.h>
 #include <poll.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <sys/un.h>
 #include <sys/wait.h>
 #include <time.h>
@@ -49,12 +50,21 @@ int main(void) {
     snprintf(dir, sizeof dir, "/tmp/pachud-ipc-XXXXXX");
     assert(mkdtemp(dir));
     setenv("XDG_RUNTIME_DIR", dir, 1);
+    umask(0);   /* the socket must be private whatever the umask says */
 
     /* No daemon yet. */
     assert(ipc_send("toast") == -1);
 
     int lfd = ipc_listen();
     assert(lfd >= 0);
+
+    /* The socket reaches the notification history: only its owner may use it. */
+    {
+        char path[96];
+        struct stat st;
+        snprintf(path, sizeof path, "%s/pachud.sock", dir);
+        assert(stat(path, &st) == 0 && S_ISSOCK(st.st_mode) && (st.st_mode & 0777) == 0600);
+    }
 
     /* A second instance is refused while the first listens. */
     assert(ipc_listen() == -2);
@@ -118,6 +128,29 @@ int main(void) {
     assert(wait_client(c) == 0);
 
     close(lfd);
+
+    /* The directory the socket falls back to without $XDG_RUNTIME_DIR: made private, and refused
+     * when it is not (planted by someone else, open to others, or not a directory). */
+    {
+        char sub[96], link[96], file[96];
+        struct stat st;
+        snprintf(sub, sizeof sub, "%s/priv", dir);
+        snprintf(link, sizeof link, "%s/link", dir);
+        snprintf(file, sizeof file, "%s/file", dir);
+
+        assert(private_dir(sub, false) == -1 && stat(sub, &st) == -1);   /* a client never makes it */
+        assert(private_dir(sub, true) == 0 && stat(sub, &st) == 0 && (st.st_mode & 077) == 0);
+        assert(private_dir(sub, false) == 0 && private_dir(sub, true) == 0);
+        assert(chmod(sub, 0755) == 0 && private_dir(sub, true) == -1 && private_dir(sub, false) == -1);
+        assert(chmod(sub, 0770) == 0 && private_dir(sub, true) == -1);
+        assert(chmod(sub, 0700) == 0 && private_dir(sub, true) == 0);
+        assert(symlink(sub, link) == 0 && private_dir(link, true) == -1);   /* a symlink is not it */
+        FILE *f = fopen(file, "w");
+        assert(f);
+        fclose(f);
+        assert(private_dir(file, true) == -1);
+    }
+
     char cmd[128];
     snprintf(cmd, sizeof cmd, "rm -rf %s", dir);
     assert(system(cmd) == 0);

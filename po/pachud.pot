@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: pachud\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-10 10:08+0000\n"
+"POT-Creation-Date: 2026-11-12 01:30+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -45,6 +45,43 @@ msgstr ""
 
 #: src/dnd.c
 msgid "dnd: use on [DURATION], off, toggle or status"
+msgstr ""
+
+#: src/history.c
+msgid "on screen"
+msgstr ""
+
+#: src/history.c
+msgid "expired"
+msgstr ""
+
+#: src/history.c
+msgid "dismissed"
+msgstr ""
+
+#: src/history.c
+msgid "closed by app"
+msgstr ""
+
+#: src/history.c
+msgid "skipped (do not disturb)"
+msgstr ""
+
+#: src/history.c
+msgid "not shown"
+msgstr ""
+
+#: src/history.c
+#, c-format
+msgid "history: use history [N] (1 to %d) or history clear"
+msgstr ""
+
+#: src/history.c
+msgid "no notifications yet"
+msgstr ""
+
+#: src/history.c
+msgid "older not shown"
 msgstr ""
 
 #: src/hud.c

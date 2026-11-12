@@ -50,7 +50,7 @@ struct Display {
     double px, py;                /* the pointer, in that surface's logical pixels */
     ClickRect rects[CLICK_RECTS_MAX];
     int nrects;
-    void (*click_cb)(int x, int y);
+    void (*click_cb)(int x, int y, bool secondary);
     uint32_t anchor;              /* where the notification stack sits: PACHUD_ANCHOR */
     int align;                    /* 0 left, 1 centre, 2 right: how items line up in the stack */
 
@@ -149,9 +149,9 @@ static void ptr_button(void *data, struct wl_pointer *p, uint32_t serial, uint32
                        uint32_t button, uint32_t state) {
     Display *d = data;
     (void)p; (void)serial; (void)time;
-    if (button == BTN_LEFT && state == WL_POINTER_BUTTON_STATE_PRESSED && d->surface &&
-        d->pointer_surface == d->surface && d->click_cb)
-        d->click_cb((int)d->px, (int)d->py);
+    if ((button == BTN_LEFT || button == BTN_RIGHT) && state == WL_POINTER_BUTTON_STATE_PRESSED &&
+        d->surface && d->pointer_surface == d->surface && d->click_cb)
+        d->click_cb((int)d->px, (int)d->py, button == BTN_RIGHT);
 }
 static void ptr_axis(void *data, struct wl_pointer *p, uint32_t time, uint32_t axis, wl_fixed_t v) {
     (void)data; (void)p; (void)time; (void)axis; (void)v;
@@ -487,7 +487,7 @@ void display_set_click_rects(Display *d, const ClickRect *rects, int n) {
     apply_click_region(d);
 }
 
-void display_on_click(Display *d, void (*fn)(int x, int y)) { d->click_cb = fn; }
+void display_on_click(Display *d, void (*fn)(int x, int y, bool secondary)) { d->click_cb = fn; }
 
 static void create_surface(Display *d) {
     d->surface = wl_compositor_create_surface(d->compositor);

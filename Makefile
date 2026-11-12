@@ -37,7 +37,7 @@ PROTO_OBJS = $(PROTO_NAMES:%=build/%-client-protocol.o)
 
 SRCS = $(wildcard src/*.c)
 ifneq ($(NOTIFY),1)
-SRCS := $(filter-out src/notify.c src/src_bt.c,$(SRCS))
+SRCS := $(filter-out src/notify.c src/src_bt.c src/history.c,$(SRCS))
 ALL_CFLAGS += -DNO_NOTIFY
 endif
 ifneq ($(I18N),1)
@@ -142,12 +142,11 @@ ifeq ($(I18N),1)
 TESTS += text
 endif
 ifeq ($(NOTIFY),1)
-TESTS += notify bt
+TESTS += notify bt history
 endif
 
 TEST_SRC_power = src/src_power.c
 TEST_SRC_probe = src/src_probe.c
-TEST_SRC_ipc = src/ipc.c
 TEST_SRC_sound = src/sound.c
 TEST_SRC_timer = src/state.c
 TEST_SRC_dnd = src/timer.c src/state.c

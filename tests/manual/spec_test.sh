@@ -1,7 +1,8 @@
 #!/bin/bash
 # Live check of the notification-spec behaviours that need a bus: CloseNotification on a card
 # and on an unknown id, NotificationClosed for a notification that do-not-disturb suppressed,
-# and a critical card that outlives the old 15 s limit. Run it as:
+# a critical card that outlives the old 15 s limit, what `pachud history` lists, and that the
+# history is out of reach of other processes. Run it as:
 #   dbus-run-session -- bash tests/manual/spec_test.sh
 # Needs a nested headless labwc, notify-send and busctl. Takes about 20 seconds.
 cd "$(dirname "$0")/.."/..
@@ -55,5 +56,40 @@ check "no expiry signal for it" '! grep -a -A2 "member=NotificationClosed" $R/si
 sleep 0.3
 check "dismissing it reports reason 2" 'grep -a -A2 "member=NotificationClosed" $R/signals | grep -q "uint32 2$"'
 kill $NS 2>/dev/null
+echo "-- history"
+id=$(notify-send -p -t 20000 "download" "10%")
+notify-send -t 20000 -r $id "download" "done"
+notify-send -t 20000 -h boolean:transient:true "a transient one"
+sleep 0.3
+./pachud history > $R/history
+cat $R/history | sed 's/^/      /'
+check "the notification closed with CloseNotification is listed" 'grep -q "closed by app.*to close" $R/history'
+check "the one do-not-disturb skipped is listed" 'grep -q "skipped (do not disturb).*suppressed" $R/history'
+check "the critical one dismissed is listed" 'grep -q "dismissed.*! .*critical" $R/history'
+check "a replaced card is one entry, with its latest text" '[ $(grep -c "download" $R/history) -eq 1 ] && grep -q "download — done" $R/history'
+check "a transient notification is not listed" '! grep -q transient $R/history'
+check "newest first" '[ "$(head -1 $R/history | grep -c download)" -eq 1 ]'
+./pachud history clear >/dev/null
+check "history clear empties it" './pachud history | grep -q "no notifications yet"'
+echo "-- count (what a status bar's bell shows)"
+for i in $(seq 1 20); do [ "$(./pachud count)" = 0 ] && break; ./pachud dismiss >/dev/null; done
+check "no notifications on screen: 0" '[ "$(./pachud count)" = 0 ]'
+notify-send -t 20000 "one"
+notify-send -t 20000 "two"
+./pachud toast -t 20 "a toast is not a notification" >/dev/null
+sleep 0.3
+check "two cards and a toast: 2" '[ "$(./pachud count)" = 2 ]'
+./pachud dismiss >/dev/null; ./pachud dismiss >/dev/null
+check "a toast does not count; dismissing the cards brings it to 0" '[ "$(./pachud count)" = 0 ]'
+
+echo "-- the history is private"
+./pachud toast "keep alive" >/dev/null
+notify-send -t 20000 "private" "my secret body"
+sleep 0.3
+check "the socket is mode 600" '[ "$(stat -c %a $R/pachud.sock)" = 600 ]'
+check "another process of this user cannot read the daemon's memory" '! head -c 16 /proc/$P/mem >/dev/null 2>&1'
+check "...nor its environment" '! cat /proc/$P/environ >/dev/null 2>&1'
+check "the daemon still works (history lists it)" './pachud history | grep -q "my secret body"'
+check "nothing of it reached the daemon's log" '! grep -q "secret" $R/stderr'
 cat $R/stderr
 exit $fail

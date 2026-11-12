@@ -29,7 +29,7 @@ void display_on_rescale(Display *d, void (*fn)(void)) { (void)d; (void)fn; }
 int display_align(Display *d) { (void)d; return 2; }
 static int click_rects_set = -1;
 void display_set_click_rects(Display *d, const ClickRect *r, int n) { (void)d; (void)r; click_rects_set = n; }
-void display_on_click(Display *d, void (*fn)(int, int)) { (void)d; (void)fn; }
+void display_on_click(Display *d, void (*fn)(int, int, bool)) { (void)d; (void)fn; }
 
 /* Ten units per byte: easy to reason about when wrapping. */
 bool text_rtl(void) { return false; }
@@ -244,6 +244,29 @@ static void test_never_expires(void) {
     assert(nstack == 1 && stack[0].id == 50 && hud_timeout_ms() == -1);
 }
 
+static void test_card_count(void) {
+    reset();
+    assert(hud_card_count() == 0);
+    hud_toast("toast", LEVEL_WARN, 1000);
+    hud_slider("Volume", 40, false);
+    assert(hud_card_count() == 0);                 /* only notification cards count */
+    card(1, "a", "", LEVEL_INFO, 1000);
+    card(2, "b", "", LEVEL_INFO, 1000);
+    assert(hud_card_count() == 2);
+    card(2, "b again", "", LEVEL_INFO, 1000);      /* a replacement is the same notification */
+    assert(hud_card_count() == 2);
+
+    /* those waiting for room count as well */
+    for (uint32_t id = 3; id <= STACK_MAX + 3; id++) card(id, "x", "", LEVEL_INFO, 1000);
+    assert(nstack == STACK_MAX && queued > 0 && hud_card_count() == STACK_MAX + 3);
+
+    assert(hud_remove(1) && hud_card_count() == STACK_MAX + 2);
+    hud_dismiss();
+    assert(hud_card_count() == STACK_MAX + 1);
+    while (nstack) hud_dismiss();
+    assert(hud_card_count() == 0);
+}
+
 static void test_dismiss_prefers_alerts(void) {
     reset();
     hud_on_closed(on_closed);
@@ -277,13 +300,9 @@ static void card_with_actions(uint32_t id, const char *const *actions, int n) {
     hud_card(&c);
 }
 
-static struct { uint32_t id; bool has_default; } clicks[8];
+static uint32_t clicks[8];
 static int nclicks;
-static void on_card_click(uint32_t id, bool has_default) {
-    clicks[nclicks].id = id;
-    clicks[nclicks].has_default = has_default;
-    nclicks++;
-}
+static void on_card_click(uint32_t id) { clicks[nclicks++] = id; }
 
 static void test_click(void) {
     reset();
@@ -297,22 +316,80 @@ static void test_click(void) {
     assert(nstack == 3 && click_rects_set == 2 && nhit == 2);   /* only cards take clicks */
     assert(stack[0].has_default == false && stack[1].has_default == true);
 
-    on_click(-5, -5);                                            /* outside every card: nothing */
+    on_click(-5, -5, false);                       /* outside every card: nothing */
     assert(nclicks == 0 && nstack == 3);
 
-    int cx = hit[0].x + 1, cy = hit[0].y + 1;                    /* the card with `default` (id 2) */
-    assert(hit_id[0] == 2 && hit_default[0]);
-    on_click(cx, cy);
-    assert(nclicks == 1 && clicks[0].id == 2 && clicks[0].has_default);
+    assert(hit_id[0] == 2);                        /* the card with `default` is on top */
+    on_click(hit[0].x + 1, hit[0].y + 1, false);
+    assert(nclicks == 1 && clicks[0] == 2);
     assert(nstack == 2 && nevents == 1 && events[0].id == 2 && events[0].reason == HUD_CLOSED_DISMISSED);
 
-    on_click(hit[0].x + 1, hit[0].y + 1);                        /* the plain card: no default */
-    assert(nclicks == 2 && clicks[1].id == 1 && !clicks[1].has_default);
-    assert(nstack == 1 && nevents == 2 && events[1].id == 1);
-    assert(click_rects_set == 0);                                /* only the toast left: click-through */
+    on_click(hit[0].x + 1, hit[0].y + 1, false);   /* the plain card: dismissed, nothing to invoke */
+    assert(nclicks == 1 && nstack == 1 && nevents == 2 && events[1].id == 1);
+    assert(click_rects_set == 0);                  /* only the toast left: click-through */
 
-    on_click(1, 1);                                              /* a stale click is harmless */
+    on_click(1, 1, false);                         /* a stale click is harmless */
     assert(nstack == 1);
+    hud_on_click(NULL);
+}
+
+static void resident_card(uint32_t id, const char *const *actions, int n) {
+    HudCard c = { .id = id, .summary = "resident", .body = "", .icon_path = "", .level = LEVEL_INFO,
+                  .timeout_ms = 1000, .actions = actions, .n_actions = n, .resident = true };
+    hud_card(&c);
+}
+
+static void test_resident(void) {
+    reset();
+    hud_on_closed(on_closed);
+    hud_on_click(on_card_click);
+    nclicks = 0;
+
+    hud_action_invoked(7);                         /* unknown ids and 0: harmless */
+    hud_action_invoked(0);
+    card(1, "plain", "", LEVEL_INFO, 1000);
+    resident_card(2, (const char *[]){ "default", "", "reply", "Reply" }, 4);
+    assert(nstack == 2 && nevents == 0);
+
+    /* An invoked action closes an ordinary card, and leaves a resident one */
+    hud_action_invoked(2);
+    assert(nstack == 2 && nevents == 0);
+    card(9, "temporary", "", LEVEL_INFO, 1000);
+    hud_action_invoked(9);
+    assert(nstack == 2 && nevents == 1 && events[0].id == 9 && events[0].reason == HUD_CLOSED_DISMISSED);
+    nevents = 0;
+
+    /* A click invokes `default` but the card stays; it is not dismissed by it */
+    on_click(hit[0].x + 1, hit[0].y + 1, false);
+    assert(nclicks == 1 && clicks[0] == 2);
+    assert(nstack == 2 && stack[0].id == 2 && nevents == 0);
+    on_click(hit[0].x + 1, hit[0].y + 1, false);   /* and it can be invoked again */
+    assert(nclicks == 2 && nstack == 2 && nevents == 0);
+
+    /* A right click removes it without invoking anything */
+    on_click(hit[0].x + 1, hit[0].y + 1, true);
+    assert(nclicks == 2 && nstack == 1 && nevents == 1);
+    assert(events[0].id == 2 && events[0].reason == HUD_CLOSED_DISMISSED);
+
+    /* A right click on an ordinary card dismisses it too, again without invoking */
+    on_click(hit[0].x + 1, hit[0].y + 1, true);
+    assert(nclicks == 2 && !nstack && nevents == 2 && events[1].id == 1);
+
+    /* Resident with nothing to invoke: a left click is the only thing it can mean, so it dismisses */
+    reset();
+    hud_on_closed(on_closed);
+    resident_card(3, (const char *[]){ "reply", "Reply" }, 2);
+    on_click(hit[0].x + 1, hit[0].y + 1, false);
+    assert(!nstack && nevents == 1 && events[0].id == 3);
+
+    /* A replacement can change whether it is resident */
+    reset();
+    resident_card(4, NULL, 0);
+    hud_action_invoked(4);
+    assert(nstack == 1);
+    card(4, "again", "", LEVEL_INFO, 1000);
+    hud_action_invoked(4);
+    assert(!nstack);
     hud_on_click(NULL);
 }
 
@@ -483,7 +560,9 @@ int main(void) {
     test_cards();
     test_remove();
     test_never_expires();
+    test_card_count();
     test_click();
+    test_resident();
     test_dismiss_prefers_alerts();
     test_queue_overflow();
     test_actions();

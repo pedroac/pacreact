@@ -1,5 +1,6 @@
 /* How long a notification card stays up, from its urgency and requested timeout. */
 #include "../src/notify.h"
+#include "../src/history.h"
 #include "../src/hud.h"
 #include "../src/sound.h"
 #include "../src/loop.h"
@@ -10,6 +11,11 @@ void hud_card(const HudCard *c) { (void)c; }
 void hud_dismiss(void) {}
 bool hud_dismiss_id(uint32_t id) { (void)id; return false; }
 void hud_on_click(HudClickFn fn) { (void)fn; }
+void hud_action_invoked(uint32_t id) { (void)id; }
+void history_record(uint32_t id, const char *app, const char *s, const char *b, int u, HistReason st) {
+    (void)id; (void)app; (void)s; (void)b; (void)u; (void)st;
+}
+void history_close(uint32_t id, int reason) { (void)id; (void)reason; }
 const char *hud_action_key(int n, uint32_t *id) { (void)n; (void)id; return NULL; }
 void hud_on_closed(HudClosedFn fn) { (void)fn; }
 bool hud_remove(uint32_t id) { (void)id; return false; }

@@ -73,6 +73,16 @@ static Track tracks[T_COUNT] = {
 };
 static int pending = -1;   /* the track the outstanding request is for, or -1 */
 static bool announce;      /* whether the outstanding answer may show a HUD */
+#define PLUG_QUIET_MS 1500  /* after a jack plug: its port's remembered volume is not the user's doing */
+static long long quiet_until_ms;
+
+static long long now_ms(void) {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return ts.tv_sec * 1000LL + ts.tv_nsec / 1000000;
+}
+
+void audio_jack_plugged(void) { quiet_until_ms = now_ms() + PLUG_QUIET_MS; }
 
 /* The status icon for a level: the speaker with more or fewer waves, struck through when muted */
 static const char *icon_for(TrackId t, int pct, bool muted) {
@@ -408,6 +418,13 @@ static void handle_info(TrackId t, In *in) {
     Track *k = &tracks[t];
     int pct = (int)(((uint64_t)volume * 100 + VOLUME_NORM / 2) / VOLUME_NORM);
 
+    if (getenv("PACHUD_JACKS_DEBUG")) {
+        long long left = quiet_until_ms - now_ms();
+        fprintf(stderr, "jacks %lld.%03lld volume %s \"%s\" %d%%%s (was %d%% on \"%s\") announce=%d quiet_left=%lld ms\n",
+                now_ms() / 1000 % 1000, now_ms() % 1000, t == T_SINK ? "output" : "input", name, pct, muted ? " muted" : "",
+                k->last_pct, k->name, announce, left > 0 ? left : 0);
+    }
+
     /* A different default output (a headset connected over USB or Bluetooth, a monitor's speakers):
      * say so, instead of a volume bar that would just be about the new device. A different default
      * input (plugging a headset moves it to the headset's microphone) is only learned: the jack or
@@ -416,7 +433,7 @@ static void handle_info(TrackId t, In *in) {
         bool known = k->name[0] != '\0';   /* the first reading only learns the name */
         snprintf(k->name, sizeof k->name, "%s", name);
         if (known) {
-            if (announce && t == T_SINK) {
+            if (announce && t == T_SINK && now_ms() >= quiet_until_ms) {
                 char msg[192];
                 snprintf(msg, sizeof msg, _("Audio output: %s"), description[0] ? description : name);
                 hud_osd_slider(msg, pct, muted, OSD_CENTER, "audio-speakers,audio-card");  /* show device change with current volume */
@@ -429,7 +446,7 @@ static void handle_info(TrackId t, In *in) {
     if (pct == k->last_pct && muted == k->last_muted) return;  /* e.g. a device state change */
     k->last_pct = pct;
     k->last_muted = muted;
-    if (announce) {
+    if (announce && now_ms() >= quiet_until_ms) {
         hud_osd_slider(label_for(t, muted), pct, muted, OSD_CENTER, icon_for(t, pct, muted));
         if (t == T_SINK) sound_play(SOUND_VOLUME);   /* the output, not the microphone */
     }

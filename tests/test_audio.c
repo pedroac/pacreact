@@ -297,6 +297,29 @@ static void test_microphone_track(void) {
     drop_pair();
 }
 
+static void test_plug_is_quiet(void) {
+    connect_pair(S_READY);
+    announce = true;
+    int before = slider_calls;
+
+    /* A plug moves the output to a port with its own remembered volume: learned, not shown */
+    audio_jack_plugged();
+    pending = T_SINK;
+    Buf8 reply = sink_info(0x8000, '0');
+    In in = { reply.b + 10, reply.b + reply.n, false };
+    on_reply(&in);
+    assert(slider_calls == before && tracks[T_SINK].last_pct == 50);
+
+    /* Afterwards the user's own changes show again */
+    quiet_until_ms = 0;
+    pending = T_SINK;
+    reply = sink_info(0x4000, '0');
+    in = (In){ reply.b + 10, reply.b + reply.n, false };
+    on_reply(&in);
+    assert(slider_calls == before + 1);
+    drop_pair();
+}
+
 static void test_request_queue(void) {
     connect_pair(S_READY);
     uint8_t p[256];
@@ -687,6 +710,7 @@ int main(void) {
     test_volume_sound();
     test_volume_icons();
     test_microphone_track();
+    test_plug_is_quiet();
     test_card_ports();
     test_request_queue();
     test_events();

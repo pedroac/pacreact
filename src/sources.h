@@ -27,6 +27,9 @@ void disk_init(void);       /* low disk space: timer plus mount-table changes */
  * present (+1) or back (-1) since the last answer; 0 for no change. */
 typedef struct { int headphones, headset, mic, lineout; } PortChanges;
 void audio_port_changes(void (*cb)(const PortChanges *));   /* NULL when the server cannot say */
+/* A jack was plugged or unplugged: the server moves the output (and input) to the other port and
+ * its remembered volume comes with it. Volume changes in the next moments are learned, not shown. */
+void audio_jack_plugged(void);
 void audio_init(void);      /* output volume and mute, from `pactl subscribe` */
 
 #endif

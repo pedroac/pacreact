@@ -30,6 +30,8 @@ int loop_remove(int fd) { (void)fd; removed++; return 0; }
 
 /* The sound server is not here: the test says what it would have answered */
 static void (*ask_cb)(const PortChanges *);
+static int plugs_told;
+void audio_jack_plugged(void) { plugs_told++; }
 void audio_port_changes(void (*cb)(const PortChanges *)) { ask_cb = cb; }
 
 #include "../src/src_jack.c"

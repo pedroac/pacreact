@@ -80,6 +80,7 @@ static void note(Jack *j, bool plugged) {
     debug("switch", j->path, plugged);
     if (plugged == j->plugged) return;
     j->plugged = plugged;
+    audio_jack_plugged();
     pending[j->kind] = plugged ? 1 : -1;
     if (j->headset_mic) pending_headset_mic = true;
     if (j->kind == K_MIC) mic_seen = true;

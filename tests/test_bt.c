@@ -3,6 +3,7 @@
  * dbus-daemon is not installed. src_bt.c is included for its statics. */
 #include "../src/hud.h"
 #include "../src/loop.h"
+#include "../src/sound.h"
 #include <assert.h>
 #include <poll.h>
 #include <signal.h>
@@ -16,6 +17,8 @@ static char toasts[16][160];
 static int ntoasts, removed, registered;
 static Level last_level;
 
+static SoundKind last_sound = SOUND_KINDS;
+void sound_play(SoundKind k) { last_sound = k; }
 void hud_toast(const char *t, Level l, int ms) { (void)ms; snprintf(toasts[ntoasts++ % 16], sizeof toasts[0], "%s", t); last_level = l; }
 int loop_add(int fd, uint32_t ev, LoopFn fn, void *ctx) { (void)fd; (void)ev; (void)fn; (void)ctx; registered++; return 0; }
 int loop_remove(int fd) { (void)fd; removed++; return 0; }
@@ -162,10 +165,12 @@ int main(void) {
     command("connect");
     assert(wait_for_toast(before, 3000));
     assert(!strcmp(toasts[(ntoasts - 1) % 16], "Bluetooth: WH-1000XM4 connected") && last_level == LEVEL_INFO);
+    assert(last_sound == SOUND_DEVICE_ADDED);
     before = ntoasts;
     command("disconnect");
     assert(wait_for_toast(before, 3000));
     assert(!strcmp(toasts[(ntoasts - 1) % 16], "Bluetooth: WH-1000XM4 disconnected"));
+    assert(last_sound == SOUND_DEVICE_REMOVED);
 
     /* Connected together with other changed properties still counts */
     before = ntoasts;

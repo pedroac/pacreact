@@ -2,6 +2,7 @@
 #include "i18n.h"
 #include "loop.h"
 #include "sources.h"
+#include "sound.h"
 #include <linux/netlink.h>
 #include <linux/rtnetlink.h>
 #include <net/if.h>
@@ -75,11 +76,13 @@ static void on_settled(void *ctx, uint32_t ev) {
 
     if (!online) {
         hud_toast(_("Offline"), LEVEL_WARN, 4000);
+        sound_play(SOUND_NETWORK_DOWN);
     } else {
         char name[64] = "", msg[128];
         if (!if_indextoname(dev, name)) snprintf(name, sizeof name, "%s", _("network"));
         snprintf(msg, sizeof msg, _("Online — %s"), name);
         hud_toast(msg, LEVEL_INFO, 3000);
+        sound_play(SOUND_NETWORK_UP);
     }
 }
 

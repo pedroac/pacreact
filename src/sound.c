@@ -13,7 +13,8 @@
 
 static bool enabled;
 static char player[256];
-static char files[3][512];  /* indexed by SoundKind; empty = silent */
+static bool quiet;
+static char files[SOUND_KINDS][512];  /* indexed by SoundKind; empty = silent */
 static long long last_ms;
 
 static long long now_ms(void) {
@@ -92,6 +93,48 @@ static void configure(SoundKind kind, const char *env, const char *fallback) {
     if (spec && *spec && strcmp(spec, "0") != 0) sound_resolve(spec, files[kind], sizeof files[kind]);
 }
 
+/* The value of an opt-in variable, or NULL when it is off: unset, empty or "0". */
+static const char *opt_in(const char *env) {
+    const char *v = getenv(env);
+    return v && *v && strcmp(v, "0") != 0 ? v : NULL;
+}
+
+static bool is_on(const char *v) { return !strcmp(v, "1") || !strcmp(v, "on"); }
+
+/* PACHUD_SOUND_VOLUME: off unless set. "1" (or "on") plays the sound theme's own sound; anything
+ * else is a name or path. */
+static void configure_toggle(SoundKind kind, const char *env, const char *theme_name) {
+    files[kind][0] = '\0';
+    const char *v = opt_in(env);
+    if (v) sound_resolve(is_on(v) ? theme_name : v, files[kind], sizeof files[kind]);
+}
+
+/* PACHUD_SOUND_POWER and its siblings: off unless set. "1" (or "on") plays the sound theme's own
+ * pair for the event; a single name or path plays for both directions; "UP,DOWN" gives each its own,
+ * and an empty half is silent. Names and paths are as for the other sounds. */
+static void configure_pair(SoundKind up, SoundKind down, const char *env, const char *theme_up,
+                           const char *theme_down) {
+    files[up][0] = files[down][0] = '\0';
+    const char *v = opt_in(env);
+    if (!v) return;
+
+    char spec[1024];
+    snprintf(spec, sizeof spec, "%s", v);
+    const char *first = spec, *second = spec;
+    char *comma = strchr(spec, ',');
+    if (is_on(spec)) {
+        first = theme_up;
+        second = theme_down;
+    } else if (comma) {
+        *comma = '\0';
+        second = comma + 1;
+    }
+    if (*first) sound_resolve(first, files[up], sizeof files[up]);
+    if (*second) sound_resolve(second, files[down], sizeof files[down]);
+}
+
+void sound_set_quiet(bool q) { quiet = q; }
+
 void sound_init(void) {
     const char *off = getenv("PACHUD_SOUND");
     enabled = !(off && !strcmp(off, "0"));
@@ -110,6 +153,11 @@ void sound_init(void) {
     configure(SOUND_ALARM, "PACHUD_ALARM_SOUND", DEFAULT_ALARM);
     configure(SOUND_NOTIFY, "PACHUD_NOTIFY_SOUND", NULL);
     configure(SOUND_ALERT, "PACHUD_ALERT_SOUND", NULL);
+    configure_toggle(SOUND_VOLUME, "PACHUD_SOUND_VOLUME", "audio-volume-change");
+    configure_pair(SOUND_POWER_PLUGGED, SOUND_POWER_UNPLUGGED, "PACHUD_SOUND_POWER", "power-plug", "power-unplug");
+    configure_pair(SOUND_DEVICE_ADDED, SOUND_DEVICE_REMOVED, "PACHUD_SOUND_DEVICES", "device-added", "device-removed");
+    configure_pair(SOUND_NETWORK_UP, SOUND_NETWORK_DOWN, "PACHUD_SOUND_NETWORK",
+                   "network-connectivity-established", "network-connectivity-lost");
 
     signal(SIGCHLD, SIG_IGN);  /* players are fire-and-forget: let the kernel reap them */
 }
@@ -136,6 +184,7 @@ static void play_file(const char *file) {
 }
 
 void sound_play(SoundKind kind) {
+    if (quiet && kind >= SOUND_POWER_PLUGGED) return;
     play_file(files[kind]);
 }
 

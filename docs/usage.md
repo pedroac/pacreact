@@ -52,6 +52,10 @@ HUDs stack in one column, newest on top, in the top-right corner unless `PACHUD_
 | `PACHUD_ALARM_SOUND` | `alarm-clock-elapsed` | Sound for timers and alarms: an absolute file path or a freedesktop sound-theme name. Empty or `0` is silent. |
 | `PACHUD_NOTIFY_SOUND` | none | Sound for every notification card that does not ask for its own. |
 | `PACHUD_ALERT_SOUND` | none | Sound for battery and memory alerts. |
+| `PACHUD_SOUND_VOLUME` | none | Sound when the output volume or mute changes: `1` for the theme's `audio-volume-change`, or a sound name or path. |
+| `PACHUD_SOUND_POWER` | none | Sound when the charger is plugged in or unplugged. See [Sound](#sound) for the values. |
+| `PACHUD_SOUND_DEVICES` | none | Sound when a headset, headphones, microphone or Bluetooth device connects or disconnects. |
+| `PACHUD_SOUND_NETWORK` | none | Sound when the network comes online or goes offline. |
 
 ## Thresholds (compiled in)
 
@@ -65,7 +69,7 @@ Memory pressure and a low battery describe a condition that is often still true 
 
 ## Do not disturb
 
-`pachud dnd on` (or `on 30m` for a limited time) stops notification cards from appearing and from making sound, except critical ones. They are not queued for later: pachud just counts them and tells you when you switch it off ("Do not disturb off — 3 notifications skipped"). Timers, alarms, battery and memory alerts and the volume and brightness sliders are not affected. The state lives in memory, so it resets when the daemon restarts. `pachud dnd toggle` suits a keybind; `pachud dnd status` prints the state, time left and the skipped count.
+`pachud dnd on` (or `on 30m` for a limited time) stops notification cards from appearing and from making sound, except critical ones. They are not queued for later: pachud just counts them and tells you when you switch it off ("Do not disturb off — 3 notifications skipped"). Timers, alarms, battery and memory alerts and the volume and brightness sliders are not affected, except that the opt-in sounds for power, devices and network (see [Sound](#sound)) are held back while it is on. The state lives in memory, so it resets when the daemon restarts. `pachud dnd toggle` suits a keybind; `pachud dnd status` prints the state, time left and the skipped count.
 
 ## History
 
@@ -89,6 +93,19 @@ What this does not cover: root can read anything, and so can a debugger started 
 ## Sound
 
 pachud links no audio library: it starts an external player (`pw-play` or `paplay`) with the sound file. By default only timers and alarms make a sound, once when they fire; everything else is silent until you opt in with the variables above. Sound names are looked up as `NAME.oga`, `.ogg` or `.wav` in `sounds/freedesktop/stereo` under `$XDG_DATA_HOME` and `$XDG_DATA_DIRS`, so `message`, `bell` or `dialog-warning` work with the standard sound theme. Several sounds within 400 ms play once.
+
+Things that merely happen are silent unless you ask: `PACHUD_SOUND_POWER` (charger plugged or unplugged), `PACHUD_SOUND_DEVICES` (a headset, headphones, microphone or Bluetooth device connects or disconnects) and `PACHUD_SOUND_NETWORK` (online or offline). Each takes one of:
+
+| Value | Plays |
+|---|---|
+| unset, empty, `0` | nothing (the default) |
+| `1` or `on` | the sound theme's own pair: `power-plug` and `power-unplug`, `device-added` and `device-removed`, `network-connectivity-established` and `network-connectivity-lost` |
+| `NAME` | that sound, a theme name or an absolute path, for both directions |
+| `UP,DOWN` | one sound for connecting and another for disconnecting; an empty half is silent (`bell,` plays only on connect). Paths cannot contain a comma. |
+
+The volume has a sound of its own, `PACHUD_SOUND_VOLUME`: off unless set, `1` (or `on`) for the theme's `audio-volume-change`, or any sound name or path. It plays when you change the output volume or mute it, the same moments the volume bar appears, but not for the microphone or for switching to another output. A key held down plays it at most about twice a second. Unlike the three above, do-not-disturb does not silence it, since it answers something you just did.
+
+For example `PACHUD_SOUND_POWER=1` gives the pair for the charger, and `PACHUD_SOUND_DEVICES=device-added,` sounds only when something connects. Nothing plays for the state found when pachud starts, only for changes after it, and these sounds are held back while do-not-disturb is on.
 
 Notifications can ask for a sound themselves with the `sound-file` or `sound-name` hints, and `suppress-sound` silences them. Those are honoured, as are the player and theme lookups above.
 

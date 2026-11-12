@@ -1,6 +1,7 @@
 #include "hud.h"
 #include "i18n.h"
 #include "loop.h"
+#include "sound.h"
 #include "sources.h"
 #include <arpa/inet.h>
 #include <errno.h>
@@ -271,7 +272,10 @@ static void handle_info(TrackId t, In *in) {
     if (pct == k->last_pct && muted == k->last_muted) return;  /* e.g. a device state change */
     k->last_pct = pct;
     k->last_muted = muted;
-    if (announce) hud_osd_slider(label_for(t, muted), pct, muted, OSD_CENTER);
+    if (announce) {
+        hud_osd_slider(label_for(t, muted), pct, muted, OSD_CENTER);
+        if (t == T_SINK) sound_play(SOUND_VOLUME);   /* the output, not the microphone */
+    }
 }
 
 static void on_reply(In *in) {

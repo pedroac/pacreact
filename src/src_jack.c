@@ -3,6 +3,7 @@
 #include "i18n.h"
 #include "loop.h"
 #include "sources.h"
+#include "sound.h"
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -64,16 +65,24 @@ static void note(Jack *j, bool plugged) {
 /* One toast for what changed: a headset (headphones and microphone together) is one thing. */
 void jack_flush(void) {
     const char *msg = NULL;
-    if (pending[K_HEADPHONES] && pending[K_HEADPHONES] == pending[K_MIC])
-        msg = pending[K_HEADPHONES] > 0 ? _("Headset connected") : _("Headset disconnected");
-    else if (pending[K_HEADPHONES])
-        msg = pending[K_HEADPHONES] > 0 ? _("Headphones connected") : _("Headphones disconnected");
-    else if (pending[K_LINEOUT])
-        msg = pending[K_LINEOUT] > 0 ? _("Line out connected") : _("Line out disconnected");
-    else if (pending[K_MIC])
-        msg = pending[K_MIC] > 0 ? _("Microphone connected") : _("Microphone disconnected");
+    int dir = 0;   /* +1 connected, -1 disconnected */
+    if (pending[K_HEADPHONES] && pending[K_HEADPHONES] == pending[K_MIC]) {
+        dir = pending[K_HEADPHONES];
+        msg = dir > 0 ? _("Headset connected") : _("Headset disconnected");
+    } else if (pending[K_HEADPHONES]) {
+        dir = pending[K_HEADPHONES];
+        msg = dir > 0 ? _("Headphones connected") : _("Headphones disconnected");
+    } else if (pending[K_LINEOUT]) {
+        dir = pending[K_LINEOUT];
+        msg = dir > 0 ? _("Line out connected") : _("Line out disconnected");
+    } else if (pending[K_MIC]) {
+        dir = pending[K_MIC];
+        msg = dir > 0 ? _("Microphone connected") : _("Microphone disconnected");
+    }
     memset(pending, 0, sizeof pending);
-    if (msg) hud_toast(msg, LEVEL_INFO, TOAST_MS);
+    if (!msg) return;
+    hud_toast(msg, LEVEL_INFO, TOAST_MS);
+    sound_play(dir > 0 ? SOUND_DEVICE_ADDED : SOUND_DEVICE_REMOVED);
 }
 
 static void on_debounce(void *ctx, uint32_t ev) {

@@ -56,6 +56,15 @@ static void setup(void) {
     snprintf(p, sizeof p, "%s/alarm-clock-elapsed.oga", theme); touch(p);
     snprintf(p, sizeof p, "%s/message.ogg", theme);             touch(p);
     snprintf(p, sizeof p, "%s/bell.wav", theme);                touch(p);
+    static const char *const event_sounds[] = {
+        "audio-volume-change.oga",
+        "power-plug.oga", "power-unplug.oga", "device-added.oga", "device-removed.oga",
+        "network-connectivity-established.oga", "network-connectivity-lost.oga",
+    };
+    for (size_t i = 0; i < sizeof event_sounds / sizeof *event_sounds; i++) {
+        snprintf(p, sizeof p, "%s/%s", theme, event_sounds[i]);
+        touch(p);
+    }
     snprintf(p, sizeof p, "%s/message.oga", user);              touch(p);   /* the user's overrides */
     /* Files that only a path trick could reach: one above the theme directory, and names that
      * would look like options or hidden files */
@@ -196,11 +205,142 @@ static void test_configuration(void) {
     assert(access(out, F_OK) != 0);
 }
 
+/* Plays a kind and says whether anything came out within a moment / what the player got. */
+static bool silent(SoundKind k) {
+    reset_out();
+    sound_play(k);
+    usleep(300000);
+    return access(out, F_OK) != 0;
+}
+
+static bool plays(SoundKind k, const char *file_suffix) {
+    char got[512];
+    reset_out();
+    sound_play(k);
+    return played(got, sizeof got) && strlen(got) >= strlen(file_suffix) &&
+           !strcmp(got + strlen(got) - strlen(file_suffix), file_suffix);
+}
+
+static void test_event_sounds(void) {
+    static const char *const vars[] = { "PACHUD_SOUND_POWER", "PACHUD_SOUND_DEVICES", "PACHUD_SOUND_NETWORK" };
+    for (size_t i = 0; i < 3; i++) unsetenv(vars[i]);
+    setenv("PACHUD_PLAYER", player_path, 1);
+    setenv("PACHUD_ALARM_SOUND", "bell", 1);
+    unsetenv("PACHUD_NOTIFY_SOUND");
+    unsetenv("PACHUD_ALERT_SOUND");
+    sound_set_quiet(false);
+    sound_init();
+
+    /* Off unless asked for: not one of the six makes a sound */
+    for (int k = SOUND_POWER_PLUGGED; k < SOUND_KINDS; k++) assert(silent((SoundKind)k));
+
+    /* "1" (or "on") plays the sound theme's own pair for each */
+    setenv("PACHUD_SOUND_POWER", "1", 1);
+    setenv("PACHUD_SOUND_DEVICES", "on", 1);
+    setenv("PACHUD_SOUND_NETWORK", "1", 1);
+    sound_init();
+    assert(plays(SOUND_POWER_PLUGGED, "/power-plug.oga") && plays(SOUND_POWER_UNPLUGGED, "/power-unplug.oga"));
+    assert(plays(SOUND_DEVICE_ADDED, "/device-added.oga") && plays(SOUND_DEVICE_REMOVED, "/device-removed.oga"));
+    assert(plays(SOUND_NETWORK_UP, "/network-connectivity-established.oga"));
+    assert(plays(SOUND_NETWORK_DOWN, "/network-connectivity-lost.oga"));
+
+    /* One name or path plays for both directions of that event, and only that event */
+    setenv("PACHUD_SOUND_POWER", "bell", 1);
+    unsetenv("PACHUD_SOUND_DEVICES");
+    unsetenv("PACHUD_SOUND_NETWORK");
+    sound_init();
+    assert(plays(SOUND_POWER_PLUGGED, "/bell.wav") && plays(SOUND_POWER_UNPLUGGED, "/bell.wav"));
+    assert(silent(SOUND_DEVICE_ADDED) && silent(SOUND_NETWORK_DOWN));
+
+    char path[512];
+    snprintf(path, sizeof path, "%s/bell.wav", theme);
+    setenv("PACHUD_SOUND_DEVICES", path, 1);
+    sound_init();
+    assert(plays(SOUND_DEVICE_ADDED, "/bell.wav") && plays(SOUND_DEVICE_REMOVED, "/bell.wav"));
+
+    /* "UP,DOWN" gives each direction its own sound; an empty half is silent */
+    setenv("PACHUD_SOUND_POWER", "message,bell", 1);
+    sound_init();
+    assert(plays(SOUND_POWER_PLUGGED, "/message.oga") && plays(SOUND_POWER_UNPLUGGED, "/bell.wav"));
+    setenv("PACHUD_SOUND_POWER", "bell,", 1);
+    sound_init();
+    assert(plays(SOUND_POWER_PLUGGED, "/bell.wav") && silent(SOUND_POWER_UNPLUGGED));
+    setenv("PACHUD_SOUND_POWER", ",bell", 1);
+    sound_init();
+    assert(silent(SOUND_POWER_PLUGGED) && plays(SOUND_POWER_UNPLUGGED, "/bell.wav"));
+
+    /* Empty, "0" and a name that does not exist are all silent, not an error */
+    setenv("PACHUD_SOUND_POWER", "", 1);
+    sound_init();
+    assert(silent(SOUND_POWER_PLUGGED) && silent(SOUND_POWER_UNPLUGGED));
+    setenv("PACHUD_SOUND_POWER", "0", 1);
+    sound_init();
+    assert(silent(SOUND_POWER_PLUGGED));
+    setenv("PACHUD_SOUND_POWER", "nonexistent,also-missing", 1);
+    sound_init();
+    assert(silent(SOUND_POWER_PLUGGED) && silent(SOUND_POWER_UNPLUGGED));
+
+    /* While quiet (do-not-disturb) these stay silent, and everything else is unaffected */
+    setenv("PACHUD_SOUND_POWER", "1", 1);
+    setenv("PACHUD_NOTIFY_SOUND", "bell", 1);
+    sound_init();
+    assert(plays(SOUND_POWER_PLUGGED, "/power-plug.oga"));
+    sound_set_quiet(true);
+    assert(silent(SOUND_POWER_PLUGGED) && silent(SOUND_DEVICE_ADDED) && silent(SOUND_NETWORK_UP));
+    assert(plays(SOUND_ALARM, "/bell.wav") && plays(SOUND_NOTIFY, "/bell.wav"));
+    sound_set_quiet(false);
+    assert(plays(SOUND_POWER_PLUGGED, "/power-plug.oga"));
+}
+
+static void test_volume_option(void) {
+    setenv("PACHUD_PLAYER", player_path, 1);
+    unsetenv("PACHUD_SOUND_VOLUME");
+    sound_set_quiet(false);
+    sound_init();
+    assert(silent(SOUND_VOLUME));                                  /* off unless asked for */
+
+    setenv("PACHUD_SOUND_VOLUME", "1", 1);                         /* the theme's own sound */
+    sound_init();
+    assert(plays(SOUND_VOLUME, "/audio-volume-change.oga"));
+    setenv("PACHUD_SOUND_VOLUME", "on", 1);
+    sound_init();
+    assert(plays(SOUND_VOLUME, "/audio-volume-change.oga"));
+
+    setenv("PACHUD_SOUND_VOLUME", "bell", 1);                      /* a theme name... */
+    sound_init();
+    assert(plays(SOUND_VOLUME, "/bell.wav"));
+    char path[512];
+    snprintf(path, sizeof path, "%s/message.ogg", theme);          /* ...or a path */
+    setenv("PACHUD_SOUND_VOLUME", path, 1);
+    sound_init();
+    assert(plays(SOUND_VOLUME, "/message.ogg"));
+
+    setenv("PACHUD_SOUND_VOLUME", "0", 1);
+    sound_init();
+    assert(silent(SOUND_VOLUME));
+    setenv("PACHUD_SOUND_VOLUME", "", 1);
+    sound_init();
+    assert(silent(SOUND_VOLUME));
+    setenv("PACHUD_SOUND_VOLUME", "no-such-sound", 1);             /* unknown: silent, not an error */
+    sound_init();
+    assert(silent(SOUND_VOLUME));
+
+    /* You just changed it yourself, so do-not-disturb does not hold it back */
+    setenv("PACHUD_SOUND_VOLUME", "1", 1);
+    sound_init();
+    sound_set_quiet(true);
+    assert(plays(SOUND_VOLUME, "/audio-volume-change.oga"));
+    sound_set_quiet(false);
+    unsetenv("PACHUD_SOUND_VOLUME");
+}
+
 int main(void) {
     setup();
     test_resolve();
     test_defaults_and_playing();
     test_configuration();
+    test_event_sounds();
+    test_volume_option();
     signal(SIGCHLD, SIG_DFL);  /* sound_init() ignores it, which would make system() fail */
     char cmd[128];
     snprintf(cmd, sizeof cmd, "rm -rf %s", root);

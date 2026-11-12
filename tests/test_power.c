@@ -20,7 +20,9 @@ void hud_toast(const char *text, Level level, int ms) {
     last_level = level;
     shown++;
 }
-void sound_play(SoundKind kind) { (void)kind; }
+static SoundKind last_sound = SOUND_KINDS;
+static int nsounds;
+void sound_play(SoundKind k) { last_sound = k; nsounds++; }
 static int pokes;
 void temp_poke(void) { pokes++; }
 static bool alerts_open = true;
@@ -31,6 +33,17 @@ static size_t uevent(char *out, const char *props[]) {
     size_t n = 0;
     for (; *props; props++) n += sprintf(out + n, "%s", *props) + 1;
     return n;
+}
+
+static void test_charger_sounds(void) {
+    charger_update(true);                                   /* whatever it was, it is plugged now */
+    int before = nsounds;
+    charger_update(true);                                   /* no change: nothing */
+    assert(nsounds == before);
+    charger_update(false);
+    assert(nsounds == before + 1 && last_sound == SOUND_POWER_UNPLUGGED);
+    charger_update(true);
+    assert(nsounds == before + 2 && last_sound == SOUND_POWER_PLUGGED);
 }
 
 int main(void) {
@@ -44,8 +57,10 @@ int main(void) {
     battery_update(40, true);                                      /* recovered above re-arm */
     battery_update(15, true);   assert(shown == 4);
 
-    charger_update(true);       assert(shown == 4);                /* first state is silent */
+    int snd = nsounds;
+    charger_update(true);       assert(shown == 4 && nsounds == snd);   /* first state is silent, sound included */
     charger_update(false);      assert(shown == 5 && !strcmp(last, "Charger disconnected"));
+    assert(nsounds == snd + 1 && last_sound == SOUND_POWER_UNPLUGGED);
 
     char buf[512];
     const char *bat[] = { "change@/devices/BAT0", "SUBSYSTEM=power_supply", "POWER_SUPPLY_TYPE=Battery",
@@ -78,6 +93,7 @@ int main(void) {
     battery_update(2, true);
     assert(shown == before + 1);
 
+    test_charger_sounds();
     puts("power: ok");
     return 0;
 }

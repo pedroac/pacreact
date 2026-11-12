@@ -2,6 +2,7 @@
 #include "i18n.h"
 #include "loop.h"
 #include "sources.h"
+#include "sound.h"
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -40,6 +41,7 @@ static void announce(bool connected, const char *name) {
     snprintf(msg, sizeof msg, connected ? _("Bluetooth: %s connected") : _("Bluetooth: %s disconnected"),
              name && *name ? name : "?");
     hud_toast(msg, LEVEL_INFO, TOAST_MS);
+    sound_play(connected ? SOUND_DEVICE_ADDED : SOUND_DEVICE_REMOVED);
 }
 
 /* org.freedesktop.DBus.Properties.PropertiesChanged(interface, changed, invalidated) of a device:

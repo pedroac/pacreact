@@ -3,6 +3,7 @@
  * The sink-info reply below is a frame captured from a real pipewire-pulse server. */
 #include "../src/hud.h"
 #include "../src/loop.h"
+#include "../src/sound.h"
 #include <assert.h>
 #include <poll.h>
 #include <stdio.h>
@@ -21,6 +22,9 @@ void hud_toast(const char *text, Level level, int ms) {
     toast_calls++;
     snprintf(toast_text, sizeof toast_text, "%s", text);
 }
+
+static int volume_sounds, other_sounds;
+void sound_play(SoundKind k) { if (k == SOUND_VOLUME) volume_sounds++; else other_sounds++; }
 
 void hud_osd_slider(const char *label, int percent, bool dim, OsdAnchor anchor) {
     (void)anchor;
@@ -504,10 +508,40 @@ static void test_server_path(void) {
     assert(!server_path(&a));
 }
 
+static void test_volume_sound(void) {
+    connect_pair(S_READY);
+    const char *a = "alsa_output.a", *b = "alsa_output.b";
+    volume_sounds = other_sounds = 0;
+
+    /* Learning the state when the daemon starts: silent */
+    read_reply(T_SINK, sink_info_named(0x4000, '0', a, "Speakers"), false);
+    assert(volume_sounds == 0);
+
+    /* A change of the output volume, which is also shown: one sound */
+    read_reply(T_SINK, sink_info_named(0x8000, '0', a, "Speakers"), true);
+    assert(volume_sounds == 1);
+    read_reply(T_SINK, sink_info_named(0x8000, '0', a, "Speakers"), true);   /* no change: nothing */
+    assert(volume_sounds == 1);
+    read_reply(T_SINK, sink_info_named(0x8000, '1', a, "Speakers"), true);   /* muting shows the bar too */
+    assert(volume_sounds == 2);
+    read_reply(T_SINK, sink_info_named(0x6000, '1', a, "Speakers"), false);  /* a quiet re-read: silent */
+    assert(volume_sounds == 2);
+
+    /* Switching to another output is announced by name, not as a volume change */
+    read_reply(T_SINK, sink_info_named(0x6000, '1', b, "Headset"), true);
+    assert(volume_sounds == 2 && !strcmp(slider_label, "Audio output: Headset"));
+
+    /* The microphone is not the volume */
+    read_reply(T_SOURCE, sink_info_named(0x4000, '0', "alsa_input.mic", "Mic"), true);
+    assert(volume_sounds == 2 && other_sounds == 0);
+    drop_pair();
+}
+
 int main(void) {
     test_handshake_packets();
     test_sink_info_parsing();
     test_output_change();
+    test_volume_sound();
     test_microphone_track();
     test_request_queue();
     test_events();

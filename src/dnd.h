@@ -6,7 +6,8 @@
 
 /* Do-not-disturb: while on, notification cards below critical urgency are not shown (and
  * make no sound), and are counted so turning it off can say how many were missed. Timers,
- * alarms, battery and memory alerts and sliders are not affected. It lives in memory only. */
+ * alarms, battery and memory alerts and sliders are not affected, apart from the opt-in sounds
+ * for power, devices and network, which are held back (sound_set_quiet). It lives in memory only. */
 
 void dnd_init(void);
 bool dnd_active(void);

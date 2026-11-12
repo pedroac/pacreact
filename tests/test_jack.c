@@ -3,6 +3,7 @@
  * devices. src_jack.c is included for its statics. */
 #include "../src/hud.h"
 #include "../src/loop.h"
+#include "../src/sound.h"
 #include <assert.h>
 #include <fcntl.h>
 #include <stdio.h>
@@ -13,6 +14,9 @@ static char toasts[8][96];
 static int ntoasts, registered, removed;
 static Level last_level;
 
+static SoundKind last_sound = SOUND_KINDS;
+static int nsounds;
+void sound_play(SoundKind k) { last_sound = k; nsounds++; }
 void hud_toast(const char *t, Level l, int ms) { (void)ms; snprintf(toasts[ntoasts++ % 8], sizeof toasts[0], "%s", t); last_level = l; }
 int loop_add(int fd, uint32_t ev, LoopFn fn, void *ctx) { (void)fd; (void)ev; (void)fn; (void)ctx; registered++; return 0; }
 int loop_remove(int fd) { (void)fd; removed++; return 0; }
@@ -40,23 +44,24 @@ static void test_flush(void) {
     ntoasts = 0;
     memset(pending, 0, sizeof pending);
     jack_flush();
-    assert(ntoasts == 0);                                              /* nothing happened */
+    assert(ntoasts == 0 && nsounds == 0);                              /* nothing happened: no sound either */
 
     pending[K_HEADPHONES] = 1;
     jack_flush();
     assert(ntoasts == 1 && !strcmp(toasts[0], "Headphones connected") && last_level == LEVEL_INFO);
+    assert(nsounds == 1 && last_sound == SOUND_DEVICE_ADDED);
     assert(pending[K_HEADPHONES] == 0);                                /* consumed */
     pending[K_HEADPHONES] = -1;
     jack_flush();
-    assert(!strcmp(toasts[1], "Headphones disconnected"));
+    assert(!strcmp(toasts[1], "Headphones disconnected") && last_sound == SOUND_DEVICE_REMOVED);
 
     /* headphone and microphone contacts together are a headset */
     pending[K_HEADPHONES] = 1; pending[K_MIC] = 1;
     jack_flush();
-    assert(ntoasts == 3 && !strcmp(toasts[2], "Headset connected"));
+    assert(ntoasts == 3 && !strcmp(toasts[2], "Headset connected") && last_sound == SOUND_DEVICE_ADDED);
     pending[K_HEADPHONES] = -1; pending[K_MIC] = -1;
     jack_flush();
-    assert(!strcmp(toasts[3], "Headset disconnected"));
+    assert(!strcmp(toasts[3], "Headset disconnected") && last_sound == SOUND_DEVICE_REMOVED);
     /* ...but not when they disagree */
     pending[K_HEADPHONES] = 1; pending[K_MIC] = -1;
     jack_flush();

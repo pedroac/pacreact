@@ -17,6 +17,8 @@ void hud_toast(const char *t, Level l, int ms) {
     snprintf(toasts[ntoasts++ % 8], sizeof toasts[0], "%s", t);
 }
 void sound_play(SoundKind k) { (void)k; }
+static bool quiet_now;
+void sound_set_quiet(bool q) { quiet_now = q; }
 int loop_add(int fd, uint32_t ev, LoopFn fn, void *ctx) { (void)fd; (void)ev; (void)fn; (void)ctx; return 0; }
 
 #include "../src/dnd.c"
@@ -42,8 +44,10 @@ int main(void) {
 
     /* Turning it on */
     ntoasts = 0;
+    assert(!quiet_now);
     assert(run("on") && dnd_active() && !strncmp(reply, "ok on", 5));
     assert(ntoasts == 1 && !strcmp(toasts[0], "Do not disturb on"));
+    assert(quiet_now);                                                /* the opt-in event sounds are held back too */
 
     /* Normal and low notifications are held and counted; critical ones come through */
     assert(dnd_suppress(0) && dnd_suppress(1) && dnd_suppress(1));
@@ -55,6 +59,7 @@ int main(void) {
     ntoasts = 0;
     assert(run("off") && !dnd_active() && !strcmp(reply, "ok off"));
     assert(ntoasts == 1 && !strcmp(toasts[0], "Do not disturb off — 3 notifications skipped"));
+    assert(!quiet_now);
     assert(!dnd_suppress(1));
 
     /* One is singular, none says nothing about counts */
@@ -67,8 +72,8 @@ int main(void) {
     assert(run("off") && ntoasts == 1);                               /* off while off: no toast */
 
     /* toggle */
-    run("toggle"); assert(dnd_active());
-    run("toggle"); assert(!dnd_active());
+    run("toggle"); assert(dnd_active() && quiet_now);
+    run("toggle"); assert(!dnd_active() && !quiet_now);
 
     /* With a duration */
     ntoasts = 0;

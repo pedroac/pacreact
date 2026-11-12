@@ -3,6 +3,7 @@
 #include "i18n.h"
 #include "loop.h"
 #include "timer.h"
+#include "sound.h"
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -35,6 +36,7 @@ static void arm(long secs) {
 
 static void turn_on(long secs, const char *spec) {
     active = true;
+    sound_set_quiet(true);
     skipped = 0;
     until = secs > 0 ? time(NULL) + secs : 0;
     arm(secs);
@@ -47,6 +49,7 @@ static void turn_on(long secs, const char *spec) {
 static void turn_off(void) {
     int missed = skipped;
     active = false;
+    sound_set_quiet(false);
     skipped = 0;
     until = 0;
     arm(0);

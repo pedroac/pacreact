@@ -51,8 +51,10 @@ void battery_update(int capacity, bool discharging) {
 void charger_update(bool online) {
     int prev = ac;
     ac = online;
-    if (prev >= 0 && prev != ac)
+    if (prev >= 0 && prev != ac) {
         hud_toast(online ? _("Charger connected") : _("Charger disconnected"), LEVEL_INFO, 2500);
+        sound_play(online ? SOUND_POWER_PLUGGED : SOUND_POWER_UNPLUGGED);
+    }
 }
 
 /* A kernel uevent is "action@path\0KEY=VALUE\0KEY=VALUE\0...". */

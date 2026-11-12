@@ -115,7 +115,7 @@ nothing is written to disk.
 Do not disturb.
 While on, notification cards below critical urgency are not shown and make no sound; they are counted
 and the total is reported when it is switched off.
-Timers, alarms, battery and memory alerts and sliders are not affected.
+Timers, alarms, battery and memory alerts and sliders are not affected, except that the opt-in sounds for power, devices and network are held back.
 The state is kept in memory only.
 .TP
 .BR action " [\fIN\fR]"
@@ -175,6 +175,36 @@ Program started with a sound file as its only argument (default
 .BR pw-play ,
 else
 .BR paplay ).
+.TP
+.B PACHUD_SOUND_VOLUME
+Sound for a change of the output volume or mute (the moments the volume bar appears; not the microphone).
+Off by default.
+.B 1
+(or
+.BR on )
+plays the theme's
+.BR audio-volume-change ;
+anything else is a sound name or an absolute path.
+Do-not-disturb does not hold it back.
+.TP
+.BR PACHUD_SOUND_POWER ", " PACHUD_SOUND_DEVICES ", " PACHUD_SOUND_NETWORK
+Sounds for the charger being plugged or unplugged, for a headset, headphones, microphone or Bluetooth device
+connecting or disconnecting, and for the network coming online or going offline.
+All are off by default, and only changes make a sound, not the state at start-up.
+.B 1
+(or
+.BR on )
+plays the sound theme's own pair for the event
+.RB ( power-plug / power-unplug ,
+.BR device-added / device-removed ,
+.BR network-connectivity-established / network-connectivity-lost ).
+A name or absolute path plays for both directions;
+.I UP,DOWN
+gives each its own, and an empty half is silent.
+Empty or
+.B 0
+means silent.
+They are held back while do-not-disturb is on.
 .TP
 .BR PACHUD_ALARM_SOUND ", " PACHUD_NOTIFY_SOUND ", " PACHUD_ALERT_SOUND
 Sound for timers and alarms (default

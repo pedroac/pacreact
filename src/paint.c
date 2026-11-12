@@ -61,6 +61,8 @@ void paint_configure_icons(bool enabled, int size_px) {
 }
 
 void paint_init(void) {
+    const char *contrast = getenv("PACHUD_CONTRAST");
+    paint_set_contrast(contrast && !strcmp(contrast, "high"));
     const char *icons = getenv("PACHUD_ICONS");
     paint_configure_icons(!(icons && !strcmp(icons, "0")), (int)env_int("PACHUD_ICON_SIZE", 0, PAINT_ICON_MIN, PAINT_ICON_MAX, "pixels"));
     paint_configure((int)env_int("PACHUD_FONT_SIZE", 0, PAINT_FONT_MIN, PAINT_FONT_MAX, "pixels"),
@@ -90,18 +92,40 @@ static void round_rect(cairo_t *cr, double x, double y, double w, double h, doub
     cairo_close_path(cr);
 }
 
+/* The colours. `contrast = high` swaps in a pure black background, white text and brighter
+ * accents, with nothing dimmed: the same layout, readable in more conditions. */
+typedef struct {
+    double bg_alpha, track_alpha;
+    double text[3], title[3], soft[3], faint[3], dim[3];
+    double accent[3][3];
+} Palette;
+
+static const Palette normal_colors = {
+    .bg_alpha = 0.94, .track_alpha = 0.15,
+    .text = { 0.93, 0.93, 0.95 }, .title = { 0.95, 0.95, 0.97 }, .soft = { 0.75, 0.75, 0.80 },
+    .faint = { 0.70, 0.70, 0.75 }, .dim = { 0.55, 0.55, 0.60 },
+    .accent = { [LEVEL_INFO] = { 0.40, 0.65, 1.00 }, [LEVEL_WARN] = { 1.00, 0.75, 0.25 },
+                [LEVEL_CRIT] = { 1.00, 0.35, 0.35 } },
+};
+static const Palette high_colors = {
+    .bg_alpha = 1.0, .track_alpha = 0.40,
+    .text = { 1, 1, 1 }, .title = { 1, 1, 1 }, .soft = { 1, 1, 1 }, .faint = { 1, 1, 1 },
+    .dim = { 0.80, 0.80, 0.80 },
+    .accent = { [LEVEL_INFO] = { 0.35, 0.85, 1.00 }, [LEVEL_WARN] = { 1.00, 0.85, 0.00 },
+                [LEVEL_CRIT] = { 1.00, 0.40, 0.40 } },
+};
+static const Palette *pal = &normal_colors;
+
+void paint_set_contrast(bool high) { pal = high ? &high_colors : &normal_colors; }
+
 static void accent(Level level, double rgb[3]) {
-    static const double c[][3] = {
-        [LEVEL_INFO] = { 0.40, 0.65, 1.00 },
-        [LEVEL_WARN] = { 1.00, 0.75, 0.25 },
-        [LEVEL_CRIT] = { 1.00, 0.35, 0.35 },
-    };
-    memcpy(rgb, c[level], sizeof c[level]);
+    memcpy(rgb, pal->accent[level], sizeof pal->accent[level]);
 }
 
 static void paint_bg(cairo_t *cr, int w, int h) {
     round_rect(cr, 0, 0, w, h, RADIUS);
-    cairo_set_source_rgba(cr, 0.09, 0.09, 0.11, 0.94);
+    if (pal == &high_colors) cairo_set_source_rgba(cr, 0, 0, 0, pal->bg_alpha);
+    else cairo_set_source_rgba(cr, 0.09, 0.09, 0.11, pal->bg_alpha);
     cairo_fill_preserve(cr);
     cairo_clip(cr);
 }
@@ -125,10 +149,9 @@ void paint_slider(cairo_t *cr, const char *label, int percent, bool dim, const c
     paint_bg(cr, width, h);
     double lx = PAD + (has_icon ? isz + ICON_GAP : 0), row = SLIDER_TOP + (isz > height ? (isz - height) / 2 : 0);
     if (has_icon) {
-        static const double text[3] = { 0.93, 0.93, 0.95 };
-        sicon_paint(cr, icon, mirror(PAD, isz, width), SLIDER_TOP + (height > isz ? (height - isz) / 2 : 0), text);
+        sicon_paint(cr, icon, mirror(PAD, isz, width), SLIDER_TOP + (height > isz ? (height - isz) / 2 : 0), pal->text);
     }
-    cairo_set_source_rgb(cr, 0.93, 0.93, 0.95);
+    cairo_set_source_rgb(cr, pal->text[0], pal->text[1], pal->text[2]);
     char pct[16];
     snprintf(pct, sizeof pct, "%d%%", percent);
     double pw = text_width(pct, (int)strlen(pct), FONT_SIZE, false);
@@ -144,15 +167,14 @@ void paint_slider(cairo_t *cr, const char *label, int percent, bool dim, const c
     double tw = width - 2 * PAD, ty = h - PAD - TRACK_H + paint_px(2);
     cairo_reset_clip(cr);
     round_rect(cr, PAD, ty, tw, TRACK_H, TRACK_H / 2.0);
-    cairo_set_source_rgba(cr, 1, 1, 1, 0.15);
+    cairo_set_source_rgba(cr, 1, 1, 1, pal->track_alpha);
     cairo_fill(cr);
     if (fill > 0) {
         double fw = tw * fill / 100;
         if (fw < TRACK_H) fw = TRACK_H;
         round_rect(cr, text_rtl() ? PAD + tw - fw : PAD, ty, fw, TRACK_H, TRACK_H / 2.0);
-        if (dim) cairo_set_source_rgb(cr, 0.55, 0.55, 0.60);
-        else if (percent > 100) cairo_set_source_rgb(cr, 1.00, 0.75, 0.25);
-        else cairo_set_source_rgb(cr, 0.40, 0.65, 1.00);
+        const double *c = dim ? pal->dim : pal->accent[percent > 100 ? LEVEL_WARN : LEVEL_INFO];
+        cairo_set_source_rgb(cr, c[0], c[1], c[2]);
         cairo_fill(cr);
     }
 }
@@ -172,14 +194,14 @@ void paint_clock(cairo_t *cr, const char *time_text, const char *detail, int wid
     if (!cr) return;
 
     paint_bg(cr, width, h);
-    cairo_set_source_rgb(cr, 0.93, 0.93, 0.95);
+    cairo_set_source_rgb(cr, pal->text[0], pal->text[1], pal->text[2]);
     double tw = text_width(time_text, (int)strlen(time_text), CLOCK_SIZE, true);
     text_draw(cr, time_text, (width - tw) / 2, PAD + ta, CLOCK_SIZE, true);
     if (has_detail) {
         char shown[256];
         ellipsize(detail, width - 2 * PAD, CLOCK_DETAIL_SIZE, false, shown, sizeof shown);
         double dw = text_width(shown, (int)strlen(shown), CLOCK_DETAIL_SIZE, false);
-        cairo_set_source_rgb(cr, 0.70, 0.70, 0.75);
+        cairo_set_source_rgb(cr, pal->faint[0], pal->faint[1], pal->faint[2]);
         text_draw(cr, shown, (width - dw) / 2, PAD + th + gap + da, CLOCK_DETAIL_SIZE, false);
     }
 }
@@ -326,10 +348,9 @@ void paint_toast(cairo_t *cr, const char *text, Level level, const char *icon, i
 
     cairo_reset_clip(cr);
     if (has_icon) {   /* the level's colour where there is one to speak of, else the text's */
-        static const double text[3] = { 0.93, 0.93, 0.95 };
-        sicon_paint(cr, icon, mirror(BAR + PAD, isz, w), PAD + (content - isz) / 2, level == LEVEL_INFO ? text : rgb);
+        sicon_paint(cr, icon, mirror(BAR + PAD, isz, w), PAD + (content - isz) / 2, level == LEVEL_INFO ? pal->text : rgb);
     }
-    cairo_set_source_rgb(cr, 0.93, 0.93, 0.95);
+    cairo_set_source_rgb(cr, pal->text[0], pal->text[1], pal->text[2]);
     for (int i = 0; i < nl; i++) {
         char tmp[520];
         snprintf(tmp, sizeof tmp, "%.*s%s", lines[i].len, lines[i].p, truncated && i == nl - 1 ? "…" : "");
@@ -363,7 +384,7 @@ void paint_strip(cairo_t *cr, const char *text, Level level, int width, int *ow,
     double visible = PAINT_STRIP_H - PAINT_STRIP_TUCK;
     double lw = text_width(line, (int)strlen(line), STRIP_SIZE, false);
     cairo_reset_clip(cr);
-    cairo_set_source_rgb(cr, 0.80, 0.80, 0.84);
+    cairo_set_source_rgb(cr, pal->soft[0], pal->soft[1], pal->soft[2]);
     text_draw(cr, line, mirror(BAR + PAD, lw, width), PAINT_STRIP_TUCK + (visible - height) / 2 + ascent,
               STRIP_SIZE, false);
 }
@@ -433,11 +454,11 @@ void paint_card(cairo_t *cr, const CardPaint *card, int *ow, int *oh) {
         cairo_surface_destroy(icon);
     }
 
-    cairo_set_source_rgb(cr, 0.95, 0.95, 0.97);
+    cairo_set_source_rgb(cr, pal->title[0], pal->title[1], pal->title[2]);
     double title_w = text_width(title, (int)strlen(title), CARD_SUMMARY_SIZE, true);
     text_draw(cr, title, mirror(x0, title_w, PAINT_ITEM_W), PAD + sasc, CARD_SUMMARY_SIZE, true);
 
-    cairo_set_source_rgb(cr, 0.75, 0.75, 0.80);
+    cairo_set_source_rgb(cr, pal->soft[0], pal->soft[1], pal->soft[2]);
     for (int i = 0; i < nl; i++) {
         char tmp[520];
         snprintf(tmp, sizeof tmp, "%.*s%s", lines[i].len, lines[i].p,

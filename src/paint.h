@@ -24,6 +24,7 @@ void paint_configure(int font_px, int width_px);
  * 24 at the default font size and larger or smaller with it. */
 #define PAINT_ICON_MIN 12
 #define PAINT_ICON_MAX 128
+void paint_set_contrast(bool high);   /* black and white with brighter accents; paint_init() reads PACHUD_CONTRAST */
 void paint_configure_icons(bool enabled, int size_px);   /* 0: the default size */
 int paint_px(int design_px);          /* a length at the default size, as it is now */
 double paint_font(double design_px);  /* a font size, likewise */

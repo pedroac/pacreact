@@ -353,8 +353,19 @@ static void test_real_devices(void) {
     unsetenv("PACHUD_JACKS");
 }
 
+static void test_combo_pins(void) {
+    /* this machine: the BIOS table has a front headphone out; the driver makes pin 0x19 a front mic */
+    const char *init = "0x14 0x01014010\n0x18 0x01a19040\n0x19 0x411111f0\n0x21 0x02211020\n";
+    assert(jack_combo_pins(init, "0x19 0x02a11040\n0x1b 0x0181304f\n"));
+    assert(!jack_combo_pins(init, ""));                                /* rear mic, front headphones: two jacks */
+    assert(!jack_combo_pins("0x18 0x01a19040\n0x21 0x02211020\n", NULL));
+    assert(!jack_combo_pins("0x19 0x42a11040\n0x21 0x02211020\n", ""));  /* a fixed (internal) mic is no jack */
+    assert(!jack_combo_pins("", "") && !jack_combo_pins(NULL, NULL));
+}
+
 int main(void) {
     test_kinds();
+    test_combo_pins();
     test_flush();
     test_generic_names();
     test_ports_name_the_toast();

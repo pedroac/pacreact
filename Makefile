@@ -140,7 +140,7 @@ uninstall:
 # The tests build the logic on its own, with stubs for the display, the HUD and the loop. Some
 # #include the source under test so that its static internals are reachable.
 TEST_CC = $(CC) $(CFLAGS) -D_GNU_SOURCE -Wall -Wextra -Ibuild -Isrc
-TESTS = power timer probe audio activity usb hud ipc sound dnd image icon sicon scale display alerts mem disk temp jack locks util
+TESTS = power timer probe audio activity usb hud ipc sound dnd image icon sicon scale display alerts mem disk temp jack locks util config
 ifeq ($(I18N),1)
 TESTS += text
 endif
@@ -158,6 +158,7 @@ TEST_SRC_image = src/image.c
 TEST_SRC_icon = src/icon.c src/util.c
 TEST_SRC_disk = src/util.c
 TEST_SRC_util = src/util.c
+TEST_SRC_config = src/config_file.c
 TEST_SRC_temp = src/util.c
 TEST_SRC_jack = src/evdev.c
 TEST_SRC_locks = src/evdev.c

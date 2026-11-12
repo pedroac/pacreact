@@ -1,5 +1,6 @@
 #include "activity.h"
 #include "alerts.h"
+#include "config_file.h"
 #include "display.h"
 #include "hud.h"
 #include "i18n.h"
@@ -266,6 +267,7 @@ static void on_signal(void *ctx, uint32_t ev) {
 }
 
 static int run_daemon(void) {
+    config_load();
     /* The notification history lives in this process: keep it out of core dumps and out of reach of
      * other processes that ptrace it or read /proc/PID/mem. */
     prctl(PR_SET_DUMPABLE, 0);

@@ -200,6 +200,18 @@ Show HUDs on this monitor (for example
 Unset lets the compositor choose.
 An unknown name is reported once, with the names that exist.
 .TP
+.B PACHUD_OSD
+Set to
+.B stack
+to show the volume and brightness bars and the clock of
+.B pachud time
+in the stack with the notifications, not in the middle of the screen.
+.TP
+.B PACHUD_CONTRAST
+Set to
+.B high
+for a black background, white text and brighter colours, with nothing dimmed. The layout is the same.
+.TP
 .B PACHUD_ICONS
 Set to
 .B 0
@@ -342,6 +354,9 @@ socket of the sound server to use instead of the default.
 .B XDG_STATE_HOME
 Where timers are saved.
 .SH FILES
+.TP
+.I ~/.local/pac/pachud.conf
+Optional settings, one \fIkey = value\fR per line: an environment variable's name without \fBPACHUD_\fR, in lower case (\fIfont_size = 22\fR). The environment overrides it. Read at start-up.
 .TP
 .I $XDG_RUNTIME_DIR/pachud.sock
 The daemon's command socket.

@@ -39,12 +39,29 @@ HUDs stack in one column, all the same width (a long toast wraps onto up to thre
 - **Volume, microphone, audio output and brightness changes** are not part of the stack: they use a separate on-screen display in the middle of the screen, one at a time, gone a second after the last change.
 - Left-clicking a notification card dismisses it, and sends the app its `default` action first if it offered one. Right-clicking dismisses it without invoking anything. Everything else is click-through (the gaps between cards, toasts, sliders and the on-screen display), so a click anywhere else reaches the window underneath. `PACHUD_CLICK=0` makes the whole HUD click-through. `pachud dismiss` on a key closes the newest alert without the mouse.
 
+## Config file
+
+Instead of environment variables you can keep the settings in `~/.local/pac/pachud.conf` (the same place the other pac tools use), one `key = value` per line. `#` starts a comment. The key is the variable's name without `PACHUD_`, in lower case, so `PACHUD_FONT_SIZE=22` is:
+
+```ini
+# ~/.local/pac/pachud.conf
+font_size = 22
+font = /usr/share/fonts/TTF/MyFont.ttf
+anchor = bottom-right
+peek_idle = 10
+print = done
+```
+
+The environment beats the file, so a unit file or a shell can still override one setting. A line that is not `key = value`, or a key that is not a setting, is reported on standard error and skipped. The file is read when the daemon starts; restart it to apply changes.
+
 ## Environment variables
 
 Settings that are numbers are read strictly: the whole value must be a whole number. Something else (`abc`, `1.5`, `10px`) is reported on standard error and the default is used; a number outside the setting's range is reported and brought to the nearest end of it. An empty value is the same as unset.
 
 | Variable | Default | Meaning |
 |---|---|---|
+| `PACHUD_OSD` | `center` | `stack` shows the volume and brightness bars and the `pachud time` clock in the stack with everything else, instead of in the middle of the screen. |
+| `PACHUD_CONTRAST` | normal | `high` is a pure black background, white text and brighter colours, with nothing dimmed. The layout does not change. |
 | `PACHUD_ICONS` | on | `0` turns the status icons off. See [Status icons](#status-icons). |
 | `PACHUD_ICON_SIZE` | `24` | The size of the status icons in pixels, 12 to 128; by default 24 at the default font size, larger or smaller with it. |
 | `PACHUD_MARGIN` | `16` | The distance from the screen's edge to the stack (and to the top of the attention deck), in pixels, 0 to 200. |

@@ -250,6 +250,64 @@ static void consider(const char *path, void *ctx) {
 
 static void rescan(void) { evdev_scan(consider, NULL); }
 
+/* A combo jack from the codec's pin configuration. The codec describes every pin as a 32-bit word
+ * (HDA spec 7.3.3.31): connectivity in bits 31-30 (0 jack, 1 none, 2 fixed, 3 both), location in
+ * 29-24, default device in 23-20 (2 headphone out, 0xa microphone in). A headphone-out pin and a
+ * microphone-in pin on the same panel position, both with a jack, are one headset connector that
+ * the codec reports as two. `init` is the BIOS's table, `fixups` the driver's overrides of it (both
+ * are "0xNN 0xCONFIG" lines, as sysfs prints them); the fixups win. */
+#define MAX_PINS 32
+
+static void read_pins(const char *text, uint32_t *nid, uint32_t *cfg, int *n) {
+    for (const char *p = text; p && *p;) {
+        unsigned a, c;
+        if (sscanf(p, "%x %x", &a, &c) == 2) {
+            int i = 0;
+            while (i < *n && nid[i] != a) i++;
+            if (i < MAX_PINS) { nid[i] = a; cfg[i] = c; if (i == *n) (*n)++; }
+        }
+        p = strchr(p, '\n');
+        if (p) p++;
+    }
+}
+
+bool jack_combo_pins(const char *init, const char *fixups) {
+    uint32_t nid[MAX_PINS], cfg[MAX_PINS];
+    int n = 0;
+    read_pins(init, nid, cfg, &n);
+    read_pins(fixups, nid, cfg, &n);
+    for (int i = 0; i < n; i++) {
+        if ((cfg[i] >> 20 & 0xf) != 0x2 || (cfg[i] >> 30) != 0) continue;
+        for (int j = 0; j < n; j++)
+            if ((cfg[j] >> 20 & 0xf) == 0xa && (cfg[j] >> 30) == 0 && (cfg[j] >> 24 & 0x3f) == (cfg[i] >> 24 & 0x3f))
+                return true;
+    }
+    return false;
+}
+
+static char *slurp(const char *path, char *buf, size_t size) {
+    FILE *f = fopen(path, "r");
+    size_t len = f ? fread(buf, 1, size - 1, f) : 0;
+    if (f) fclose(f);
+    buf[len] = 0;
+    return buf;
+}
+
+/* Any codec with a combo jack: the socket is known to report both contacts before the first plug. */
+static void detect_combo(void) {
+    for (int card = 0; card < 8 && !shared_socket; card++) {
+        char path[80], init[2048], fixups[2048];
+        snprintf(path, sizeof path, "/sys/class/sound/hwC%dD0/init_pin_configs", card);
+        slurp(path, init, sizeof init);
+        snprintf(path, sizeof path, "/sys/class/sound/hwC%dD0/driver_pin_configs", card);
+        slurp(path, fixups, sizeof fixups);
+        if (jack_combo_pins(init, fixups)) {
+            shared_socket = true;
+            debug("combo jack", path, 1);
+        }
+    }
+}
+
 void jack_init(void) {
     const char *off = getenv("PACHUD_JACKS");
     if (off && !strcmp(off, "0")) return;
@@ -260,6 +318,7 @@ void jack_init(void) {
     }
     debounce_fd = timerfd_create(CLOCK_MONOTONIC, TFD_CLOEXEC | TFD_NONBLOCK);
     if (debounce_fd >= 0) loop_add(debounce_fd, EPOLLIN, on_debounce, NULL);
+    detect_combo();
     rescan();
     evdev_on_change(rescan);   /* a sound card that appears later */
 }

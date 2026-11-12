@@ -1493,8 +1493,41 @@ static void test_clock_paint(void) {
     hud_osd_clock("14:32", "Thursday");                      /* no buffer from the stub: nothing to show, no crash */
 }
 
+/* PACHUD_OSD=stack: the volume bar and the clock go in the stack, like any toast; PACHUD_CONTRAST=high
+ * changes colours, not the layout */
+static void test_osd_stack_and_contrast(void) {
+    int w, h, w2, h2;
+    setenv("PACHUD_OSD", "stack", 1);
+    hud_init(NULL);
+    while (nstack) hud_dismiss();
+    hud_osd_slider("Volume", 40, false, OSD_CENTER, NULL);
+    assert(nstack == 1 && stack[0].slider && stack[0].percent == 40);
+    hud_osd_slider("Volume", 50, false, OSD_CENTER, NULL);          /* refreshed in place */
+    assert(nstack == 1 && stack[0].percent == 50);
+    hud_osd_clock("14:32", "Thursday");
+    assert(nstack == 2 && !stack[0].slider && strstr(stack[0].text, "14:32") && strstr(stack[0].text, "Thursday"));
+    while (nstack) hud_dismiss();
+    unsetenv("PACHUD_OSD");
+    hud_init(NULL);
+
+    paint_clock(NULL, "14:32", "x", PAINT_OSD_W, &w, &h);
+    paint_set_contrast(true);
+    paint_clock(NULL, "14:32", "x", PAINT_OSD_W, &w2, &h2);
+    assert(w == w2 && h == h2);
+    cairo_surface_t *s = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, w, h);
+    cairo_t *cr = cairo_create(s);
+    paint_clock(cr, "14:32", "x", PAINT_OSD_W, &w, &h);
+    cairo_destroy(cr);
+    cairo_surface_flush(s);
+    uint32_t *px = (uint32_t *)cairo_image_surface_get_data(s);
+    assert(px[(h / 2) * (cairo_image_surface_get_stride(s) / 4) + 8] == 0xff000000);   /* opaque black */
+    cairo_surface_destroy(s);
+    paint_set_contrast(false);
+}
+
 int main(void) {
     hud_init(NULL);
+    test_osd_stack_and_contrast();
     test_clock_paint();
     test_item_widths();
     test_toast_expiry();

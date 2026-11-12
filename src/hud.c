@@ -6,6 +6,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <time.h>
 
@@ -15,6 +16,7 @@
 static long long osd_deadline_ms;
 static bool osd_visible;
 static Display *dpy;
+static bool osd_in_stack;   /* PACHUD_OSD=stack: volume, brightness and the clock join the stack */
 
 static void hud_osd_hide(void);
 static void on_rescale(void);
@@ -23,6 +25,8 @@ static void on_hover(int area, int x, int y, bool over);
 
 void hud_init(Display *d) {
     dpy = d;
+    const char *osd = getenv("PACHUD_OSD");
+    osd_in_stack = osd && !strcmp(osd, "stack");
     if (d) {
         display_on_rescale(d, on_rescale);
         display_on_click(d, on_click);
@@ -630,6 +634,10 @@ void hud_tick(void) {
 
 
 void hud_osd_slider(const char *label, int percent, bool dim, OsdAnchor anchor, const char *icon) {
+    if (osd_in_stack) {
+        hud_slider(label, percent, dim, icon);
+        return;
+    }
     int w, h;
     paint_slider(NULL, label, percent, dim, icon, PAINT_OSD_W, &w, &h);
     cairo_t *cr;
@@ -642,6 +650,12 @@ void hud_osd_slider(const char *label, int percent, bool dim, OsdAnchor anchor, 
 }
 
 void hud_osd_clock(const char *time_text, const char *detail) {
+    if (osd_in_stack) {
+        char line[256];
+        snprintf(line, sizeof line, "%s%s%s", time_text, detail && *detail ? " — " : "", detail ? detail : "");
+        hud_toast_icon(line, LEVEL_INFO, CLOCK_OSD_MS, "clock,preferences-system-time,appointment-soon");
+        return;
+    }
     int w, h;
     paint_clock(NULL, time_text, detail, PAINT_OSD_W, &w, &h);
     cairo_t *cr;

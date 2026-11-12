@@ -31,6 +31,7 @@ PROTOCOLS = protocol/wlr-layer-shell-unstable-v1.xml \
             $(WL_PROTOCOLS)/staging/fractional-scale/fractional-scale-v1.xml \
             $(WL_PROTOCOLS)/stable/viewporter/viewporter.xml \
             $(WL_PROTOCOLS)/staging/xdg-activation/xdg-activation-v1.xml \
+            $(WL_PROTOCOLS)/staging/ext-idle-notify/ext-idle-notify-v1.xml \
             $(WL_PROTOCOLS)/unstable/xdg-output/xdg-output-unstable-v1.xml
 
 PROTO_NAMES = $(basename $(notdir $(PROTOCOLS)))
@@ -139,7 +140,7 @@ uninstall:
 # The tests build the logic on its own, with stubs for the display, the HUD and the loop. Some
 # #include the source under test so that its static internals are reachable.
 TEST_CC = $(CC) $(CFLAGS) -D_GNU_SOURCE -Wall -Wextra -Ibuild -Isrc
-TESTS = power timer probe audio hud ipc sound dnd image icon sicon scale display alerts mem disk temp jack locks util
+TESTS = power timer probe audio activity hud ipc sound dnd image icon sicon scale display alerts mem disk temp jack locks util
 ifeq ($(I18N),1)
 TESTS += text
 endif
@@ -151,6 +152,7 @@ TEST_SRC_power = src/src_power.c
 TEST_SRC_probe = src/src_probe.c src/util.c
 TEST_SRC_sound = src/sound.c src/util.c
 TEST_SRC_timer = src/state.c
+TEST_SRC_activity = src/util.c
 TEST_SRC_dnd = src/timer.c src/state.c
 TEST_SRC_image = src/image.c
 TEST_SRC_icon = src/icon.c src/util.c

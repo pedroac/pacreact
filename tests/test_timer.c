@@ -28,6 +28,23 @@ int loop_add(int fd, uint32_t ev, LoopFn fn, void *ctx) { (void)fd; (void)ev; (v
 static int alarm_sounds;
 void sound_play(SoundKind kind) { assert(kind == SOUND_ALARM); alarm_sounds++; }
 
+static bool dnd_on;
+bool dnd_active(void) { return dnd_on; }
+
+/* The monotonic and boot clocks the use-counting reads are the test's own; any other clock is the real one. */
+#include <sys/syscall.h>
+#include <time.h>
+#include <unistd.h>
+static long long fake_mono = 100000, fake_boot = 100000;
+int clock_gettime(clockid_t id, struct timespec *ts) {
+    if (id == CLOCK_MONOTONIC || id == CLOCK_BOOTTIME) {
+        ts->tv_sec = id == CLOCK_MONOTONIC ? fake_mono : fake_boot;
+        ts->tv_nsec = 0;
+        return 0;
+    }
+    return (int)syscall(SYS_clock_gettime, id, ts);
+}
+
 #include "../src/timer.c"
 
 /* ---- parsing and scheduling (pure) ---- */
@@ -140,7 +157,7 @@ static void test_commands(void) {
     assert(!command("bogus", "", reply, sizeof reply));      /* not ours */
 
     assert(command("timer", "5m\ttea", reply, sizeof reply) && !strcmp(reply, "ok 1"));
-    assert(count == 1 && !entries[0].alarm && entries[0].days == 0);
+    assert(count == 1 && entries[0].kind != K_ALARM && entries[0].days == 0);
     assert(entries[0].when - time(NULL) >= 299 && entries[0].when - time(NULL) <= 300);
 
     assert(command("list", "", reply, sizeof reply));
@@ -166,7 +183,7 @@ static void test_commands(void) {
 
     /* A recurring alarm */
     assert(command("alarm", "07:30@weekdays\tgym", reply, sizeof reply) && !strcmp(reply, "ok 3"));
-    assert(entries[2].alarm && entries[2].days == 0x3E);
+    assert(entries[2].kind == K_ALARM && entries[2].days == 0x3E);
     assert(command("list", "", reply, sizeof reply) && strstr(reply, "gym [weekdays]"));
 
     /* Cancelling */
@@ -224,7 +241,7 @@ static void test_controls(void) {
 
     /* Dated alarms */
     assert(command("alarm", "2099-12-25T07:30\tchristmas", reply, sizeof reply) && !strncmp(reply, "ok ", 3));
-    assert(count == 1 && entries[0].alarm && entries[0].days == 0 &&
+    assert(count == 1 && entries[0].kind == K_ALARM && entries[0].days == 0 &&
            entries[0].when == timer_parse_datetime("2099-12-25T07:30", now));
     assert(command("alarm", "2000-01-01T00:00\tx", reply, sizeof reply) && strstr(reply, "already passed"));
     assert(command("alarm", "2099-12-25T07:30@daily\tx", reply, sizeof reply) && strstr(reply, "cannot repeat"));
@@ -246,7 +263,7 @@ static void test_controls(void) {
 
     ntoasts = 0;
     assert(command("snooze", "", reply, sizeof reply) && !strncmp(reply, "ok ", 3));
-    assert(count == 1 && !entries[0].alarm && entries[0].days == 0 && !strcmp(entries[0].label, "pasta"));
+    assert(count == 1 && entries[0].kind != K_ALARM && entries[0].days == 0 && !strcmp(entries[0].label, "pasta"));
     assert(entries[0].when - now >= 299 && entries[0].when - now <= 301);          /* the 5m default */
     assert(ntoasts == 1 && !strcmp(toasts[0], "Snoozed for 5m — pasta"));
 
@@ -265,7 +282,7 @@ static void test_controls(void) {
     on_fire(NULL, 0);
     assert(last_fired.alarm && count == 1);               /* the daily alarm stays scheduled */
     assert(command("snooze", "1m", reply, sizeof reply) && count == 2);
-    assert(entries[1].alarm && entries[1].days == 0 && !strcmp(entries[1].label, "wake"));
+    assert(entries[1].kind == K_ALARM && entries[1].days == 0 && !strcmp(entries[1].label, "wake"));
     assert(command("cancel", "all", reply, sizeof reply));
 
     /* Pause, resume, extend */
@@ -330,6 +347,178 @@ static void test_controls(void) {
     assert(command("cancel", "all", reply, sizeof reply));
 }
 
+/* ---- peeks: the time, quietly ---- */
+
+static void test_peeks(void) {
+    char reply[1024], state[1024];
+    time_t now = time(NULL);
+    assert(command("cancel", "all", reply, sizeof reply) && count == 0);
+    last_fired.valid = false;
+
+    /* at a time of day, once or repeating */
+    assert(command("peek", "11:45@weekdays\tLunch soon", reply, sizeof reply) && !strncmp(reply, "ok ", 3));
+    assert(count == 1 && entries[0].kind == K_PEEK && entries[0].days == 0x3E && !strcmp(entries[0].label, "Lunch soon"));
+    assert(command("peek", "07:30", reply, sizeof reply) && count == 2);
+    assert(entries[1].kind == K_PEEK && entries[1].days == 0 && entries[1].label[0] == '\0');
+    assert(command("list", "", reply, sizeof reply) && strstr(reply, " peek ") && strstr(reply, "Lunch soon [weekdays]"));
+    read_state(state, sizeof state);
+    assert(strstr(state, " k 62 Lunch soon") && strstr(state, " k 0 "));
+
+    /* bad ones are explained */
+    assert(command("peek", "25:00", reply, sizeof reply) && strstr(reply, "bad time"));
+    assert(command("peek", "2099-12-25T07:30\tx", reply, sizeof reply) && strstr(reply, "takes HH:MM"));
+    assert(command("peek", "11:45@someday", reply, sizeof reply) && strstr(reply, "bad recurrence"));
+    assert(command("peek", "", reply, sizeof reply) && count == 2);
+
+    /* a peek is a quiet toast with the time: no alarm sound, and nothing to snooze */
+    int sounds = alarm_sounds;
+    ntoasts = 0;
+    entries[0].when = now - 1;
+    rearm();
+    wait_readable(tfd);
+    on_fire(NULL, 0);
+    assert(ntoasts == 1 && toasts[0][2] == ':' && strstr(toasts[0], " — Lunch soon"));
+    assert(!strcmp(toast_icon, "clock,preferences-system-time,appointment-soon"));
+    assert(alarm_sounds == sounds && !last_fired.valid);
+    assert(command("snooze", "", reply, sizeof reply) && !strcmp(reply, "nothing to snooze"));
+    assert(count == 2 && entries[0].when > now);                  /* the recurring one is scheduled again */
+
+    /* without a label it is only the time */
+    ntoasts = 0;
+    entries[1].when = now - 1;
+    rearm();
+    wait_readable(tfd);
+    on_fire(NULL, 0);
+    assert(ntoasts == 1 && strlen(toasts[0]) == 5 && toasts[0][2] == ':');
+    assert(count == 1);                                           /* a one-off is gone */
+
+    /* a peek that is late has nothing right to say: skipped, and the recurring one goes on */
+    ntoasts = 0;
+    entries[0].when = now - 600;
+    rearm();
+    wait_readable(tfd);
+    on_fire(NULL, 0);
+    assert(ntoasts == 0 && count == 1 && entries[0].when > now);
+
+    /* not while do-not-disturb is on */
+    dnd_on = true;
+    entries[0].when = now - 1;
+    rearm();
+    wait_readable(tfd);
+    on_fire(NULL, 0);
+    assert(ntoasts == 0 && count == 1);
+    dnd_on = false;
+
+    /* peeks are not timers */
+    char id[16];
+    snprintf(id, sizeof id, "%d", entries[0].id);
+    assert(command("pause", id, reply, sizeof reply) && strstr(reply, "only timers"));
+    assert(command("extend", id, reply, sizeof reply) && strstr(reply, "bad duration"));
+    assert(command("extend", "x\t5m", reply, sizeof reply) && !strcmp(reply, "no such timer"));
+    assert(command("cancel", "all", reply, sizeof reply) && count == 0);
+}
+
+/* ---- peeks after a stretch of use ---- */
+
+static void test_use_peeks(void) {
+    char reply[1024], state[1024];
+    assert(command("cancel", "all", reply, sizeof reply) && count == 0);
+    long long t0 = fake_mono = fake_boot = 500000;
+    usage_active = true;
+    sleep_off = 0;
+
+    assert(command("peek", "every@30s\tx", reply, sizeof reply) && strstr(reply, "bad interval"));
+    assert(command("peek", "every@5\tx", reply, sizeof reply) && strstr(reply, "bad interval"));
+    assert(command("peek", "every@30m\tbreak", reply, sizeof reply) && !strncmp(reply, "ok ", 3));
+    assert(count == 1 && entries[0].kind == K_USAGE && entries[0].every == 1800 && entries[0].since == t0);
+    assert(command("list", "", reply, sizeof reply) && strstr(reply, " peek 30m00s break [every 30m00s of use]"));
+    read_state(state, sizeof state);
+    assert(strstr(state, "1800 u 0 break"));                                /* the interval is what is kept */
+
+    /* not yet at 29m59s, then at 30m: the time, with the label */
+    ntoasts = 0;
+    fake_mono = t0 + 1799;
+    usage_rearm();
+    usage_due();
+    assert(ntoasts == 0);
+    fake_mono = t0 + 1800;
+    usage_rearm();
+    usage_due();
+    assert(ntoasts == 1 && toasts[0][2] == ':' && strstr(toasts[0], " — break") && entries[0].used == 0);
+
+    /* going idle stops the count, and the idle time before it was told is not use */
+    long long t1 = fake_mono;
+    fake_mono = t1 + 1200;
+    timer_activity(false, 300, false);                       /* idle for the last 5 of those 20 minutes */
+    assert(entries[0].used == 900 && entries[0].since == -1);
+    assert(command("list", "", reply, sizeof reply) && strstr(reply, " peek 15m00s break"));   /* 15m of use left */
+    ntoasts = 0;
+    fake_mono = t1 + 5000;                                   /* time away does not count */
+    timer_activity(true, 0, false);
+    assert(entries[0].used == 900 && entries[0].since == fake_mono);
+    fake_mono += 899;
+    usage_rearm();
+    usage_due();
+    assert(ntoasts == 0);
+    fake_mono += 1;
+    usage_rearm();
+    usage_due();
+    assert(ntoasts == 1);                                    /* 15m + 15m of use */
+
+    /* a long enough break starts the count over */
+    fake_mono += 600;
+    timer_activity(false, 300, false);
+    assert(entries[0].used == 300);
+    fake_mono += 3000;
+    timer_activity(true, 0, true);
+    assert(entries[0].used == 0 && entries[0].since == fake_mono);
+
+    /* a sleep as long as a break does too: the monotonic clock stood still, the boot clock did not */
+    fake_mono += 600;
+    timer_activity(false, 0, false);
+    timer_activity(true, 0, false);
+    long before = entries[0].used;
+    assert(before == 600);
+    fake_boot += 1200;                                       /* asleep for 20 minutes */
+    timer_activity(false, 0, false);
+    assert(entries[0].used == 0);
+    timer_activity(true, 0, false);
+    fake_boot += 100;                                        /* a short sleep is not a break */
+    fake_mono += 50;
+    timer_activity(false, 0, false);
+    assert(entries[0].used == 50);
+
+    /* do-not-disturb: no peek, but the count starts over as if it had shown */
+    ntoasts = 0;
+    timer_activity(true, 0, true);
+    dnd_on = true;
+    fake_mono += 1800;
+    usage_rearm();
+    usage_due();
+    assert(ntoasts == 0 && entries[0].used == 0 && entries[0].since == fake_mono);
+    dnd_on = false;
+
+    /* away while it is due: nothing is shown, and cancelling it leaves nothing armed that matters */
+    timer_activity(false, 0, false);
+    fake_mono += 9999;
+    usage_rearm();
+    assert(command("cancel", "all", reply, sizeof reply) && count == 0);
+    usage_due();
+    assert(ntoasts == 0);
+
+    /* a peek after use is not extended, and survives a restart as its interval */
+    assert(command("peek", "every@1h30m", reply, sizeof reply) && count == 1);
+    char id[16];
+    snprintf(id, sizeof id, "%d", entries[0].id);
+    assert(command("extend", id, reply, sizeof reply) && strstr(reply, "cannot be extended"));
+    assert(command("extend", "x", reply, sizeof reply) && !strcmp(reply, "no such timer"));
+    save();
+    count = 0;
+    load();
+    assert(count == 1 && entries[0].kind == K_USAGE && entries[0].every == 5400 && entries[0].used == 0);
+    assert(command("cancel", "all", reply, sizeof reply) && count == 0);
+}
+
 static void test_state_file(void) {
     char path[512];
     state_path(path, sizeof path, true);
@@ -348,9 +537,9 @@ static void test_state_file(void) {
     next_id = 1;
     load();
     assert(count == 3);                                    /* the good lines only */
-    assert(entries[0].alarm && entries[0].days == 62 && entries[0].when == 1700000100);
+    assert(entries[0].kind == K_ALARM && entries[0].days == 62 && entries[0].when == 1700000100);
     assert(!strcmp(entries[0].label, "wake up now"));      /* spaces survive */
-    assert(!entries[1].alarm && entries[1].label[0] == '\0');
+    assert(entries[1].kind != K_ALARM && entries[1].label[0] == '\0');
     assert(!strcmp(entries[2].label, "tea"));
     assert(entries[0].id == 1 && entries[2].id == 3);
 
@@ -364,6 +553,8 @@ int main(void) {
     test_parsing();
     test_commands();
     test_controls();
+    test_peeks();
+    test_use_peeks();
     test_state_file();
     puts("timer: ok");
     return 0;

@@ -1463,8 +1463,39 @@ static void test_status_icons(void) {
     assert(system(cmd) == 0);
 }
 
+/* The clock the on-screen display shows for `pachud time` */
+static void test_clock_paint(void) {
+    int w, h, plain;
+    paint_clock(NULL, "14:32", "", PAINT_OSD_W, &w, &h);
+    plain = h;
+    assert(w == PAINT_OSD_W && h > 0);
+    paint_clock(NULL, "14:32", "Thursday 12 November", PAINT_OSD_W, &w, &h);
+    assert(w == PAINT_OSD_W && h > plain);                  /* a line under it adds height */
+
+    /* drawn into a surface of the size it says, a long line is cut with an ellipsis, not widened */
+    cairo_surface_t *s = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, w, h);
+    cairo_t *cr = cairo_create(s);
+    paint_clock(cr, "14:32", "an extremely long line of text that cannot possibly fit in the display at all", PAINT_OSD_W, &w, &h);
+    assert(cairo_status(cr) == CAIRO_STATUS_SUCCESS && w == PAINT_OSD_W);
+    cairo_destroy(cr);
+    cairo_surface_flush(s);
+    uint32_t *px = (uint32_t *)cairo_image_surface_get_data(s);
+    assert((px[(h / 2) * (cairo_image_surface_get_stride(s) / 4) + w / 2] >> 24) != 0);   /* the card is there */
+    cairo_surface_destroy(s);
+
+    /* it grows with the font like everything else */
+    paint_configure(32, 0);
+    int big;
+    paint_clock(NULL, "14:32", "Thursday 12 November", PAINT_OSD_W, &w, &big);
+    assert(big > h && w == 2 * 300);
+    paint_configure(0, 0);
+
+    hud_osd_clock("14:32", "Thursday");                      /* no buffer from the stub: nothing to show, no crash */
+}
+
 int main(void) {
     hud_init(NULL);
+    test_clock_paint();
     test_item_widths();
     test_toast_expiry();
     test_stacking();

@@ -7,9 +7,19 @@
 
 /* Loads persisted entries and arms the timerfd. */
 void timer_init(void);
-/* Handles the IPC commands timer, alarm, list and cancel. Returns false if cmd is not one of
+/* Handles the IPC commands timer, alarm, peek, list and cancel. Returns false if cmd is not one of
  * them. args is the rest of the message after the command (tab-separated). */
 bool timer_command(const char *cmd, char *args, char *reply, size_t n);
+
+/* Peeks at the time, which are not alarms: shown quietly (a short toast, no sound), at a time of day
+ * (`peek HH:MM`, optionally repeating) or after a stretch of use (`peek every 30m`). The count of use
+ * follows the user: activity.c says when they leave and come back. `active` is whether they are at the
+ * computer. When they have just left, `secs` is how long they had already been idle (the stretch of use
+ * ended that long ago); `restart` is true when they come back from a break long enough to start the
+ * count over. timer_usage_config() sets how long a break must be (the same length of sleep also starts
+ * it over). */
+void timer_activity(bool active, long secs, bool restart);
+void timer_usage_config(long break_secs);
 
 /* "1h30m", "90s", "5m": every part needs a unit. Seconds, or -1 if invalid. */
 long timer_parse_duration(const char *s);

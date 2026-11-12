@@ -6,7 +6,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: pachud\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-12 09:07+0000\n"
+"POT-Creation-Date: 2026-11-12 09:53+0000\n"
 "PO-Revision-Date: 2026-11-10 00:00+0000\n"
 "Last-Translator: \n"
 "Language-Team: Japanese\n"
@@ -312,6 +312,11 @@ msgid "SSD temperature high — %d °C"
 msgstr ""
 
 #: src/timer.c
+#, c-format
+msgid "%s of use"
+msgstr "使用 %s"
+
+#: src/timer.c
 msgid "Alarm"
 msgstr "アラーム"
 
@@ -354,6 +359,10 @@ msgid "not paused"
 msgstr "一時停止していません"
 
 #: src/timer.c
+msgid "a peek after use cannot be extended"
+msgstr "使用後の時刻確認は延長できません"
+
+#: src/timer.c
 msgid "bad duration: use e.g. 5m, 1h"
 msgstr "無効な時間: 例: 5m, 1h"
 
@@ -372,6 +381,15 @@ msgstr "時間が指定されていません"
 #: src/timer.c
 msgid "missing time"
 msgstr "時刻が指定されていません"
+
+#: src/timer.c
+#, c-format
+msgid "bad interval \"%s\": use e.g. 30m or 1h, at least 1m"
+msgstr "無効な間隔 \"%s\": 例: 30m、1h（最小 1m）"
+
+#: src/timer.c
+msgid "a peek takes HH:MM, not a date"
+msgstr "時刻の確認には HH:MM を指定します（日付は不可）"
 
 #: src/timer.c
 #, c-format

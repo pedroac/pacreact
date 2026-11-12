@@ -94,6 +94,25 @@ or a list such as
 A recurring alarm stays scheduled after it fires.
 A dated alarm cannot repeat.
 .TP
+.BR peek " [" \-r " \fIRECUR\fR] \fIHH:MM\fR [\fILABEL\fR...]"
+Show the time quietly at that time of day, like glancing at a clock: a small toast, no sound, not in the history, and not at all while do-not-disturb is on.
+With
+.B \-r
+it repeats like an alarm.
+A peek that is late is skipped.
+.TP
+.BR peek " every \fIDURATION\fR [\fILABEL\fR...]"
+The same after that much time at the computer, again and again (at least 1m).
+Time at the computer stops counting after
+.B PACHUD_PEEK_IDLE
+minutes without input, and starts over after a break of
+.B PACHUD_PEEK_BREAK
+minutes.
+This needs the compositor's idle notifications; without them it counts the time since the daemon started.
+.TP
+.B time
+Show the time and the date in the middle of the screen for a moment.
+.TP
 .BR snooze " [\fIDURATION\fR]"
 Re-arm the timer or alarm that last went off as a new one-shot (default 5m, same label).
 .TP
@@ -222,6 +241,14 @@ Seconds after start-up during which a memory or battery alert that is not worse 
 last 30 minutes is not shown again (default 60;
 .B 0
 disables it).
+.TP
+.B PACHUD_PEEK_IDLE
+Minutes without keyboard or pointer input after which you count as away from the computer for
+.BR "peek every" ,
+1 to 120 (default 5).
+.TP
+.B PACHUD_PEEK_BREAK
+Minutes away that start the count of use over, 1 to 720 (default 15).
 .TP
 .B PACHUD_JACKS
 .B 0

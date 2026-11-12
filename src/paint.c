@@ -157,6 +157,33 @@ void paint_slider(cairo_t *cr, const char *label, int percent, bool dim, const c
     }
 }
 
+#define CLOCK_SIZE paint_font(44)
+#define CLOCK_DETAIL_SIZE paint_font(15)
+
+void paint_clock(cairo_t *cr, const char *time_text, const char *detail, int width, int *ow, int *oh) {
+    double ta, th, da = 0, dh = 0;
+    text_extents(time_text, CLOCK_SIZE, true, &ta, &th);
+    bool has_detail = detail && *detail;
+    if (has_detail) text_extents(detail, CLOCK_DETAIL_SIZE, false, &da, &dh);
+    int gap = has_detail ? paint_px(6) : 0;
+    int h = (int)ceil(2 * PAD + th + gap + dh);
+    *ow = width;
+    *oh = h;
+    if (!cr) return;
+
+    paint_bg(cr, width, h);
+    cairo_set_source_rgb(cr, 0.93, 0.93, 0.95);
+    double tw = text_width(time_text, (int)strlen(time_text), CLOCK_SIZE, true);
+    text_draw(cr, time_text, (width - tw) / 2, PAD + ta, CLOCK_SIZE, true);
+    if (has_detail) {
+        char shown[256];
+        ellipsize(detail, width - 2 * PAD, CLOCK_DETAIL_SIZE, false, shown, sizeof shown);
+        double dw = text_width(shown, (int)strlen(shown), CLOCK_DETAIL_SIZE, false);
+        cairo_set_source_rgb(cr, 0.70, 0.70, 0.75);
+        text_draw(cr, shown, (width - dw) / 2, PAD + th + gap + da, CLOCK_DETAIL_SIZE, false);
+    }
+}
+
 /* ---- notification cards ---- */
 
 typedef struct { const char *p; int len; } Line;

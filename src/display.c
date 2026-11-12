@@ -1,5 +1,6 @@
 #include "display.h"
 #include "alpha-modifier-v1-client-protocol.h"
+#include "ext-idle-notify-v1-client-protocol.h"
 #include "fractional-scale-v1-client-protocol.h"
 #include "scale.h"
 #include "viewporter-client-protocol.h"
@@ -78,6 +79,10 @@ struct Display {
     uint32_t click_serial;        /* the input serial of the click being handled */
     struct zxdg_output_manager_v1 *xdg_manager;   /* optional: without it the screen's size is not known */
     int last_out;                 /* 1 + the index of the output the HUD last appeared on, 0 for none yet */
+    struct ext_idle_notifier_v1 *idle_mgr;  /* optional: without it there is no telling when the user is away */
+    struct wl_seat *idle_seat;              /* its own binding of the seat, whether or not clicks are on */
+    struct ext_idle_notification_v1 *idle_note;
+    void (*idled_cb)(void), (*resumed_cb)(void);
     struct xdg_activation_v1 *activation;   /* optional: without it clicks carry no token */
     struct xdg_activation_token_v1 *token;  /* a request waiting for the compositor's answer */
     void (*token_fn)(const char *token, void *ctx);
@@ -234,6 +239,12 @@ static const struct wl_seat_listener seat_listener = { .capabilities = seat_caps
 static void registry_global(void *data, struct wl_registry *reg, uint32_t name,
                             const char *iface, uint32_t version) {
     Display *d = data;
+    if (!strcmp(iface, wl_seat_interface.name) && !d->idle_seat)
+        d->idle_seat = wl_registry_bind(reg, name, &wl_seat_interface, 1);
+    if (!strcmp(iface, ext_idle_notifier_v1_interface.name)) {
+        d->idle_mgr = wl_registry_bind(reg, name, &ext_idle_notifier_v1_interface, 1);
+        return;
+    }
     if (!strcmp(iface, wl_output_interface.name) && version >= 4) {  /* names need version 4 */
         for (int i = 0; i < MAX_OUTPUTS; i++) {
             if (d->outputs[i].proxy) continue;
@@ -403,6 +414,9 @@ void display_close(Display *d) {
     destroy_surface(d);
     deck_destroy(&d->deck);
     surf_destroy(&d->osd);
+    if (d->idle_note) ext_idle_notification_v1_destroy(d->idle_note);
+    if (d->idle_mgr) ext_idle_notifier_v1_destroy(d->idle_mgr);
+    if (d->idle_seat) wl_seat_destroy(d->idle_seat);
     if (d->alpha_mgr) wp_alpha_modifier_v1_destroy(d->alpha_mgr);
     if (d->frac_mgr) wp_fractional_scale_manager_v1_destroy(d->frac_mgr);
     if (d->viewporter) wp_viewporter_destroy(d->viewporter);
@@ -425,6 +439,32 @@ void display_close(Display *d) {
 }
 
 int display_fd(Display *d) { return wl_display_get_fd(d->wl); }
+
+static void idle_idled(void *data, struct ext_idle_notification_v1 *note) {
+    Display *d = data;
+    (void)note;
+    if (d->idled_cb) d->idled_cb();
+}
+
+static void idle_resumed(void *data, struct ext_idle_notification_v1 *note) {
+    Display *d = data;
+    (void)note;
+    if (d->resumed_cb) d->resumed_cb();
+}
+
+static const struct ext_idle_notification_v1_listener idle_listener = {
+    .idled = idle_idled,
+    .resumed = idle_resumed,
+};
+
+bool display_watch_idle(Display *d, unsigned timeout_ms, void (*idled)(void), void (*resumed)(void)) {
+    if (!d->idle_mgr || !d->idle_seat || d->idle_note) return false;
+    d->idled_cb = idled;
+    d->resumed_cb = resumed;
+    d->idle_note = ext_idle_notifier_v1_get_idle_notification(d->idle_mgr, timeout_ms, d->idle_seat);
+    ext_idle_notification_v1_add_listener(d->idle_note, &idle_listener, d);
+    return true;
+}
 int display_scale(Display *d) { return d->scale120; }
 int display_align(Display *d) { return d->align; }
 void display_on_rescale(Display *d, void (*fn)(void)) { d->rescale_cb = fn; }

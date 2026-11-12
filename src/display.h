@@ -66,6 +66,11 @@ void display_deck_hide(Display *dpy);
 bool display_deck_apart(Display *dpy, int item_width);
 /* The logical width of that output in pixels, or 0 if it is not known. */
 int display_output_width(Display *dpy);
+/* Calls idled() once the user has not touched the keyboard or the pointer for timeout_ms, and
+ * resumed() when they do again (ext-idle-notify-v1). Returns false, calling nothing, when the
+ * compositor has no such protocol: the caller then cannot tell when the user is away. One watch per
+ * display. */
+bool display_watch_idle(Display *dpy, unsigned timeout_ms, void (*idled)(void), void (*resumed)(void));
 /* Where the stack sits horizontally within its surface: 0 left, 1 centre, 2 right (PACHUD_ANCHOR). */
 int display_align(Display *dpy);
 /* The scale buffers are rendered at, in 120ths (see scale.h). */

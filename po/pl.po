@@ -6,7 +6,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: pachud\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-12 09:07+0000\n"
+"POT-Creation-Date: 2026-11-12 09:53+0000\n"
 "PO-Revision-Date: 2026-11-10 00:00+0000\n"
 "Last-Translator: \n"
 "Language-Team: Polish\n"
@@ -315,6 +315,11 @@ msgid "SSD temperature high — %d °C"
 msgstr ""
 
 #: src/timer.c
+#, c-format
+msgid "%s of use"
+msgstr "%s użytkowania"
+
+#: src/timer.c
 msgid "Alarm"
 msgstr "Alarm"
 
@@ -357,6 +362,10 @@ msgid "not paused"
 msgstr "nie jest wstrzymany"
 
 #: src/timer.c
+msgid "a peek after use cannot be extended"
+msgstr "podgląd po czasie użytkowania nie może być przedłużony"
+
+#: src/timer.c
 msgid "bad duration: use e.g. 5m, 1h"
 msgstr "nieprawidłowy czas: użyj np. 5m, 1h"
 
@@ -375,6 +384,15 @@ msgstr "brak czasu trwania"
 #: src/timer.c
 msgid "missing time"
 msgstr "brak godziny"
+
+#: src/timer.c
+#, c-format
+msgid "bad interval \"%s\": use e.g. 30m or 1h, at least 1m"
+msgstr "nieprawidłowy odstęp \"%s\": użyj np. 30m lub 1h, co najmniej 1m"
+
+#: src/timer.c
+msgid "a peek takes HH:MM, not a date"
+msgstr "podgląd godziny przyjmuje HH:MM, a nie datę"
 
 #: src/timer.c
 #, c-format

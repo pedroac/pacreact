@@ -1,3 +1,4 @@
+#include "activity.h"
 #include "alerts.h"
 #include "display.h"
 #include "hud.h"
@@ -22,6 +23,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/prctl.h>
+#include <time.h>
 #include <sys/signalfd.h>
 #include <unistd.h>
 
@@ -33,6 +35,9 @@ static const char usage_text[] =
     "       pachud slider [-i ICON] PERCENT LABEL...\n"
     "       pachud timer DURATION [LABEL...]   e.g. 90s, 5m, 1h30m\n"
     "       pachud alarm [-r daily|weekdays|weekends|mon,wed,...] [YYYY-MM-DD] HH:MM [LABEL...]\n"
+    "       pachud peek [-r daily|weekdays|weekends|mon,wed,...] HH:MM [LABEL...]   show the time, quietly\n"
+    "       pachud peek every DURATION [LABEL...]   show the time after that much use, e.g. 30m, 1h\n"
+    "       pachud time                        show the time in the middle of the screen\n"
     "       pachud snooze [DURATION]           re-arm the last timer/alarm that went off\n"
     "       pachud pause ID | resume ID | extend ID DURATION   (timers)\n"
     "       pachud list | cancel ID|all\n"
@@ -136,6 +141,34 @@ static int client_alarm(int argc, char **argv) {
     return client_generic(n, nargv, 1);
 }
 
+/* pachud peek [-r RECUR] HH:MM [LABEL...] and pachud peek every DURATION [LABEL...]: the daemon takes
+ * "HH:MM", "HH:MM@RECUR" or "every@DURATION" as its one field, like an alarm. */
+static int client_peek(int argc, char **argv) {
+    if (argc > 3 && !strcmp(argv[2], "every")) {
+        char spec[64];
+        snprintf(spec, sizeof spec, "every@%s", argv[3]);
+        char *nargv[argc + 1];
+        int n = 0;
+        nargv[n++] = argv[0];
+        nargv[n++] = argv[1];
+        nargv[n++] = spec;
+        for (int i = 4; i < argc; i++) nargv[n++] = argv[i];
+        return client_generic(n, nargv, 1);
+    }
+    return client_alarm(argc, argv);
+}
+
+/* The time and the date, in the middle of the screen (`pachud time`). */
+static void show_time(void) {
+    time_t now = time(NULL);
+    struct tm tm;
+    localtime_r(&now, &tm);
+    char hm[16], date[96];
+    strftime(hm, sizeof hm, "%H:%M", &tm);
+    strftime(date, sizeof date, "%A %d %B", &tm);
+    hud_osd_clock(hm, date);
+}
+
 static void handle(char *msg, char *reply, size_t n) {
     char *save, *cmd = strtok_r(msg, "\t", &save);
     if (cmd && !strcmp(cmd, "toast")) {
@@ -155,6 +188,11 @@ static void handle(char *msg, char *reply, size_t n) {
         char *pct = strtok_r(NULL, "\t", &save), *icon = strtok_r(NULL, "\t", &save), *label = save;
         if (!pct || !icon || !*label) { snprintf(reply, n, "%s", _("bad slider message")); return; }
         hud_slider(label, atoi(pct), false, strcmp(icon, "-") ? icon : NULL);
+        snprintf(reply, n, "ok");
+        return;
+    }
+    if (cmd && !strcmp(cmd, "time")) {
+        show_time();
         snprintf(reply, n, "ok");
         return;
     }
@@ -263,6 +301,9 @@ static int run_daemon(void) {
     notify_init();
 #endif
     timer_init();
+    activity_init(dpy);
+    activity_on_change(timer_activity);
+    timer_usage_config(activity_break_secs());
     dnd_init();
 
     while (!quit) {
@@ -291,13 +332,14 @@ int main(int argc, char **argv) {
     if (!strcmp(argv[1], "toast")) return client_toast(argc, argv);
     if (!strcmp(argv[1], "slider")) return client_slider(argc, argv);
     if (!strcmp(argv[1], "alarm")) return client_alarm(argc, argv);
+    if (!strcmp(argv[1], "peek")) return client_peek(argc, argv);
     if (!strcmp(argv[1], "timer") || !strcmp(argv[1], "cancel") || !strcmp(argv[1], "pause") ||
         !strcmp(argv[1], "resume"))
         return client_generic(argc, argv, 1);
     if (!strcmp(argv[1], "extend")) return client_generic(argc, argv, 2);
     if (!strcmp(argv[1], "list") || !strcmp(argv[1], "dismiss") || !strcmp(argv[1], "dnd") ||
         !strcmp(argv[1], "snooze") || !strcmp(argv[1], "action") || !strcmp(argv[1], "history") ||
-        !strcmp(argv[1], "count") || !strcmp(argv[1], "expand"))
+        !strcmp(argv[1], "count") || !strcmp(argv[1], "expand") || !strcmp(argv[1], "time"))
         return client_generic(argc, argv, 0);
     return usage();
 }

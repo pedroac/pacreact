@@ -6,7 +6,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: pachud\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-12 09:07+0000\n"
+"POT-Creation-Date: 2026-11-12 09:53+0000\n"
 "PO-Revision-Date: 2026-11-10 00:00+0000\n"
 "Last-Translator: \n"
 "Language-Team: Russian\n"
@@ -315,6 +315,11 @@ msgid "SSD temperature high — %d °C"
 msgstr ""
 
 #: src/timer.c
+#, c-format
+msgid "%s of use"
+msgstr "%s за компьютером"
+
+#: src/timer.c
 msgid "Alarm"
 msgstr "Будильник"
 
@@ -357,6 +362,10 @@ msgid "not paused"
 msgstr "не приостановлен"
 
 #: src/timer.c
+msgid "a peek after use cannot be extended"
+msgstr "показ времени после работы нельзя продлить"
+
+#: src/timer.c
 msgid "bad duration: use e.g. 5m, 1h"
 msgstr "неверная длительность: например, 5m, 1h"
 
@@ -375,6 +384,15 @@ msgstr "не указана длительность"
 #: src/timer.c
 msgid "missing time"
 msgstr "не указано время"
+
+#: src/timer.c
+#, c-format
+msgid "bad interval \"%s\": use e.g. 30m or 1h, at least 1m"
+msgstr "неверный интервал \"%s\": например, 30m или 1h, не менее 1m"
+
+#: src/timer.c
+msgid "a peek takes HH:MM, not a date"
+msgstr "для показа времени нужно HH:MM, а не дата"
 
 #: src/timer.c
 #, c-format

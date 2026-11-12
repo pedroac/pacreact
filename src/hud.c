@@ -10,6 +10,7 @@
 #include <time.h>
 
 #define OSD_TIMEOUT_MS 1000
+#define CLOCK_OSD_MS 2500
 
 static long long osd_deadline_ms;
 static bool osd_visible;
@@ -638,6 +639,18 @@ void hud_osd_slider(const char *label, int percent, bool dim, OsdAnchor anchor, 
     display_osd_present(dpy, buf, cr, anchor);
     osd_visible = true;
     osd_deadline_ms = now_ms() + OSD_TIMEOUT_MS;
+}
+
+void hud_osd_clock(const char *time_text, const char *detail) {
+    int w, h;
+    paint_clock(NULL, time_text, detail, PAINT_OSD_W, &w, &h);
+    cairo_t *cr;
+    Buf *buf = display_buf(dpy, w, h, &cr);
+    if (!buf) return;
+    paint_clock(cr, time_text, detail, PAINT_OSD_W, &w, &h);
+    display_osd_present(dpy, buf, cr, OSD_CENTER);
+    osd_visible = true;
+    osd_deadline_ms = now_ms() + CLOCK_OSD_MS;
 }
 
 static void hud_osd_hide(void) {

@@ -6,7 +6,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: pachud\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-12 09:07+0000\n"
+"POT-Creation-Date: 2026-11-12 09:53+0000\n"
 "PO-Revision-Date: 2026-11-10 00:00+0000\n"
 "Last-Translator: \n"
 "Language-Team: Korean\n"
@@ -312,6 +312,11 @@ msgid "SSD temperature high — %d °C"
 msgstr ""
 
 #: src/timer.c
+#, c-format
+msgid "%s of use"
+msgstr "%s 사용"
+
+#: src/timer.c
 msgid "Alarm"
 msgstr "알람"
 
@@ -354,6 +359,10 @@ msgid "not paused"
 msgstr "일시 중지 상태가 아닙니다"
 
 #: src/timer.c
+msgid "a peek after use cannot be extended"
+msgstr "사용 시간 후 시각 확인은 연장할 수 없습니다"
+
+#: src/timer.c
 msgid "bad duration: use e.g. 5m, 1h"
 msgstr "잘못된 시간: 예: 5m, 1h"
 
@@ -372,6 +381,15 @@ msgstr "시간이 없습니다"
 #: src/timer.c
 msgid "missing time"
 msgstr "시각이 없습니다"
+
+#: src/timer.c
+#, c-format
+msgid "bad interval \"%s\": use e.g. 30m or 1h, at least 1m"
+msgstr "잘못된 간격 \"%s\": 예: 30m 또는 1h (최소 1m)"
+
+#: src/timer.c
+msgid "a peek takes HH:MM, not a date"
+msgstr "시각 확인에는 날짜가 아닌 HH:MM을 사용하세요"
 
 #: src/timer.c
 #, c-format

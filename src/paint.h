@@ -43,6 +43,10 @@ void paint_toast(cairo_t *cr, const char *text, Level level, const char *icon, i
 void paint_slider(cairo_t *cr, const char *label, int percent, bool dim, const char *icon, int width,
                   int *w, int *h);
 
+/* The time, large and centred, with a line of smaller text under it (the date, or a label), for a
+ * glance at the clock. `detail` may be "". */
+void paint_clock(cairo_t *cr, const char *time_text, const char *detail, int width, int *w, int *h);
+
 /* The most of a notification body that is kept (bytes); a longer one is cut. */
 #define PAINT_BODY_MAX 2048
 

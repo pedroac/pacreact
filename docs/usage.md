@@ -12,11 +12,14 @@
 | `pachud slider PERCENT LABEL...` | A level bar. Useful from your own keybinds. |
 | `pachud timer DURATION [LABEL...]` | `90s`, `5m`, `1h30m`, up to 30 days. A unit is required: `5` is rejected. |
 | `pachud alarm [-r RECUR] [YYYY-MM-DD] HH:MM [LABEL...]` | The next such wall-clock time, today or tomorrow. With `-r` it repeats: `daily`, `weekdays`, `weekends`, or days such as `mon,wed,fri`. With a date (`pachud alarm 2026-12-25 07:30 …`) it fires once at that moment; a dated alarm cannot repeat. A recurring alarm stays in `pachud list` (shown as `[weekdays]`) and is rescheduled after it fires; occurrences missed while the daemon was down fire once. |
-| `pachud list` | Pending timers and alarms with their ids and time left. |
+| `pachud peek [-r RECUR] HH:MM [LABEL...]` | Show the time quietly at that time of day, like glancing at a clock: a small toast, no sound. Repeats with `-r` like an alarm. See [Peeking at the time](#peeking-at-the-time). |
+| `pachud peek every DURATION [LABEL...]` | Show the time after that much time at the computer, again and again: `30m`, `1h`. At least `1m`. |
+| `pachud time` | Show the time and the date in the middle of the screen for a moment. For a key. |
+| `pachud list` | Pending timers, alarms and peeks with their ids and time left. |
 | `pachud snooze [DURATION]` | Re-arm the timer or alarm that last went off as a new one-shot (default 5m, same label). A snoozed recurring alarm still comes back on its schedule. |
 | `pachud pause ID` / `resume ID` | Freeze a timer's remaining time, then continue it. Paused timers stay paused across restarts. Alarms cannot be paused. |
 | `pachud extend ID DURATION` | Add time to a timer or alarm (to the time left if paused). Up to 30 days ahead. |
-| `pachud cancel ID\|all` | Cancel one or all. |
+| `pachud cancel ID\|all` | Cancel one or all (peeks too). |
 | `pachud dismiss` | Close the front card of the [attention deck](#the-attention-deck), else the newest alert on screen (the newest item if there is none). |
 | `pachud action [N]` | Invoke action N (default 1) of the notification card on screen. See [Actions](#actions). |
 | `pachud dnd [on [DURATION]\|off\|toggle\|status]` | Do not disturb: see below. |
@@ -57,6 +60,8 @@ Settings that are numbers are read strictly: the whole value must be a whole num
 | `PACHUD_PROBE_INTERVAL` | 30 | Seconds between probes (5-3600). |
 | `XDG_STATE_HOME` | `~/.local/state` | Where timers are saved. |
 | `PACHUD_STARTUP_GRACE` | 60 | Seconds after start-up during which an alert that is not worse than one shown in the last 30 minutes is not shown again. `0` turns it off. See [Alerts at start-up](#alerts-at-start-up). |
+| `PACHUD_PEEK_IDLE` | `5` | Minutes without touching the keyboard or the pointer after which you count as away from the computer, 1 to 120. Only for [peeks after use](#peeking-at-the-time). |
+| `PACHUD_PEEK_BREAK` | `15` | Minutes away that count as a break: the use counted so far starts over, 1 to 720. |
 | `PACHUD_JACKS` | auto | `0` turns the audio-jack toasts off. `generic` makes every headphone or microphone jack plug say "Audio device connected" or "Audio device disconnected". See [Audio jacks](#audio-jacks). |
 | `PACHUD_JACKS_DEBUG` | off | `1` prints each jack switch event, port change and decision, with timestamps, on standard error. For bug reports. |
 | `PACHUD_SOUND` | on | `0` turns all sound off. |
@@ -102,6 +107,18 @@ A card shows the first four lines of its body. To read more, rest the pointer on
 Without the mouse, `pachud expand` opens the newest card (`ok expanded`) and the same command closes it again (`ok collapsed`). An opened card does not expire until it is closed, so bind it to a key and close it when done. If an app updates a card you opened, it stays open.
 
 Only cards open this way; toasts and sliders are short and stay click-through. Opening by pointer needs the HUD to take the pointer over cards, so `PACHUD_CLICK=0` turns it off (`pachud expand` still works). Opening moves the cards below it down, and closing moves them back, so after moving from an open card to the one below, the lower card slides up and one more movement is needed to rest on it. A body is kept up to 2048 bytes; anything longer is cut, and beyond 20 lines an opened card ends in an ellipsis.
+
+## Peeking at the time
+
+Without a task bar there is no clock to glance at. A peek is that glance: the time, shown quietly, when you would want to know it. It is not a timer or an alarm: a small toast with no sound, never in the history, not in the way, and not shown at all while [do not disturb](#do-not-disturb) is on.
+
+- `pachud time` shows the time and the date, large, in the middle of the screen for a couple of seconds. Bind it to a key.
+- At a time of day: `pachud peek 11:45 Lunch soon` once, or `pachud peek -r weekdays 23:00 Too late` every weekday, with the same recurrences as an alarm (`daily`, `weekdays`, `weekends`, `mon,wed,fri`). The toast reads `11:45 — Lunch soon`. A peek that is late, because the daemon was not running or the machine was asleep, is skipped rather than shown with the wrong time; a recurring one carries on.
+- After a stretch of use: `pachud peek every 1h` shows `14:32 — 1h of use` after every hour at the computer, `pachud peek every 30m Stretch` every half hour, with your label instead.
+
+`pachud list` shows them with the alarms and timers (`peek`), `pachud cancel ID` removes one, and they are kept across restarts in the same file. Peeks are not snoozed, paused or extended.
+
+**What counts as use.** Use is the time you are at the computer. You are away after `PACHUD_PEEK_IDLE` minutes (5 by default) with no keyboard or pointer input, and the counting stops, ignoring those minutes. When you come back it continues, unless you were away for `PACHUD_PEEK_BREAK` minutes (15) or more, which starts the count over. A sleep as long as a break does too, and time asleep is never counted. This needs the compositor's idle notifications (`ext-idle-notify-v1`, which Hyprland, sway and most others have). Without them pachud cannot tell when you are away, and counts the time since it started instead. The count is kept in memory only: a restart starts it over, though the peeks themselves are saved.
 
 ## Do not disturb
 

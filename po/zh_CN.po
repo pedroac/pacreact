@@ -6,7 +6,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: pachud\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-10 09:24+0000\n"
+"POT-Creation-Date: 2026-11-12 09:07+0000\n"
 "PO-Revision-Date: 2026-11-10 00:00+0000\n"
 "Last-Translator: \n"
 "Language-Team: Chinese (Simplified)\n"
@@ -44,6 +44,45 @@ msgstr "无效的时长 \"%s\"：例如 30m、1h"
 msgid "dnd: use on [DURATION], off, toggle or status"
 msgstr "dnd：请使用 on [时长]、off、toggle 或 status"
 
+#: src/history.c
+msgid "on screen"
+msgstr ""
+
+#: src/history.c
+msgid "expired"
+msgstr ""
+
+#: src/history.c
+msgid "dismissed"
+msgstr ""
+
+#: src/history.c
+msgid "closed by app"
+msgstr ""
+
+#: src/history.c
+#, fuzzy
+msgid "skipped (do not disturb)"
+msgstr "已开启勿扰模式"
+
+#: src/history.c
+msgid "not shown"
+msgstr ""
+
+#: src/history.c
+#, c-format
+msgid "history: use history [N] (1 to %d) or history clear"
+msgstr ""
+
+#: src/history.c
+#, fuzzy
+msgid "no notifications yet"
+msgstr "通知不可用"
+
+#: src/history.c
+msgid "older not shown"
+msgstr ""
+
 #: src/hud.c
 msgid "Open"
 msgstr "打开"
@@ -63,6 +102,19 @@ msgstr "级别必须是 info、warn 或 crit"
 #: src/main.c
 msgid "bad slider message"
 msgstr "无效的滑块消息"
+
+#: src/main.c
+#, fuzzy
+msgid "no notification on screen"
+msgstr "屏幕上没有这样的操作"
+
+#: src/main.c
+msgid "expanded"
+msgstr ""
+
+#: src/main.c
+msgid "collapsed"
+msgstr ""
 
 #: src/main.c
 msgid "this build has no notification support"
@@ -104,9 +156,90 @@ msgstr "音量 — 静音"
 msgid "Volume"
 msgstr "音量"
 
+#: src/src_audio.c
+#, c-format
+msgid "Audio output: %s"
+msgstr ""
+
 #: src/src_backlight.c
 msgid "Brightness"
 msgstr "亮度"
+
+#: src/src_bt.c
+#, c-format
+msgid "Bluetooth: %s connected"
+msgstr ""
+
+#: src/src_bt.c
+#, fuzzy, c-format
+msgid "Bluetooth: %s disconnected"
+msgstr "已断开充电器"
+
+#: src/src_disk.c
+#, c-format
+msgid "Disk almost full — %s: %d%% free (%s)"
+msgstr ""
+
+#: src/src_disk.c
+#, c-format
+msgid "Disk space low — %s: %d%% free (%s)"
+msgstr ""
+
+#: src/src_jack.c
+msgid "Audio device connected"
+msgstr "已连接音频设备"
+
+#: src/src_jack.c
+msgid "Audio device disconnected"
+msgstr "已断开音频设备"
+
+#: src/src_jack.c
+msgid "Headset connected"
+msgstr "已连接耳麦"
+
+#: src/src_jack.c
+msgid "Headset disconnected"
+msgstr "已断开耳麦"
+
+#: src/src_jack.c
+msgid "Headphones connected"
+msgstr "已连接耳机"
+
+#: src/src_jack.c
+msgid "Headphones disconnected"
+msgstr "已断开耳机"
+
+#: src/src_jack.c
+msgid "Line out connected"
+msgstr "已连接线路输出"
+
+#: src/src_jack.c
+msgid "Line out disconnected"
+msgstr "已断开线路输出"
+
+#: src/src_jack.c
+msgid "Microphone connected"
+msgstr "已连接麦克风"
+
+#: src/src_jack.c
+msgid "Microphone disconnected"
+msgstr "已断开麦克风"
+
+#: src/src_locks.c
+msgid "Caps Lock on"
+msgstr ""
+
+#: src/src_locks.c
+msgid "Caps Lock off"
+msgstr ""
+
+#: src/src_locks.c
+msgid "Num Lock on"
+msgstr ""
+
+#: src/src_locks.c
+msgid "Num Lock off"
+msgstr ""
 
 #: src/src_mem.c
 #, c-format
@@ -157,6 +290,26 @@ msgstr "网络无响应 — %s 无回应"
 #: src/src_probe.c
 msgid "Network back to normal"
 msgstr "网络已恢复正常"
+
+#: src/src_temp.c
+#, fuzzy, c-format
+msgid "CPU temperature critical — %d °C"
+msgstr "电量严重不足 — %d%%"
+
+#: src/src_temp.c
+#, c-format
+msgid "CPU temperature high — %d °C"
+msgstr ""
+
+#: src/src_temp.c
+#, fuzzy, c-format
+msgid "SSD temperature critical — %d °C"
+msgstr "电量严重不足 — %d%%"
+
+#: src/src_temp.c
+#, c-format
+msgid "SSD temperature high — %d °C"
+msgstr ""
 
 #: src/timer.c
 msgid "Alarm"

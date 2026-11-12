@@ -149,7 +149,7 @@ static void test_handshake_packets(void) {
     feed_reply();  /* name accepted -> SUBSCRIBE sink|server */
     assert(state == S_SUBSCRIBE);
     n = read_packet(p, sizeof p);
-    assert(n == 15 && u32_at(p) == CMD_SUBSCRIBE && u32_at(p + 10) == (MASK_SINK | MASK_SOURCE | MASK_SERVER));
+    assert(n == 15 && u32_at(p) == CMD_SUBSCRIBE && u32_at(p + 10) == (MASK_SINK | MASK_SOURCE | MASK_SERVER | MASK_CARD));
 
     feed_reply();  /* subscribed -> ready, asks for the default sink silently */
     assert(state == S_READY && pending == T_SINK && !announce);
@@ -256,9 +256,13 @@ static void test_output_change(void) {
     read_reply(T_SINK, sink_info_named(0x4000, '0', b, "WH-1000XM4"), false);
     assert(slider_calls == 4 && !strcmp(tracks[T_SINK].name, b));
 
-    /* Only outputs: the default microphone changing is not announced here */
+    /* The default microphone changing (a headset's jack moves it) is learned, not announced: the
+     * bar would be about a device whose volume the user did not touch */
+    read_reply(T_SOURCE, sink_info_named(0x8000, '0', "alsa_input.pci-a", "Built-in mic"), false);   /* start-up */
     read_reply(T_SOURCE, sink_info_named(0x4000, '0', "alsa_input.usb-a", "USB mic"), true);
-    assert(slider_calls == 5 && tracks[T_SOURCE].name[0] == '\0');
+    assert(slider_calls == 4 && !strcmp(tracks[T_SOURCE].name, "alsa_input.usb-a"));
+    read_reply(T_SOURCE, sink_info_named(0x2000, '0', "alsa_input.usb-a", "USB mic"), true);
+    assert(slider_calls == 5 && !strcmp(slider_label, "Microphone"));   /* a real change still is */
 
     drop_pair();
 }
@@ -573,6 +577,109 @@ static void test_volume_icons(void) {
     drop_pair();
 }
 
+/* ---- card ports ---- */
+
+static void put_t(Buf8 *o, const char *str) { o->b[o->n++] = 't'; raw(o, str, strlen(str) + 1); }
+
+/* One port of a GET_CARD_INFO_LIST reply, in the layout pipewire-pulse sends */
+static void put_port(Buf8 *o, const char *name, uint32_t available, uint8_t direction, uint32_t type) {
+    put_t(o, name);
+    put_t(o, "A port");
+    be_u32(o, 8000);                           /* priority */
+    be_u32(o, available);                      /* 0 unknown, 1 no, 2 yes */
+    o->b[o->n++] = 'B'; o->b[o->n++] = direction;
+    raw(o, "PN", 2);                           /* an empty property list */
+    be_u32(o, 1);                              /* the profiles it is in */
+    put_t(o, "output:analog-stereo");
+    o->b[o->n++] = 'r'; raw(o, "\0\0\0\0\0\0\0\0", 8);   /* latency offset */
+    put_t(o, "Legacy 1");                      /* availability group */
+    be_u32(o, type);
+}
+
+/* A reply with one card: front mic and headphones as an Intel HDA codec has them, plus the kinds of
+ * port that are not a jack (HDMI, line in) */
+static Buf8 card_info(uint32_t headphones, uint32_t front_mic) {
+    Buf8 o = {0};
+    be_u32(&o, 2);
+    be_u32(&o, 5);
+    be_u32(&o, 8176);                          /* index */
+    put_t(&o, "alsa_card.pci-0000_00_1f.3");
+    be_u32(&o, 0xFFFFFFFFu);                   /* owner module */
+    put_t(&o, "alsa");
+    be_u32(&o, 1);                             /* one profile */
+    put_t(&o, "output:analog-stereo");
+    put_t(&o, "Analog Stereo Output");
+    be_u32(&o, 1); be_u32(&o, 0); be_u32(&o, 6500); be_u32(&o, 1);
+    put_t(&o, "output:analog-stereo");         /* active profile */
+    raw(&o, "PN", 2);                          /* its property list */
+    be_u32(&o, 4);                             /* ports */
+    put_port(&o, "analog-input-front-mic", front_mic, DIRECTION_INPUT, PORT_MIC);
+    put_port(&o, "analog-input-linein", 1, DIRECTION_INPUT, PORT_LINE);
+    put_port(&o, "analog-output-headphones", headphones, DIRECTION_OUTPUT, PORT_HEADPHONES);
+    put_port(&o, "hdmi-output-0", 1, DIRECTION_OUTPUT, 10);
+    return o;
+}
+
+static int ports_answers;
+static PortChanges ports_answer;
+static void on_ports_answer(const PortChanges *c) {
+    ports_answers++;
+    if (c) ports_answer = *c; else memset(&ports_answer, 0xFF, sizeof ports_answer);
+}
+
+static void test_card_ports(void) {
+    connect_pair(S_READY);
+    memset(&changes, 0, sizeof changes);
+    n_port_state = 0;
+    ports_known = false;
+
+    /* Nothing can be said before the first reading: the server is not asked, the answer is "unknown" */
+    ports_answers = 0;
+    audio_port_changes(on_ports_answer);
+    assert(ports_answers == 1 && ports_answer.headphones == -1 && !tracks[T_CARDS].want);
+
+    /* The first reading is the baseline: the jack's ports, not the HDMI port or line in */
+    read_reply(T_CARDS, card_info(1, 1), false);
+    assert(ports_known && n_port_state == 2 && changes.headphones == 0 && changes.mic == 0);
+    assert(slider_calls == 0 && toast_calls == 0);
+
+    /* Headphones plugged in: "no" to "unknown", and the front mic goes to "yes", as on the real card */
+    read_reply(T_CARDS, card_info(0, 2), false);
+    assert(changes.headphones == 1 && changes.mic == 1 && changes.headset == 0 && changes.lineout == 0);
+
+    /* Asking: a new reading is requested and the answer carries what flipped, once */
+    ports_answers = 0;
+    audio_port_changes(on_ports_answer);
+    assert(pending == T_CARDS && ports_answers == 0);            /* sent at once, not answered yet */
+    read_reply(T_CARDS, card_info(0, 2), false);
+    assert(ports_answers == 1 && ports_answer.headphones == 1 && ports_answer.mic == 1);
+    assert(changes.headphones == 0 && changes.mic == 0);          /* taken */
+    read_reply(T_CARDS, card_info(0, 2), false);
+    assert(ports_answers == 1);                                   /* not asked again */
+
+    /* Unplugged: both go back; a reading that changes nothing reports no change */
+    read_reply(T_CARDS, card_info(1, 1), false);
+    assert(changes.headphones == -1 && changes.mic == -1);
+    memset(&changes, 0, sizeof changes);
+    read_reply(T_CARDS, card_info(1, 1), false);
+    assert(changes.headphones == 0 && changes.mic == 0);
+
+    /* A reply cut short is not compared, and does not replace the baseline */
+    Buf8 cut = card_info(0, 2);
+    cut.n -= 20;
+    read_reply(T_CARDS, cut, false);
+    assert(changes.headphones == 0 && changes.mic == 0 && port_state[1].present == false);
+
+    /* The server going away answers anyone waiting, with "unknown" */
+    ports_answers = 0;
+    audio_port_changes(on_ports_answer);
+    assert(port_cb);
+    report_ports(NULL);
+    assert(ports_answers == 1 && ports_answer.headphones == -1 && !port_cb);
+
+    drop_pair();
+}
+
 int main(void) {
     test_handshake_packets();
     test_sink_info_parsing();
@@ -580,6 +687,7 @@ int main(void) {
     test_volume_sound();
     test_volume_icons();
     test_microphone_track();
+    test_card_ports();
     test_request_queue();
     test_events();
     test_loudest_channel();

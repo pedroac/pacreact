@@ -6,7 +6,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: pachud\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-10 09:24+0000\n"
+"POT-Creation-Date: 2026-11-12 09:07+0000\n"
 "PO-Revision-Date: 2026-11-10 00:00+0000\n"
 "Last-Translator: \n"
 "Language-Team: Korean\n"
@@ -44,6 +44,45 @@ msgstr "잘못된 시간 \"%s\": 예: 30m, 1h"
 msgid "dnd: use on [DURATION], off, toggle or status"
 msgstr "dnd: on [시간], off, toggle, status 중 하나를 사용하세요"
 
+#: src/history.c
+msgid "on screen"
+msgstr ""
+
+#: src/history.c
+msgid "expired"
+msgstr ""
+
+#: src/history.c
+msgid "dismissed"
+msgstr ""
+
+#: src/history.c
+msgid "closed by app"
+msgstr ""
+
+#: src/history.c
+#, fuzzy
+msgid "skipped (do not disturb)"
+msgstr "방해 금지 모드를 켰습니다"
+
+#: src/history.c
+msgid "not shown"
+msgstr ""
+
+#: src/history.c
+#, c-format
+msgid "history: use history [N] (1 to %d) or history clear"
+msgstr ""
+
+#: src/history.c
+#, fuzzy
+msgid "no notifications yet"
+msgstr "알림을 사용할 수 없습니다"
+
+#: src/history.c
+msgid "older not shown"
+msgstr ""
+
 #: src/hud.c
 msgid "Open"
 msgstr "열기"
@@ -63,6 +102,19 @@ msgstr "레벨은 info, warn, crit 중 하나여야 합니다"
 #: src/main.c
 msgid "bad slider message"
 msgstr "잘못된 슬라이더 메시지"
+
+#: src/main.c
+#, fuzzy
+msgid "no notification on screen"
+msgstr "화면에 해당 동작이 없습니다"
+
+#: src/main.c
+msgid "expanded"
+msgstr ""
+
+#: src/main.c
+msgid "collapsed"
+msgstr ""
 
 #: src/main.c
 msgid "this build has no notification support"
@@ -104,9 +156,90 @@ msgstr "볼륨 — 음소거"
 msgid "Volume"
 msgstr "볼륨"
 
+#: src/src_audio.c
+#, c-format
+msgid "Audio output: %s"
+msgstr ""
+
 #: src/src_backlight.c
 msgid "Brightness"
 msgstr "밝기"
+
+#: src/src_bt.c
+#, c-format
+msgid "Bluetooth: %s connected"
+msgstr ""
+
+#: src/src_bt.c
+#, fuzzy, c-format
+msgid "Bluetooth: %s disconnected"
+msgstr "충전기 분리됨"
+
+#: src/src_disk.c
+#, c-format
+msgid "Disk almost full — %s: %d%% free (%s)"
+msgstr ""
+
+#: src/src_disk.c
+#, c-format
+msgid "Disk space low — %s: %d%% free (%s)"
+msgstr ""
+
+#: src/src_jack.c
+msgid "Audio device connected"
+msgstr "오디오 장치 연결됨"
+
+#: src/src_jack.c
+msgid "Audio device disconnected"
+msgstr "오디오 장치 분리됨"
+
+#: src/src_jack.c
+msgid "Headset connected"
+msgstr "헤드셋 연결됨"
+
+#: src/src_jack.c
+msgid "Headset disconnected"
+msgstr "헤드셋 분리됨"
+
+#: src/src_jack.c
+msgid "Headphones connected"
+msgstr "헤드폰 연결됨"
+
+#: src/src_jack.c
+msgid "Headphones disconnected"
+msgstr "헤드폰 분리됨"
+
+#: src/src_jack.c
+msgid "Line out connected"
+msgstr "라인 출력 연결됨"
+
+#: src/src_jack.c
+msgid "Line out disconnected"
+msgstr "라인 출력 분리됨"
+
+#: src/src_jack.c
+msgid "Microphone connected"
+msgstr "마이크 연결됨"
+
+#: src/src_jack.c
+msgid "Microphone disconnected"
+msgstr "마이크 분리됨"
+
+#: src/src_locks.c
+msgid "Caps Lock on"
+msgstr ""
+
+#: src/src_locks.c
+msgid "Caps Lock off"
+msgstr ""
+
+#: src/src_locks.c
+msgid "Num Lock on"
+msgstr ""
+
+#: src/src_locks.c
+msgid "Num Lock off"
+msgstr ""
 
 #: src/src_mem.c
 #, c-format
@@ -157,6 +290,26 @@ msgstr "네트워크 응답 없음 — %s에서 응답 없음"
 #: src/src_probe.c
 msgid "Network back to normal"
 msgstr "네트워크 정상화"
+
+#: src/src_temp.c
+#, fuzzy, c-format
+msgid "CPU temperature critical — %d °C"
+msgstr "배터리 위험 — %d%%"
+
+#: src/src_temp.c
+#, c-format
+msgid "CPU temperature high — %d °C"
+msgstr ""
+
+#: src/src_temp.c
+#, fuzzy, c-format
+msgid "SSD temperature critical — %d °C"
+msgstr "배터리 위험 — %d%%"
+
+#: src/src_temp.c
+#, c-format
+msgid "SSD temperature high — %d °C"
+msgstr ""
 
 #: src/timer.c
 msgid "Alarm"

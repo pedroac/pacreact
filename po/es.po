@@ -6,7 +6,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: pachud\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-10 09:24+0000\n"
+"POT-Creation-Date: 2026-11-12 09:07+0000\n"
 "PO-Revision-Date: 2026-11-10 00:00+0000\n"
 "Last-Translator: \n"
 "Language-Team: Spanish\n"
@@ -45,6 +45,45 @@ msgstr "duración no válida \"%s\": use p. ej. 30m, 1h"
 msgid "dnd: use on [DURATION], off, toggle or status"
 msgstr "dnd: use on [DURACIÓN], off, toggle o status"
 
+#: src/history.c
+msgid "on screen"
+msgstr ""
+
+#: src/history.c
+msgid "expired"
+msgstr ""
+
+#: src/history.c
+msgid "dismissed"
+msgstr ""
+
+#: src/history.c
+msgid "closed by app"
+msgstr ""
+
+#: src/history.c
+#, fuzzy
+msgid "skipped (do not disturb)"
+msgstr "No molestar activado"
+
+#: src/history.c
+msgid "not shown"
+msgstr ""
+
+#: src/history.c
+#, c-format
+msgid "history: use history [N] (1 to %d) or history clear"
+msgstr ""
+
+#: src/history.c
+#, fuzzy
+msgid "no notifications yet"
+msgstr "notificaciones no disponibles"
+
+#: src/history.c
+msgid "older not shown"
+msgstr ""
+
 #: src/hud.c
 msgid "Open"
 msgstr "Abrir"
@@ -64,6 +103,19 @@ msgstr "el nivel debe ser info, warn o crit"
 #: src/main.c
 msgid "bad slider message"
 msgstr "mensaje de control deslizante no válido"
+
+#: src/main.c
+#, fuzzy
+msgid "no notification on screen"
+msgstr "no hay tal acción en pantalla"
+
+#: src/main.c
+msgid "expanded"
+msgstr ""
+
+#: src/main.c
+msgid "collapsed"
+msgstr ""
 
 #: src/main.c
 msgid "this build has no notification support"
@@ -106,9 +158,90 @@ msgstr "Volumen — silenciado"
 msgid "Volume"
 msgstr "Volumen"
 
+#: src/src_audio.c
+#, c-format
+msgid "Audio output: %s"
+msgstr ""
+
 #: src/src_backlight.c
 msgid "Brightness"
 msgstr "Brillo"
+
+#: src/src_bt.c
+#, c-format
+msgid "Bluetooth: %s connected"
+msgstr ""
+
+#: src/src_bt.c
+#, fuzzy, c-format
+msgid "Bluetooth: %s disconnected"
+msgstr "Cargador desconectado"
+
+#: src/src_disk.c
+#, c-format
+msgid "Disk almost full — %s: %d%% free (%s)"
+msgstr ""
+
+#: src/src_disk.c
+#, c-format
+msgid "Disk space low — %s: %d%% free (%s)"
+msgstr ""
+
+#: src/src_jack.c
+msgid "Audio device connected"
+msgstr "Dispositivo de audio conectado"
+
+#: src/src_jack.c
+msgid "Audio device disconnected"
+msgstr "Dispositivo de audio desconectado"
+
+#: src/src_jack.c
+msgid "Headset connected"
+msgstr "Auriculares con micrófono conectados"
+
+#: src/src_jack.c
+msgid "Headset disconnected"
+msgstr "Auriculares con micrófono desconectados"
+
+#: src/src_jack.c
+msgid "Headphones connected"
+msgstr "Auriculares conectados"
+
+#: src/src_jack.c
+msgid "Headphones disconnected"
+msgstr "Auriculares desconectados"
+
+#: src/src_jack.c
+msgid "Line out connected"
+msgstr "Salida de línea conectada"
+
+#: src/src_jack.c
+msgid "Line out disconnected"
+msgstr "Salida de línea desconectada"
+
+#: src/src_jack.c
+msgid "Microphone connected"
+msgstr "Micrófono conectado"
+
+#: src/src_jack.c
+msgid "Microphone disconnected"
+msgstr "Micrófono desconectado"
+
+#: src/src_locks.c
+msgid "Caps Lock on"
+msgstr ""
+
+#: src/src_locks.c
+msgid "Caps Lock off"
+msgstr ""
+
+#: src/src_locks.c
+msgid "Num Lock on"
+msgstr ""
+
+#: src/src_locks.c
+msgid "Num Lock off"
+msgstr ""
 
 #: src/src_mem.c
 #, c-format
@@ -159,6 +292,26 @@ msgstr "La red no responde — sin respuesta de %s"
 #: src/src_probe.c
 msgid "Network back to normal"
 msgstr "La red vuelve a la normalidad"
+
+#: src/src_temp.c
+#, fuzzy, c-format
+msgid "CPU temperature critical — %d °C"
+msgstr "Batería crítica — %d%%"
+
+#: src/src_temp.c
+#, c-format
+msgid "CPU temperature high — %d °C"
+msgstr ""
+
+#: src/src_temp.c
+#, fuzzy, c-format
+msgid "SSD temperature critical — %d °C"
+msgstr "Batería crítica — %d%%"
+
+#: src/src_temp.c
+#, c-format
+msgid "SSD temperature high — %d °C"
+msgstr ""
 
 #: src/timer.c
 msgid "Alarm"

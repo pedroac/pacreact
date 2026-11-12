@@ -57,6 +57,8 @@ Settings that are numbers are read strictly: the whole value must be a whole num
 | `PACHUD_PROBE_INTERVAL` | 30 | Seconds between probes (5-3600). |
 | `XDG_STATE_HOME` | `~/.local/state` | Where timers are saved. |
 | `PACHUD_STARTUP_GRACE` | 60 | Seconds after start-up during which an alert that is not worse than one shown in the last 30 minutes is not shown again. `0` turns it off. See [Alerts at start-up](#alerts-at-start-up). |
+| `PACHUD_JACKS` | auto | `0` turns the audio-jack toasts off. `generic` makes every headphone or microphone jack plug say "Audio device connected" or "Audio device disconnected". See [Audio jacks](#audio-jacks). |
+| `PACHUD_JACKS_DEBUG` | off | `1` prints each jack switch event, port change and decision, with timestamps, on standard error. For bug reports. |
 | `PACHUD_SOUND` | on | `0` turns all sound off. |
 | `PACHUD_PLAYER` | `pw-play`, else `paplay` | Program started with the sound file as its only argument. |
 | `PACHUD_ALARM_SOUND` | `alarm-clock-elapsed` | Sound for timers and alarms: an absolute file path or a freedesktop sound-theme name. Empty or `0` is silent. |
@@ -156,6 +158,14 @@ Environment=PACHUD_FONT_BOLD=/usr/share/fonts/atkinson-hyperlegible/AtkinsonHype
 `PACHUD_SCALE` is a different thing: it pins how sharply the HUD is rendered on a high-density screen, and does not change its size.
 
 The [attention deck](#the-attention-deck) needs three item widths of room (see there), so a large font or a large width makes it fall back to the stack on a screen that would have had room at the default size.
+
+## Audio jacks
+
+Plugging something into a 3.5 mm jack gives a toast: headphones, a headset, a microphone or line out, connected or disconnected. The kernel only says that a jack changed, not what is in it, so pachud also asks the sound server which card ports changed (headphones, headset or microphone) and names the toast from that: headphones and a microphone together are a headset. If the jack changed and no port did, the hardware is not saying what it is, and the toast says "Audio device connected" or "Audio device disconnected". Without a sound server it uses the jack's own name. HDMI and DisplayPort audio are not announced.
+
+Some codecs report one connector as two jacks, or let one contact lag behind the other: a headset's removal may release only the microphone contact, and a speaker plugged in right after then changes nothing the kernel can report, so it gets no toast until it is pulled out. That is the hardware, and pachud cannot see past it. Once a plug has been seen to change both contacts together, pachud treats the pair as one socket and calls a microphone change that happens while the headphone contact is engaged the headset. `PACHUD_JACKS=generic` skips all naming for machines where it cannot be trusted. With `PACHUD_JACKS_DEBUG=1` pachud prints what each switch and port did, which is what a bug report needs.
+
+If the headphone contact of a combo jack lags like that, the fix is in the kernel's audio driver, not in pachud. Check `/proc/asound/card*/codec#*` for the codec, and the kernel's HD-Audio documentation for a headset-mode model for it. On one Realtek ALC671 board, `options snd-hda-intel model=alc662-headset` in a file under `/etc/modprobe.d/` made the headphone contact release with the plug and the second plug get its own event. That is a single report from one machine, not a recommendation: a model replaces the driver's own settings for the board, so check that the microphone and the output switching still work. To try one without rebooting, stop the PipeWire services, write the model name to `/sys/class/sound/hwC0D0/modelname` (the number is your card and codec), write `1` to `reconfig` in the same directory, and start the services again; a reboot undoes it.
 
 ## Sound
 

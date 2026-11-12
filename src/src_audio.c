@@ -16,6 +16,7 @@
 #include <sys/timerfd.h>
 #include <sys/uio.h>
 #include <sys/un.h>
+#include <time.h>
 #include <unistd.h>
 
 /* Volume lives in the sound server (PulseAudio, or PipeWire's pulse layer), not the kernel.
@@ -37,9 +38,14 @@
 
 enum { CMD_ERROR = 0, CMD_REPLY = 2, CMD_AUTH = 8, CMD_SET_CLIENT_NAME = 9,
        CMD_GET_SINK_INFO = 21, CMD_GET_SOURCE_INFO = 23, CMD_SUBSCRIBE = 35,
-       CMD_SUBSCRIBE_EVENT = 66 };
-enum { MASK_SINK = 0x1, MASK_SOURCE = 0x2, MASK_SERVER = 0x80 };
-enum { FACILITY_MASK = 0xF, FACILITY_SINK = 0, FACILITY_SOURCE = 1, FACILITY_SERVER = 7 };
+       CMD_SUBSCRIBE_EVENT = 66, CMD_GET_CARD_INFO_LIST = 89 };
+enum { MASK_SINK = 0x1, MASK_SOURCE = 0x2, MASK_SERVER = 0x80, MASK_CARD = 0x200 };
+enum { FACILITY_MASK = 0xF, FACILITY_SINK = 0, FACILITY_SOURCE = 1, FACILITY_SERVER = 7,
+       FACILITY_CARD = 9 };
+/* A card port: whether something is plugged into it, its direction and what kind it is */
+enum { AVAILABLE_NO = 1 };
+enum { DIRECTION_OUTPUT = 1, DIRECTION_INPUT = 2 };
+enum { PORT_LINE = 4, PORT_MIC = 5, PORT_HEADPHONES = 3, PORT_HEADSET = 6 };
 
 typedef enum { S_DOWN, S_AUTH, S_NAME, S_SUBSCRIBE, S_READY } State;
 
@@ -49,7 +55,7 @@ static uint32_t next_tag;
 static int reconnect_s = RECONNECT_MIN_S;
 /* What is watched: the default output and the default input, each with the same volume and
  * mute fields in the server's reply. One request is outstanding at a time. */
-typedef enum { T_SINK, T_SOURCE, T_COUNT } TrackId;
+typedef enum { T_SINK, T_SOURCE, T_CARDS, T_COUNT } TrackId;
 
 typedef struct {
     const char *object;    /* the alias the server resolves to the current default device */
@@ -63,6 +69,7 @@ typedef struct {
 static Track tracks[T_COUNT] = {
     [T_SINK] = { "@DEFAULT_SINK@", CMD_GET_SINK_INFO, -1, -1, "", false, false, false },
     [T_SOURCE] = { "@DEFAULT_SOURCE@", CMD_GET_SOURCE_INFO, -1, -1, "", false, false, false },
+    [T_CARDS] = { NULL, CMD_GET_CARD_INFO_LIST, -1, -1, "", false, false, false },
 };
 static int pending = -1;   /* the track the outstanding request is for, or -1 */
 static bool announce;      /* whether the outstanding answer may show a HUD */
@@ -195,6 +202,8 @@ static void arm(int fd, long ms) {
     timerfd_settime(fd, 0, &its, NULL);
 }
 
+static void report_ports(const PortChanges *c);   /* below, with the card readings */
+
 static void disconnect(void) {
     if (sock >= 0) {
         loop_remove(sock);
@@ -205,6 +214,7 @@ static void disconnect(void) {
     inlen = 0;
     pending = -1;
     for (int t = 0; t < T_COUNT; t++) tracks[t].want = tracks[t].dirty = false;
+    report_ports(NULL);
     arm(reconnect_fd, reconnect_s * 1000L);
     reconnect_s = reconnect_s * 2 > RECONNECT_MAX_S ? RECONNECT_MAX_S : reconnect_s * 2;
 }
@@ -230,8 +240,10 @@ static void request_next(void) {
         k->want = false;
         Out o;
         command(&o, k->command);
-        put_u32(&o, INVALID_INDEX);
-        put_str(&o, k->object);
+        if (k->object) {
+            put_u32(&o, INVALID_INDEX);
+            put_str(&o, k->object);
+        }
         if (!send_packet(&o)) { disconnect(); return; }
         pending = t;
         announce = k->want_announce;
@@ -246,9 +258,142 @@ static void want_info(TrackId t, bool show) {
     request_next();
 }
 
+static uint8_t get_u8(In *in) {
+    if (!need(in, 2) || in->p[0] != 'B') { in->bad = true; return 0; }
+    uint8_t v = in->p[1];
+    in->p += 2;
+    return v;
+}
+
+static void skip_s64(In *in) {  /* 'r' and eight bytes */
+    if (!need(in, 9) || in->p[0] != 'r') { in->bad = true; return; }
+    in->p += 9;
+}
+
+/* 'P', then key (string), length (u32) and value (arbitrary) until a null string */
+static void skip_proplist(In *in) {
+    if (!need(in, 1) || in->p[0] != 'P') { in->bad = true; return; }
+    in->p++;
+    while (!in->bad && need(in, 1) && *in->p != 'N') {
+        char key[128];
+        get_string(in, key, sizeof key);
+        get_u32(in);
+        if (!need(in, 5) || in->p[0] != 'x') { in->bad = true; return; }
+        uint32_t n;
+        memcpy(&n, in->p + 1, 4);
+        n = ntohl(n);
+        if (!need(in, 5 + (size_t)n)) return;
+        in->p += 5 + n;
+    }
+    if (!in->bad) in->p++;   /* the null string that ends it */
+}
+
+/* ---- card ports: what a jack plug did, as the server sees it ---- */
+
+#define MAX_PORTS 64
+
+typedef struct {
+    char key[200];     /* card and port name */
+    bool present;      /* something is plugged in, or the hardware cannot tell */
+} PortState;
+
+static PortState port_state[MAX_PORTS];
+static int n_port_state;
+static bool ports_known;            /* a first reading was taken: later ones can be compared with it */
+static PortChanges changes;         /* what flipped since the last answer */
+static void (*port_cb)(const PortChanges *);
+
+static void report_ports(const PortChanges *c) {
+    void (*cb)(const PortChanges *) = port_cb;
+    if (!cb) return;      /* nobody is waiting: what flipped is kept for whoever asks next */
+    port_cb = NULL;
+    cb(c);
+    if (c) memset(&changes, 0, sizeof changes);
+}
+
+/* One reading of every card: remember the ports that matter to a jack, and note which of them went
+ * from absent to present or back. A port that is "unknown" counts as present: a codec that cannot
+ * detect its headphones reports that, and moving from "no" to it still means something happened. */
+static void handle_cards(In *in) {
+    PortState now[MAX_PORTS];
+    PortChanges found = {0};
+    int n_now = 0;
+
+    while (!in->bad && in->p < in->end) {
+        get_u32(in);                       /* index */
+        char card[96], text[128];
+        get_string(in, card, sizeof card);
+        get_u32(in);                       /* owner module */
+        get_string(in, text, sizeof text); /* driver */
+        uint32_t profiles = get_u32(in);
+        for (uint32_t i = 0; i < profiles && !in->bad; i++) {
+            get_string(in, text, sizeof text);   /* name */
+            get_string(in, text, sizeof text);   /* description */
+            get_u32(in); get_u32(in); get_u32(in); get_u32(in);   /* sinks, sources, priority, available */
+        }
+        get_string(in, text, sizeof text); /* active profile */
+        skip_proplist(in);
+        uint32_t ports = get_u32(in);
+        for (uint32_t i = 0; i < ports && !in->bad; i++) {
+            char port[96];
+            get_string(in, port, sizeof port);
+            get_string(in, text, sizeof text);   /* description */
+            get_u32(in);                         /* priority */
+            uint32_t available = get_u32(in);
+            uint8_t direction = get_u8(in);
+            skip_proplist(in);
+            uint32_t n = get_u32(in);            /* the profiles it is in */
+            for (uint32_t j = 0; j < n && !in->bad; j++) get_string(in, text, sizeof text);
+            skip_s64(in);                        /* latency offset */
+            get_string(in, text, sizeof text);   /* availability group */
+            uint32_t type = get_u32(in);
+            if (in->bad) break;
+
+            int *kind = type == PORT_HEADPHONES ? &found.headphones : type == PORT_HEADSET ? &found.headset
+                      : type == PORT_MIC ? &found.mic
+                      : type == PORT_LINE && direction == DIRECTION_OUTPUT ? &found.lineout : NULL;
+            if (!kind || n_now >= MAX_PORTS) continue;       /* HDMI, speakers, line in ...: not a jack */
+            PortState *st = &now[n_now++];
+            snprintf(st->key, sizeof st->key, "%s/%s", card, port);
+            st->present = available != AVAILABLE_NO;
+            for (int k = 0; k < n_port_state; k++) {
+                if (strcmp(port_state[k].key, st->key) || port_state[k].present == st->present) continue;
+                *kind = st->present ? 1 : -1;
+                if (getenv("PACHUD_JACKS_DEBUG")) {
+                    struct timespec ts;
+                    clock_gettime(CLOCK_MONOTONIC, &ts);
+                    fprintf(stderr, "jacks %ld.%03ld port %s: %s (available=%u)\n", (long)ts.tv_sec % 1000,
+                            ts.tv_nsec / 1000000, st->key, st->present ? "present" : "absent", available);
+                }
+                break;
+            }
+        }
+    }
+    if (in->bad) return;   /* keep the earlier reading rather than compare with half of this one */
+
+    memcpy(port_state, now, sizeof(PortState) * n_now);
+    n_port_state = n_now;
+    ports_known = true;
+    if (found.headphones) changes.headphones = found.headphones;
+    if (found.headset) changes.headset = found.headset;
+    if (found.mic) changes.mic = found.mic;
+    if (found.lineout) changes.lineout = found.lineout;
+}
+
+void audio_port_changes(void (*cb)(const PortChanges *)) {
+    if (state != S_READY || !ports_known) { cb(NULL); return; }
+    port_cb = cb;
+    want_info(T_CARDS, false);   /* answered once the reading after this call has been compared */
+}
+
 /* A sink and a source reply start the same way: index, name, description, sample spec,
  * channel map, owner module, then the volume and the mute flag, which is all that is read. */
 static void handle_info(TrackId t, In *in) {
+    if (t == T_CARDS) {
+        handle_cards(in);
+        if (!tracks[T_CARDS].want) report_ports(in->bad ? NULL : &changes);
+        return;
+    }
     get_u32(in);      /* index */
     char name[128], description[128];
     get_string(in, name, sizeof name);
@@ -264,12 +409,14 @@ static void handle_info(TrackId t, In *in) {
     int pct = (int)(((uint64_t)volume * 100 + VOLUME_NORM / 2) / VOLUME_NORM);
 
     /* A different default output (a headset connected over USB or Bluetooth, a monitor's speakers):
-     * say so, instead of a volume bar that would just be about the new device. */
-    if (t == T_SINK && name[0] && strcmp(name, k->name) != 0) {
+     * say so, instead of a volume bar that would just be about the new device. A different default
+     * input (plugging a headset moves it to the headset's microphone) is only learned: the jack or
+     * device toast already said what happened, and its volume is not something the user changed. */
+    if (name[0] && strcmp(name, k->name) != 0) {
         bool known = k->name[0] != '\0';   /* the first reading only learns the name */
         snprintf(k->name, sizeof k->name, "%s", name);
         if (known) {
-            if (announce) {
+            if (announce && t == T_SINK) {
                 char msg[192];
                 snprintf(msg, sizeof msg, _("Audio output: %s"), description[0] ? description : name);
                 hud_osd_slider(msg, pct, muted, OSD_CENTER, "audio-speakers,audio-card");  /* show device change with current volume */
@@ -304,7 +451,7 @@ static void on_reply(In *in) {
     case S_NAME:
         state = S_SUBSCRIBE;
         command(&o, CMD_SUBSCRIBE);
-        put_u32(&o, MASK_SINK | MASK_SOURCE | MASK_SERVER);
+        put_u32(&o, MASK_SINK | MASK_SOURCE | MASK_SERVER | MASK_CARD);
         if (!send_packet(&o)) disconnect();
         break;
     case S_SUBSCRIBE:
@@ -312,6 +459,7 @@ static void on_reply(In *in) {
         reconnect_s = RECONNECT_MIN_S;
         want_info(T_SINK, false);  /* learn the current state; later changes compare against it */
         want_info(T_SOURCE, false);
+        want_info(T_CARDS, false);  /* the ports as they are, before any plug */
         break;
     case S_READY:
         if (pending < 0) break;
@@ -335,6 +483,7 @@ static void handle_frame(const uint8_t *payload, size_t len) {
         on_reply(&in);
     } else if (cmd == CMD_ERROR) {
         if (state == S_READY) {  /* e.g. no default source yet: not fatal */
+            if (pending == T_CARDS) report_ports(NULL);
             pending = -1;
             request_next();
         } else {
@@ -347,7 +496,8 @@ static void handle_frame(const uint8_t *payload, size_t len) {
         if (in.bad) return;
         if (facility == FACILITY_SINK || facility == FACILITY_SERVER) tracks[T_SINK].dirty = true;
         if (facility == FACILITY_SOURCE || facility == FACILITY_SERVER) tracks[T_SOURCE].dirty = true;
-        if (tracks[T_SINK].dirty || tracks[T_SOURCE].dirty) arm(debounce_fd, DEBOUNCE_MS);
+        if (facility == FACILITY_CARD) tracks[T_CARDS].dirty = true;
+        if (tracks[T_SINK].dirty || tracks[T_SOURCE].dirty || tracks[T_CARDS].dirty) arm(debounce_fd, DEBOUNCE_MS);
     }
 }
 

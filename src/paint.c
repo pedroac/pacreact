@@ -106,6 +106,8 @@ static void paint_bg(cairo_t *cr, int w, int h) {
     cairo_clip(cr);
 }
 
+static void ellipsize(const char *in, double w, double size, bool bold, char *out, size_t n);
+
 void paint_slider(cairo_t *cr, const char *label, int percent, bool dim, const char *icon, int width,
                   int *ow, int *oh) {
     double ascent, height;
@@ -127,13 +129,17 @@ void paint_slider(cairo_t *cr, const char *label, int percent, bool dim, const c
         sicon_paint(cr, icon, mirror(PAD, isz, width), SLIDER_TOP + (height > isz ? (height - isz) / 2 : 0), text);
     }
     cairo_set_source_rgb(cr, 0.93, 0.93, 0.95);
-    double lw = text_width(label, (int)strlen(label), FONT_SIZE, false);
-    text_draw(cr, label, mirror(lx, lw, width), row + ascent, FONT_SIZE, false);
-
     char pct[16];
     snprintf(pct, sizeof pct, "%d%%", percent);
     double pw = text_width(pct, (int)strlen(pct), FONT_SIZE, false);
     text_draw(cr, pct, mirror(width - PAD - pw, pw, width), row + ascent, FONT_SIZE, false);
+
+    /* A device name can be long ("Audio output: TU116 High Definition Audio Controller ..."): it gives
+     * way to the percentage rather than running into it */
+    char shown[256];
+    ellipsize(label, width - PAD - pw - ICON_GAP - lx, FONT_SIZE, false, shown, sizeof shown);
+    double lw = text_width(shown, (int)strlen(shown), FONT_SIZE, false);
+    text_draw(cr, shown, mirror(lx, lw, width), row + ascent, FONT_SIZE, false);
 
     double tw = width - 2 * PAD, ty = h - PAD - TRACK_H + paint_px(2);
     cairo_reset_clip(cr);

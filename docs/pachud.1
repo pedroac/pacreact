@@ -223,6 +223,17 @@ last 30 minutes is not shown again (default 60;
 .B 0
 disables it).
 .TP
+.B PACHUD_JACKS
+.B 0
+turns the audio-jack toasts (headphones, headset, microphone, line out) off.
+.B generic
+makes every headphone or microphone jack plug say "Audio device connected" or "Audio device disconnected",
+for hardware that reports one connector as two jacks.
+.TP
+.B PACHUD_JACKS_DEBUG
+.B 1
+prints each jack switch event, card port change and decision, with timestamps, on standard error.
+.TP
 .B PACHUD_SOUND
 .B 0
 turns all sound off.

@@ -181,7 +181,7 @@ bool notify_invoke_action(int n, char *reply, size_t reply_n) {
     /* Tell the app first (the key lives in the card), then close it: that sends
      * NotificationClosed with the "dismissed by the user" reason. */
     sd_bus_emit_signal(bus, PATH, IFACE, "ActionInvoked", "us", id, key);
-    hud_dismiss();
+    hud_dismiss_id(id);
     snprintf(reply, reply_n, "ok");
     return true;
 }

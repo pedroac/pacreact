@@ -8,6 +8,7 @@
 
 void hud_card(const HudCard *c) { (void)c; }
 void hud_dismiss(void) {}
+bool hud_dismiss_id(uint32_t id) { (void)id; return false; }
 const char *hud_action_key(int n, uint32_t *id) { (void)n; (void)id; return NULL; }
 void hud_on_closed(HudClosedFn fn) { (void)fn; }
 bool hud_remove(uint32_t id) { (void)id; return false; }

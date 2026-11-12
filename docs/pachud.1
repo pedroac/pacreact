@@ -22,9 +22,12 @@ With a command it is a client of the running daemon, which it reaches through th
 .IR $XDG_RUNTIME_DIR/pachud.sock .
 HUDs cannot be clicked: they are closed and acted on with these commands, typically from compositor keybinds.
 .PP
+HUDs stack in one column in a corner of the screen (top right by default), newest on top, each leaving on its own timeout.
+At most four are shown.
 Alerts (warning and critical toasts, timers, battery and memory alerts, every notification card)
-are queued and never lost.
-Sliders and informational toasts take the screen briefly and the alert they interrupted comes back.
+are never lost: when the column is full they wait for room.
+Sliders and informational toasts are ephemeral and are dropped, or displace the oldest ephemeral one, when it is full.
+Volume and brightness changes appear in a separate on-screen display in the middle of the screen.
 .SH COMMANDS
 .TP
 .BR toast " [" \-l " " info | warn | crit "] [" \-t " \fISECONDS\fR] \fITEXT\fR..."
@@ -32,7 +35,7 @@ Show a one-line message.
 .B warn
 and
 .B crit
-are alerts and queue.
+are alerts and wait for room when the stack is full.
 .TP
 .BI slider " PERCENT LABEL" ...
 Show a level bar.
@@ -77,7 +80,7 @@ Show timers and alarms with their ids, time left and recurrence.
 Cancel one or all.
 .TP
 .B dismiss
-Close what is on screen and show the next queued item.
+Close the newest alert on screen, or the newest item if there is none.
 .TP
 .BR dnd " [" on " [\fIDURATION\fR] | " off " | " toggle " | " status ]
 Do not disturb.
@@ -96,6 +99,10 @@ Cards list their actions as numbered hints, for example
 Commands exit with status 0 on success, 1 if the daemon refused the request (the reason is printed to
 standard error) or cannot be reached, and 2 for a usage error.
 .SH ENVIRONMENT
+.TP
+.B PACHUD_ANCHOR
+Where the HUD stack sits:
+.BR top\-right " (the default), " top\-left ", " top ", " bottom\-right ", " bottom\-left " or " bottom .
 .TP
 .B PACHUD_OUTPUT
 Show HUDs on this monitor (for example

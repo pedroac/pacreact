@@ -12,7 +12,7 @@
 #include <unistd.h>
 #include <wayland-client.h>
 
-#define MARGIN_BOTTOM 64
+#define MARGIN 16
 #define DEFAULT_FADE_MS 120
 #define MAX_OUTPUTS 8
 
@@ -42,6 +42,8 @@ struct Display {
     Output outputs[MAX_OUTPUTS];  /* every monitor, so PACHUD_OUTPUT can pick one by name */
     const char *want_output;      /* PACHUD_OUTPUT, or NULL to let the compositor choose */
     bool warned_output;
+    uint32_t anchor;              /* where the notification stack sits: PACHUD_ANCHOR */
+    int align;                    /* 0 left, 1 centre, 2 right: how items line up in the stack */
 
     struct wl_surface *surface;
     struct zwlr_layer_surface_v1 *layer;
@@ -241,6 +243,32 @@ static const struct zwlr_layer_surface_v1_listener layer_listener = {
     .closed = layer_closed,
 };
 
+#define EDGE_T ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP
+#define EDGE_B ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM
+#define EDGE_L ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT
+#define EDGE_R ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT
+
+/* PACHUD_ANCHOR: top-right (the default), top-left, top, bottom-right, bottom-left or bottom. */
+static void parse_anchor(Display *d, const char *name) {
+    static const struct { const char *name; uint32_t edges; int align; } table[] = {
+        { "top-right", EDGE_T | EDGE_R, 2 }, { "top-left", EDGE_T | EDGE_L, 0 }, { "top", EDGE_T, 1 },
+        { "bottom-right", EDGE_B | EDGE_R, 2 }, { "bottom-left", EDGE_B | EDGE_L, 0 },
+        { "bottom", EDGE_B, 1 },
+    };
+    d->anchor = table[0].edges;
+    d->align = table[0].align;
+    if (!name || !*name) return;
+    for (size_t i = 0; i < sizeof table / sizeof *table; i++) {
+        if (!strcmp(name, table[i].name)) {
+            d->anchor = table[i].edges;
+            d->align = table[i].align;
+            return;
+        }
+    }
+    fprintf(stderr, "pachud: PACHUD_ANCHOR \"%s\" is not one of top-right, top-left, top, "
+                    "bottom-right, bottom-left, bottom\n", name);
+}
+
 Display *display_open(void) {
     Display *d = calloc(1, sizeof *d);
     if (!d) return NULL;
@@ -258,6 +286,7 @@ Display *display_open(void) {
     wl_display_roundtrip(d->wl);  /* the output names arrive after the outputs are bound */
     const char *want = getenv("PACHUD_OUTPUT");
     d->want_output = want && *want ? want : NULL;
+    parse_anchor(d, getenv("PACHUD_ANCHOR"));
 
     int fixed = parse_scale120(getenv("PACHUD_SCALE"));  /* e.g. 1.5, 2; unset follows the compositor */
     d->scale120 = fixed ? fixed : SCALE_UNIT;
@@ -294,6 +323,7 @@ void display_close(Display *d) {
 
 int display_fd(Display *d) { return wl_display_get_fd(d->wl); }
 int display_scale(Display *d) { return d->scale120; }
+int display_align(Display *d) { return d->align; }
 void display_on_rescale(Display *d, void (*fn)(void)) { d->rescale_cb = fn; }
 
 int display_before_poll(Display *d) {
@@ -381,9 +411,9 @@ static void create_surface(Display *d) {
     d->surface = wl_compositor_create_surface(d->compositor);
     d->layer = zwlr_layer_shell_v1_get_layer_surface(d->layer_shell, d->surface, pick_output(d),
                                                      ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY, "pachud");
-    zwlr_layer_surface_v1_set_anchor(d->layer, ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM);
-    zwlr_layer_surface_v1_set_margin(d->layer, 0, 0, MARGIN_BOTTOM, 0);
-    zwlr_layer_surface_v1_set_exclusive_zone(d->layer, -1);
+    zwlr_layer_surface_v1_set_anchor(d->layer, d->anchor);
+    zwlr_layer_surface_v1_set_margin(d->layer, MARGIN, MARGIN, MARGIN, MARGIN);
+    zwlr_layer_surface_v1_set_exclusive_zone(d->layer, 0);  /* stay clear of bars and docks */
     zwlr_layer_surface_v1_set_keyboard_interactivity(d->layer,
         ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_NONE);
     zwlr_layer_surface_v1_add_listener(d->layer, &layer_listener, d);

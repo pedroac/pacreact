@@ -31,6 +31,8 @@ Buf *display_osd_buf(Display *dpy, int w, int h, cairo_t **cr);
 typedef enum { OSD_CENTER, OSD_TOP, OSD_BOTTOM } OsdAnchor;
 void display_osd_present(Display *dpy, Buf *buf, cairo_t *cr, OsdAnchor anchor);
 void display_osd_hide(Display *dpy);
+/* Where the stack sits horizontally within its surface: 0 left, 1 centre, 2 right (PACHUD_ANCHOR). */
+int display_align(Display *dpy);
 /* The scale buffers are rendered at, in 120ths (see scale.h). */
 int display_scale(Display *dpy);
 /* Called when the compositor reports a different preferred scale while a HUD is up: the owner

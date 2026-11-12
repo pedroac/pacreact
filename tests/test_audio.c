@@ -10,7 +10,7 @@
 #include <sys/timerfd.h>
 
 static int slider_calls;
-static char slider_label[128];
+static char slider_label[256];
 static int slider_pct;
 static bool slider_dim;
 

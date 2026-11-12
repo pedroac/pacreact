@@ -8,7 +8,7 @@
 
 | Command | Effect |
 |---|---|
-| `pachud toast [-l info\|warn\|crit] [-t SECONDS] TEXT...` | One-line message. `warn` and `crit` are alerts and queue (see below). |
+| `pachud toast [-l info\|warn\|crit] [-t SECONDS] TEXT...` | One-line message. `warn` and `crit` are alerts and wait for room when the stack is full (see below). |
 | `pachud slider PERCENT LABEL...` | A level bar. Useful from your own keybinds. |
 | `pachud timer DURATION [LABEL...]` | `90s`, `5m`, `1h30m`, up to 30 days. A unit is required: `5` is rejected. |
 | `pachud alarm [-r RECUR] [YYYY-MM-DD] HH:MM [LABEL...]` | The next such wall-clock time, today or tomorrow. With `-r` it repeats: `daily`, `weekdays`, `weekends`, or days such as `mon,wed,fri`. With a date (`pachud alarm 2026-12-25 07:30 …`) it fires once at that moment; a dated alarm cannot repeat. A recurring alarm stays in `pachud list` (shown as `[weekdays]`) and is rescheduled after it fires; occurrences missed while the daemon was down fire once. |
@@ -17,7 +17,7 @@
 | `pachud pause ID` / `resume ID` | Freeze a timer's remaining time, then continue it. Paused timers stay paused across restarts. Alarms cannot be paused. |
 | `pachud extend ID DURATION` | Add time to a timer or alarm (to the time left if paused). Up to 30 days ahead. |
 | `pachud cancel ID\|all` | Cancel one or all. |
-| `pachud dismiss` | Close what is on screen and show the next queued item. |
+| `pachud dismiss` | Close the newest alert on screen (the newest item if there is none). |
 | `pachud action [N]` | Invoke action N (default 1) of the notification card on screen. See [Actions](#actions). |
 | `pachud dnd [on [DURATION]\|off\|toggle\|status]` | Do not disturb: see below. |
 
@@ -25,8 +25,11 @@ Timers and alarms survive restarts: they are stored in `$XDG_STATE_HOME/pachud/t
 
 ## How HUDs stack
 
-- **Alerts** (warn/crit toasts, timers, battery, memory, every notification card) are queued in order and never lost, up to 8 waiting. The same alert text is not duplicated.
-- **Sliders and info toasts** are ephemeral: they take the screen for a moment and the alert they interrupted comes back afterwards.
+HUDs stack in one column, newest on top, in the top-right corner unless `PACHUD_ANCHOR` says otherwise. Each leaves on its own timeout, and the stack shows at most four.
+
+- **Alerts** (warn/crit toasts, timers, battery, memory, every notification card) are never lost: when the stack is full they wait in order for room, up to 8 waiting. The same alert text is not duplicated; showing it again refreshes the one on screen.
+- **Sliders and info toasts** are ephemeral. When the stack is full the oldest ephemeral one makes room; if everything shown is an alert, a new ephemeral one is dropped.
+- **Volume, microphone, audio output and brightness changes** are not part of the stack: they use a separate on-screen display in the middle of the screen, one at a time, gone a second after the last change.
 - Nothing can be clicked: the HUD is click-through, so use `pachud dismiss` on a key to close it early.
 
 ## Environment variables
@@ -34,6 +37,7 @@ Timers and alarms survive restarts: they are stored in `$XDG_STATE_HOME/pachud/t
 | Variable | Default | Meaning |
 |---|---|---|
 | `PACHUD_SCALE` | follows the compositor | Pin the render scale, 1 to 4 and fractions allowed (`1.5`). Normally unnecessary: pachud uses the scale the compositor asks for, per monitor. |
+| `PACHUD_ANCHOR` | `top-right` | Where the HUD stack sits: `top-right`, `top-left`, `top`, `bottom-right`, `bottom-left` or `bottom`. The stack keeps clear of bars and docks. |
 | `PACHUD_OUTPUT` | unset | Show HUDs on this monitor (`DP-1`, `HDMI-A-1`, ... as in `hyprctl monitors`). Unset lets the compositor choose, usually the focused one. An unknown name is reported once on stderr with the names that exist, and the compositor's choice is used. |
 | `PACHUD_FADE_MS` | 120 | Fade in/out duration in milliseconds; `0` turns the fade off. |
 | `PACHUD_PROBE_HOST` | unset | IPv4 address to ping for the slowdown alert. Unset means the probe does not exist. |
@@ -114,7 +118,7 @@ pachud action 2      # the second action of the card on screen
 pachud action        # the first one
 ```
 
-pachud tells the app (`ActionInvoked`) and closes the card. At most three actions are shown. The special `default` action ("the user clicked the notification") is not shown as a button unless it is the card's only action, in which case it appears as `[1] Open`. Only the card on screen can be acted on; queued cards are not available until they are shown. A Hyprland example:
+pachud tells the app (`ActionInvoked`) and closes the card. At most three actions are shown. The special `default` action ("the user clicked the notification") is not shown as a button unless it is the card's only action, in which case it appears as `[1] Open`. Actions apply to the newest card on screen; cards waiting for room are not available until they are shown. A Hyprland example:
 
 ```lua
 hl.bind("SUPER + 1", hl.dsp.exec_cmd("~/.local/bin/pachud action 1"))

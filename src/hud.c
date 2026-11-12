@@ -21,9 +21,8 @@
 #define ACTION_GAP 6
 #define OSD_TIMEOUT_MS 1000
 
-static long long deadline_ms, osd_deadline_ms;
+static long long osd_deadline_ms;
 static bool osd_visible;
-static bool visible;
 static Display *dpy;
 
 static long long now_ms(void) {
@@ -81,19 +80,19 @@ static void toast_line(const char *text, char *out, size_t n) {
     ellipsize(line, MAX_TEXT_W, FONT_SIZE, false, out, n);
 }
 
-static void draw_toast(const char *text, Level level) {
+/* The paint_* functions draw one item with its top-left at the origin of cr, or only measure it
+ * when cr is NULL; either way they report the item's size. */
+static void paint_toast(cairo_t *cr, const char *text, Level level, int *ow, int *oh) {
     char line[512];
     toast_line(text, line, sizeof line);
 
-    /* The buffer must be sized up front, so measure first. */
     double ascent, height;
     text_extents(line, FONT_SIZE, false, &ascent, &height);
     double tw = text_width(line, (int)strlen(line), FONT_SIZE, false);
     int w = (int)ceil(tw) + 2 * PAD + BAR, h = (int)ceil(height) + 2 * PAD;
-
-    cairo_t *cr;
-    Buf *buf = display_buf(dpy, w, h, &cr);
-    if (!buf) return;
+    *ow = w;
+    *oh = h;
+    if (!cr) return;
 
     double rgb[3];
     accent(level, rgb);
@@ -109,21 +108,18 @@ static void draw_toast(const char *text, Level level) {
     cairo_clip(cr);
     cairo_set_source_rgb(cr, 0.93, 0.93, 0.95);
     text_draw(cr, line, x, PAD + ascent, FONT_SIZE, false);
-
-    display_present(dpy, buf, cr);
 }
 
 #define SLIDER_W 300
 #define SLIDER_H 64
 #define TRACK_H 6
 
-static void draw_slider(const char *label, int percent, bool dim) {
+static void paint_slider(cairo_t *cr, const char *label, int percent, bool dim, int *ow, int *oh) {
+    *ow = SLIDER_W;
+    *oh = SLIDER_H;
+    if (!cr) return;
     if (percent < 0) percent = 0;
     int fill = percent > 100 ? 100 : percent;
-
-    cairo_t *cr;
-    Buf *buf = display_buf(dpy, SLIDER_W, SLIDER_H, &cr);
-    if (!buf) return;
 
     paint_bg(cr, SLIDER_W, SLIDER_H);
     double ascent, height;
@@ -151,16 +147,17 @@ static void draw_slider(const char *label, int percent, bool dim) {
         else cairo_set_source_rgb(cr, 0.40, 0.65, 1.00);
         cairo_fill(cr);
     }
-    display_present(dpy, buf, cr);
 }
 
-/* What is on screen, and what is waiting. Alerts (warn/crit toasts and every card) are never
- * lost: they queue behind each other. An ephemeral HUD (slider, info toast) takes the screen
- * only briefly, pushing the alert it interrupted back to the front of the queue. */
+/* What is on screen, and what is waiting. Items stack in one column, newest on top, each with its
+ * own timeout. Alerts (warn/crit toasts and every card) are never lost: when the stack is full
+ * they wait in a queue for room. Ephemeral items (slider, info toast) never wait: a full stack
+ * makes room by dropping the oldest ephemeral one, or the new one is dropped if there is none. */
 typedef struct {
     bool slider, dim, card;
     Level level;
     int ms, percent;
+    long long deadline;   /* when it leaves the screen, on the monotonic clock */
     uint32_t id;
     char text[256];   /* toast text, slider label or card summary */
     char body[512];
@@ -172,12 +169,13 @@ typedef struct {
     uint8_t image[IMAGE_BYTES];  /* last: copies stop before it unless has_image */
 } Item;
 
+#define STACK_MAX 4
+#define STACK_GAP 8
 #define QUEUE_MAX 8
 #define SLIDER_MS 1500
-#define MIN_RESUME_MS 2000
 
-static Item cur, queue[QUEUE_MAX];
-static int queued;
+static Item stack[STACK_MAX], queue[QUEUE_MAX];
+static int nstack, queued;
 
 /* Items carry a 16 KB icon buffer that most of them do not use, so copies leave it out. */
 static void item_copy(Item *dst, const Item *src) {
@@ -290,7 +288,7 @@ static cairo_surface_t *load_icon(const char *path) {
     return img;
 }
 
-static void draw_card(const Item *it) {
+static void paint_card(cairo_t *cr, const Item *it, int *ow, int *oh) {
     char body[512], summary[256];
     strip_markup(it->body, body, sizeof body);
     snprintf(summary, sizeof summary, "%s", it->text);
@@ -332,9 +330,9 @@ static void draw_card(const Item *it) {
     if (icon && content < CARD_ICON) content = CARD_ICON;
     int h = (int)ceil(content) + 2 * PAD;
 
-    cairo_t *cr;
-    Buf *buf = display_buf(dpy, CARD_W, h, &cr);
-    if (!buf) { if (icon) cairo_surface_destroy(icon); return; }
+    *ow = CARD_W;
+    *oh = h;
+    if (!cr) { if (icon) cairo_surface_destroy(icon); return; }
 
     double rgb[3];
     accent(it->level, rgb);
@@ -372,7 +370,6 @@ static void draw_card(const Item *it) {
         double y = PAD + sheight + (nl ? 4 + nl * bheight : 0) + ACTION_GAP + aasc;
         text_draw(cr, actions, mirror(x0, actions_w, CARD_W), y, ACTION_SIZE, false);
     }
-    display_present(dpy, buf, cr);
 }
 
 static bool is_alert(const Item *it) { return it->card || (!it->slider && it->level != LEVEL_INFO); }
@@ -381,35 +378,63 @@ static void closed(const Item *it, int reason) {
     if (it->id && closed_cb && reason) closed_cb(it->id, reason);
 }
 
-static void draw_item(const Item *it) {
-    if (it->slider) draw_slider(it->text, it->percent, it->dim);
-    else if (it->card) draw_card(it);
-    else draw_toast(it->text, it->level);
+static void paint_item(cairo_t *cr, const Item *it, int *w, int *h) {
+    if (it->slider) paint_slider(cr, it->text, it->percent, it->dim, w, h);
+    else if (it->card) paint_card(cr, it, w, h);
+    else paint_toast(cr, it->text, it->level, w, h);
+}
+
+/* Draws the whole stack into one buffer, so a change in any item is one redraw. */
+static void render(void) {
+    if (!nstack) {
+        display_hide(dpy);
+        return;
+    }
+    int w[STACK_MAX], h[STACK_MAX], cw = 0, ch = 0;
+    for (int i = 0; i < nstack; i++) {
+        paint_item(NULL, &stack[i], &w[i], &h[i]);
+        if (w[i] > cw) cw = w[i];
+        ch += h[i] + (i ? STACK_GAP : 0);
+    }
+    cairo_t *cr;
+    Buf *buf = display_buf(dpy, cw, ch, &cr);
+    if (!buf) return;
+    int y = 0;
+    for (int i = 0; i < nstack; i++) {
+        int dw, dh;
+        cairo_save(cr);
+        cairo_translate(cr, (cw - w[i]) * display_align(dpy) / 2.0, y);
+        paint_item(cr, &stack[i], &dw, &dh);
+        cairo_restore(cr);
+        y += h[i] + STACK_GAP;
+    }
+    display_present(dpy, buf, cr);
 }
 
 /* The compositor wants a different scale: draw what is on screen again, timers untouched. */
-static void on_rescale(void) {
-    if (visible) draw_item(&cur);
+static void on_rescale(void) { render(); }
+
+static void stack_insert(int at, const Item *it) {
+    for (int i = nstack; i > at; i--) item_copy(&stack[i], &stack[i - 1]);
+    item_copy(&stack[at], it);
+    nstack++;
 }
 
-static void start(const Item *it) {
-    item_copy(&cur, it);
-    draw_item(it);
-    visible = true;
-    deadline_ms = now_ms() + it->ms;
+/* Leaves the stack (reason 0: silently). */
+static void stack_remove_at(int i, int reason) {
+    closed(&stack[i], reason);
+    for (; i + 1 < nstack; i++) item_copy(&stack[i], &stack[i + 1]);
+    nstack--;
 }
 
-/* Leaves the current item (reason 0: silently) and shows the next one, if any. */
-static void advance(int reason) {
-    closed(&cur, reason);
-    if (queued) {
+/* Room appeared: the oldest waiting alerts take it, below what is already shown. */
+static void refill(void) {
+    while (nstack < STACK_MAX && queued) {
         static Item next;
         item_copy(&next, &queue[0]);
         queue_remove_at(0);
-        start(&next);
-    } else {
-        display_hide(dpy);
-        visible = false;
+        next.deadline = now_ms() + next.ms;
+        stack_insert(nstack, &next);
     }
 }
 
@@ -419,41 +444,58 @@ static bool queued_text(const char *text) {
     return false;
 }
 
-static void push_front(const Item *it) {
-    if (queued == QUEUE_MAX) closed(&queue[--queued], HUD_CLOSED_OTHER);
-    for (int i = queued; i > 0; i--) item_copy(&queue[i], &queue[i - 1]);
-    item_copy(&queue[0], it);
-    queued++;
-}
-
 static void enqueue(const Item *it) {
     if (queued == QUEUE_MAX) closed(it, HUD_CLOSED_OTHER);
     else item_copy(&queue[queued++], it);
 }
 
-static void submit(const Item *it) {
-    if (it->id) {  /* a replacement for a card we already hold */
-        if (visible && cur.id == it->id) { start(it); return; }
+/* The stack position of what `it` replaces: the card with the same id, or for a toast or slider
+ * the same text. */
+static int find_same(const Item *it) {
+    for (int i = 0; i < nstack; i++) {
+        if (it->id) {
+            if (stack[i].id == it->id) return i;
+        } else if (!stack[i].card && !stack[i].id && stack[i].slider == it->slider &&
+                   !strcmp(stack[i].text, it->text)) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+static int oldest_ephemeral(void) {
+    for (int i = nstack - 1; i >= 0; i--)
+        if (!is_alert(&stack[i])) return i;
+    return -1;
+}
+
+static void submit(const Item *in) {
+    static Item add;
+    item_copy(&add, in);
+    add.deadline = now_ms() + add.ms;
+
+    int same = find_same(&add);
+    if (same >= 0) {  /* refreshed where it is, with a new timeout */
+        item_copy(&stack[same], &add);
+        render();
+        return;
+    }
+    if (add.id) {
         for (int i = 0; i < queued; i++)
-            if (queue[i].id == it->id) { item_copy(&queue[i], it); return; }
+            if (queue[i].id == add.id) { item_copy(&queue[i], &add); return; }
     }
 
-    if (!visible) {
-        start(it);
-    } else if (is_alert(it)) {
-        if (!is_alert(&cur)) start(it);
-        else if (!it->card && !cur.card && !strcmp(cur.text, it->text)) start(it);  /* refresh */
-        else if (it->card || !queued_text(it->text)) enqueue(it);
-    } else {
-        if (is_alert(&cur)) {
-            static Item resumed;
-            item_copy(&resumed, &cur);
-            long long left = deadline_ms - now_ms();
-            resumed.ms = left > MIN_RESUME_MS ? (int)left : MIN_RESUME_MS;
-            push_front(&resumed);
+    if (nstack == STACK_MAX) {
+        int old = oldest_ephemeral();
+        if (old >= 0) {
+            stack_remove_at(old, 0);
+        } else {
+            if (is_alert(&add) && (add.card || !queued_text(add.text))) enqueue(&add);
+            return;
         }
-        start(it);
     }
+    stack_insert(0, &add);
+    render();
 }
 
 void hud_toast(const char *text, Level level, int timeout_ms) {
@@ -519,16 +561,31 @@ void hud_card(const HudCard *c) {
 }
 
 const char *hud_action_key(int n, uint32_t *id) {
-    if (!visible || !cur.card || n < 1 || n > cur.nact) return NULL;
-    *id = cur.id;
-    return cur.act_key[n - 1];
+    for (int i = 0; i < nstack; i++) {
+        if (!stack[i].card) continue;
+        if (n < 1 || n > stack[i].nact) return NULL;
+        *id = stack[i].id;
+        return stack[i].act_key[n - 1];
+    }
+    return NULL;
 }
 
 void hud_on_closed(HudClosedFn fn) { closed_cb = fn; }
 
+static void left_the_stack(void) {
+    refill();
+    render();
+}
+
 bool hud_remove(uint32_t id) {
     if (!id) return false;
-    if (visible && cur.id == id) { advance(0); return true; }
+    for (int i = 0; i < nstack; i++) {
+        if (stack[i].id == id) {
+            stack_remove_at(i, 0);
+            left_the_stack();
+            return true;
+        }
+    }
     for (int i = 0; i < queued; i++) {
         if (queue[i].id == id) {
             queue_remove_at(i);
@@ -538,61 +595,60 @@ bool hud_remove(uint32_t id) {
     return false;
 }
 
+bool hud_dismiss_id(uint32_t id) {
+    for (int i = 0; id && i < nstack; i++) {
+        if (stack[i].id == id) {
+            stack_remove_at(i, HUD_CLOSED_DISMISSED);
+            left_the_stack();
+            return true;
+        }
+    }
+    return false;
+}
+
 void hud_dismiss(void) {
-    if (visible) advance(HUD_CLOSED_DISMISSED);
+    if (!nstack) return;
+    int i = 0;
+    for (int k = 0; k < nstack; k++) {
+        if (is_alert(&stack[k])) { i = k; break; }
+    }
+    stack_remove_at(i, HUD_CLOSED_DISMISSED);
+    left_the_stack();
 }
 
 int hud_timeout_ms(void) {
-    long long now = now_ms(), soonest = -1;
-    if (visible) soonest = deadline_ms;
+    long long soonest = -1;
+    for (int i = 0; i < nstack; i++)
+        if (soonest < 0 || stack[i].deadline < soonest) soonest = stack[i].deadline;
     if (osd_visible && (soonest < 0 || osd_deadline_ms < soonest)) soonest = osd_deadline_ms;
     if (soonest < 0) return -1;
-    return soonest < now ? 0 : (int)(soonest - now);
+    long long left = soonest - now_ms();
+    return left < 0 ? 0 : (int)left;
 }
 
 void hud_tick(void) {
-    if (visible && now_ms() >= deadline_ms) advance(HUD_CLOSED_EXPIRED);
-    if (osd_visible && now_ms() >= osd_deadline_ms) hud_osd_hide();
+    long long now = now_ms();
+    bool changed = false;
+    for (int i = nstack - 1; i >= 0; i--) {
+        if (now >= stack[i].deadline) {
+            stack_remove_at(i, HUD_CLOSED_EXPIRED);
+            changed = true;
+        }
+    }
+    if (changed) left_the_stack();
+    if (osd_visible && now >= osd_deadline_ms) hud_osd_hide();
 }
 
 /* ---- OSD (on-screen display): center-positioned user feedback ---- */
 
 
 void hud_osd_slider(const char *label, int percent, bool dim, OsdAnchor anchor) {
-    if (percent < 0) percent = 0;
-    int fill = percent > 100 ? 100 : percent;
-
+    int w, h;
+    paint_slider(NULL, label, percent, dim, &w, &h);
     cairo_t *cr;
-    Buf *buf = display_osd_buf(dpy, SLIDER_W, SLIDER_H, &cr);
+    Buf *buf = display_osd_buf(dpy, w, h, &cr);
     if (!buf) return;
-
-    paint_bg(cr, SLIDER_W, SLIDER_H);
-    double ascent, height;
-    text_extents(label, FONT_SIZE, false, &ascent, &height);
-    cairo_set_source_rgb(cr, 0.93, 0.93, 0.95);
-    double lw = text_width(label, (int)strlen(label), FONT_SIZE, false);
-    text_draw(cr, label, mirror(PAD, lw, SLIDER_W), 12 + ascent, FONT_SIZE, false);
-
-    char pct[16];
-    snprintf(pct, sizeof pct, "%d%%", percent);
-    double pw = text_width(pct, (int)strlen(pct), FONT_SIZE, false);
-    text_draw(cr, pct, mirror(SLIDER_W - PAD - pw, pw, SLIDER_W), 12 + ascent, FONT_SIZE, false);
-
-    double tw = SLIDER_W - 2 * PAD, ty = SLIDER_H - PAD - TRACK_H + 2;
-    cairo_reset_clip(cr);
-    round_rect(cr, PAD, ty, tw, TRACK_H, TRACK_H / 2.0);
-    cairo_set_source_rgba(cr, 1, 1, 1, 0.15);
-    cairo_fill(cr);
-    if (fill > 0) {
-        double fw = tw * fill / 100;
-        if (fw < TRACK_H) fw = TRACK_H;
-        round_rect(cr, text_rtl() ? PAD + tw - fw : PAD, ty, fw, TRACK_H, TRACK_H / 2.0);
-        if (dim) cairo_set_source_rgb(cr, 0.55, 0.55, 0.60);
-        else if (percent > 100) cairo_set_source_rgb(cr, 1.00, 0.75, 0.25);
-        else cairo_set_source_rgb(cr, 0.40, 0.65, 1.00);
-        cairo_fill(cr);
-    }
-
+    paint_slider(cr, label, percent, dim, &w, &h);
     display_osd_present(dpy, buf, cr, anchor);
     osd_visible = true;
     osd_deadline_ms = now_ms() + OSD_TIMEOUT_MS;

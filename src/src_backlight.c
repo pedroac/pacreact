@@ -25,7 +25,7 @@ static void on_change(void *ctx, uint32_t ev) {
     long v = read_long(fd);  /* reading also re-arms the sysfs notification */
     if (v < 0 || v == last) return;
     last = v;
-    hud_slider(_("Brightness"), (int)(v * 100 / max_brightness), false);
+    hud_osd_slider(_("Brightness"), (int)(v * 100 / max_brightness), false, OSD_CENTER);
 }
 
 void backlight_init(void) {

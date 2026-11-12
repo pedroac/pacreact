@@ -9,9 +9,10 @@
 typedef enum { LEVEL_INFO, LEVEL_WARN, LEVEL_CRIT } Level;
 
 void hud_init(Display *dpy);
-/* Shows (or replaces) a one-line toast for timeout_ms. */
+/* Shows a one-line toast for timeout_ms, stacked with the others. The same text again refreshes
+ * the one already shown. */
 void hud_toast(const char *text, Level level, int timeout_ms);
-/* Shows (or replaces) a labelled level bar. Values above 100 are shown but the bar stays
+/* Shows (or refreshes) a labelled level bar in the stack. Values above 100 are shown but the bar stays
  * full; dim greys it out (muted). */
 void hud_slider(const char *label, int percent, bool dim);
 
@@ -22,7 +23,8 @@ void hud_osd_hide(void);
 
 /* A notification card: summary, wrapped body, an optional icon (raw pixels, else a PNG path)
  * and optional actions. A card with the id of one already on screen or queued replaces it in
- * place. Cards queue rather than replace each other. Every string is copied. */
+ * place. Cards stack, newest on top; when the stack is full they wait for room. Every string
+ * is copied. */
 typedef struct {
     uint32_t id;
     const char *summary, *body;
@@ -36,9 +38,9 @@ typedef struct {
 
 void hud_card(const HudCard *card);
 
-/* The key of the n-th (1-based) action shown on the card on screen, or NULL if the card has
- * no such action. Also gives the card's notification id. The key stays valid until the HUD
- * changes. The "default" action is only offered when it is the card's only one. */
+/* The key of the n-th (1-based) action of the newest card on screen, or NULL if it has no such
+ * action. Also gives the card's notification id. The key stays valid until the HUD changes.
+ * The "default" action is only offered when it is the card's only one. */
 const char *hud_action_key(int n, uint32_t *id);
 
 /* Reasons passed to the closed callback, matching the notification spec. */
@@ -49,8 +51,10 @@ typedef void (*HudClosedFn)(uint32_t id, int reason);
 void hud_on_closed(HudClosedFn fn);
 /* Silently removes a card, shown or queued. Returns whether it existed. */
 bool hud_remove(uint32_t id);
-/* Closes what is on screen and moves to the next queued item. */
+/* Closes the newest alert on screen (or the newest item when there is none). */
 void hud_dismiss(void);
+/* Closes the item with this id as dismissed by the user. Returns whether it was on screen. */
+bool hud_dismiss_id(uint32_t id);
 
 /* Milliseconds until the visible HUD expires, or -1 when nothing is shown. */
 int hud_timeout_ms(void);

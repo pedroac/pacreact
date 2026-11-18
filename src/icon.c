@@ -4,8 +4,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include "tunables.h"
 
-#define CACHE 16
 
 static const int sizes[] = { 48, 64, 32, 96, 128, 256, 24, 22, 16 };
 static const char *const contexts[] = { "apps", "status", "devices", "actions", "places",
@@ -111,9 +111,9 @@ bool icon_find(const char *spec, char *out, size_t n) {
 
     /* The same few names come back over and over (every notification from an app). Only hits
      * are remembered, so an icon installed later is found without a restart. */
-    static struct { char name[128]; char path[512]; } cache[CACHE];
+    static struct { char name[128]; char path[512]; } cache[ICON_CACHE];
     static int next;
-    for (int i = 0; i < CACHE; i++) {
+    for (int i = 0; i < ICON_CACHE; i++) {
         if (cache[i].name[0] && !strcmp(cache[i].name, spec) && readable(cache[i].path)) {
             return put(out, n, cache[i].path);
         }
@@ -122,7 +122,7 @@ bool icon_find(const char *spec, char *out, size_t n) {
     char path[512];
     bool found = lookup(spec, path, sizeof path);
     if (found) {
-        int slot = next++ % CACHE;
+        int slot = next++ % ICON_CACHE;
         snprintf(cache[slot].name, sizeof cache[slot].name, "%s", spec);
         snprintf(cache[slot].path, sizeof cache[slot].path, "%s", path);
         return put(out, n, path);

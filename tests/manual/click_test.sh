@@ -6,7 +6,7 @@
 # does the clicking. Screenshots land in build/shots/.
 cd "$(dirname "$0")/../.."
 mkdir -p build/shots
-R=$(mktemp -d /tmp/pachud-click-XXXXXX)
+R=$(mktemp -d /tmp/pacreact-click-XXXXXX)
 chmod 700 "$R"
 S=tests/manual
 for kind in client-header private-code; do
@@ -23,7 +23,7 @@ C=$!
 trap 'kill $C $P 2>/dev/null; rm -rf $R' EXIT
 for i in $(seq 1 50); do [ -S $R/wayland-0 ] && break; sleep 0.1; done
 [ -S $R/wayland-0 ] || { echo "labwc did not start:"; cat $R/labwc.log; exit 1; }
-export WAYLAND_DISPLAY=$R/wayland-0 XDG_STATE_HOME=$R/state PACHUD_SOUND=0 PACHUD_FADE_MS=0
+export WAYLAND_DISPLAY=$R/wayland-0 XDG_STATE_HOME=$R/state
 
 # One virtual pointer for the whole test, driven through a FIFO: making and destroying one per
 # click made labwc drop events unpredictably.
@@ -40,7 +40,7 @@ click_at() {   # click_at X Y [BUTTON]: travel there like a hand, then click
 }
 
 fail=0
-# The nested labwc sometimes loses a click (pachud then sees no pointer event at all), so a click
+# The nested labwc sometimes loses a click (pacreact then sees no pointer event at all), so a click
 # that has to have an effect is repeated, up to three times, until that effect is seen. A click
 # that never works still fails the test.
 click_until() {   # click_until CONDITION X Y [BUTTON]
@@ -53,9 +53,9 @@ click_until() {   # click_until CONDITION X Y [BUTTON]
     return 1
 }
 
-run_case() {  # run_case LABEL PACHUD_CLICK-VALUE EXPECT (gone|stays)
-    echo "== $1 (PACHUD_CLICK='$2')"
-    PACHUD_CLICK=$2 ./pachud 2> $R/stderr &
+run_case() {  # run_case LABEL click-VALUE EXPECT (gone|stays)
+    echo "== $1 (click='$2')"
+    tests/manual/pacreact-with.sh click=$2 2> $R/stderr &
     P=$!
     sleep 1.5
     notify-send -t 20000 -A default=Open "Click me" "a card with a default action" > $R/chosen &
@@ -80,7 +80,7 @@ resident_case() {
     echo "== resident"
     dbus-monitor "type='signal',interface='org.freedesktop.Notifications'" > $R/signals 2>&1 &
     MON=$!
-    ./pachud 2> $R/stderr &
+    tests/manual/pacreact-with.sh 2> $R/stderr &
     P=$!
     sleep 1.5
     check() { if eval "$2"; then echo "ok:   $1"; else echo "FAIL: $1"; fail=1; fi; }
@@ -93,9 +93,9 @@ resident_case() {
         4 default Open reply Reply 1 resident b true 20000 > /dev/null
     sleep 0.7
     grim -o HEADLESS-1 build/shots/click_resident_before.png
-    ./pachud action 1 >/dev/null   # `default` is not numbered when real actions exist
+    ./pacreact action 1 >/dev/null   # `default` is not numbered when real actions exist
     sleep 0.4
-    check "pachud action sends ActionInvoked(reply)" 'invoked reply'
+    check "pacreact action sends ActionInvoked(reply)" 'invoked reply'
     check "...and the resident card is not closed" '! closed 2'
     click_until 'invoked default' 1000 40
     grim -o HEADLESS-1 build/shots/click_resident_after.png

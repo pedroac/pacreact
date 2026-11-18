@@ -2,6 +2,7 @@
  * hud.c is included so its statics are reachable; drawing and time are stubbed: no surface
  * is ever created, and the clock only moves when the test says so. */
 #include <assert.h>
+#include "setting.h"
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -21,6 +22,7 @@ static int fake_clock_gettime(clockid_t c, struct timespec *ts) {
 
 #include "../src/display.h"
 #include "../src/sicon.h"
+#include "speech.h"
 #include "../src/text.h"
 
 static int hides;
@@ -39,6 +41,17 @@ void display_set_click_rects(Display *d, int area, const ClickRect *r, int n) {
 }
 void display_on_click(Display *d, void (*fn)(int, int, int, bool)) { (void)d; (void)fn; }
 void display_on_hover(Display *d, void (*fn)(int, int, int, bool)) { (void)d; (void)fn; }
+/* Speech: what would have been said, last */
+static char said[2400];
+static int said_count;
+void speech_say_as(SpeechPriority priority, const char *text) {
+    assert(priority == SPEECH_MESSAGE);
+    snprintf(said, sizeof said, "%s", text);
+    said_count++;
+}
+double display_px_per_mm(Display *d) { (void)d; return 96 / 25.4; }
+int display_output_width(Display *d) { (void)d; return 1920; }
+int display_output_short_side(Display *d) { (void)d; return 1080; }
 static int deck_hides, deck_presents;
 static bool deck_is_apart = true;
 void display_deck_present(Display *d, Buf *b, cairo_t *cr) { (void)d; (void)b; (void)cr; deck_presents++; }
@@ -522,11 +535,15 @@ static void write_png(const char *name, int w, int h, double r, double g, double
 
 static void ipath(char *out, size_t n, const char *name) { snprintf(out, n, "%s/%s", icondir, name); }
 
-static uint32_t pixel(const uint8_t *img, int x, int y) { return ((const uint32_t *)img)[y * IMAGE_PX + x]; }
+static uint32_t pixel(const uint8_t *img, int x, int y) {
+    uint32_t v;
+    memcpy(&v, img + (size_t)(y * IMAGE_PX + x) * sizeof v, sizeof v);
+    return v;
+}
 
 static void test_icon_files(void) {
     alarm(20);   /* a blocking read on a pipe must fail the test, not hang it */
-    snprintf(icondir, sizeof icondir, "/tmp/pachud-icons-XXXXXX");
+    snprintf(icondir, sizeof icondir, "/tmp/pacreact-icons-XXXXXX");
     assert(mkdtemp(icondir));
     static uint8_t img[IMAGE_BYTES];
     char p[160];
@@ -1194,7 +1211,7 @@ static void test_deck_moves(void) {
     deck_is_apart = true;
 }
 
-/* ---- sizes: PACHUD_FONT_SIZE and PACHUD_WIDTH ---- */
+/* ---- sizes: font_size and width ---- */
 
 static void test_sizes(void) {
     int w, h;
@@ -1267,46 +1284,171 @@ static void test_sizes(void) {
     paint_configure(0, 0);
 }
 
-/* The environment: PACHUD_FONT_SIZE and PACHUD_WIDTH, whole numbers of pixels */
+/* The environment: font_size and width, whole numbers of pixels */
 static void test_size_environment(void) {
-    unsetenv("PACHUD_FONT_SIZE");
-    unsetenv("PACHUD_WIDTH");
+    pac_setting_set("font_size", NULL);
+    pac_setting_set("width", NULL);
     paint_init();
     assert(paint_px(16) == 16 && paint_item_w() == 380);
 
-    setenv("PACHUD_FONT_SIZE", "24", 1);
-    setenv("PACHUD_WIDTH", "500", 1);
+    pac_setting_set("font_size", "24");
+    pac_setting_set("width", "500");
     paint_init();
     assert(paint_px(16) == 24 && paint_item_w() == 500);
 
-    setenv("PACHUD_FONT_SIZE", "99", 1);                         /* too large: the largest */
-    setenv("PACHUD_WIDTH", "10", 1);                             /* too small: the smallest */
+    pac_setting_set("font_size", "99");                         /* too large: the largest */
+    pac_setting_set("width", "10");                             /* too small: the smallest */
     paint_init();
     assert(paint_px(16) == 48 && paint_item_w() == PAINT_WIDTH_MIN);
 
-    /* Not whole numbers of pixels: said so, and the default stays */
-    const char *bad[] = { "abc", "20px", "1.5", "20 ", "" };
+    /* Neither whole numbers of pixels nor lengths: said so, and the default stays */
+    const char *bad[] = { "abc", "1.5", "20 ", "20kg", "-3mm", "mm", "" };
     for (size_t i = 0; i < sizeof bad / sizeof *bad; i++) {
-        setenv("PACHUD_FONT_SIZE", bad[i], 1);
-        setenv("PACHUD_WIDTH", bad[i], 1);
+        pac_setting_set("font_size", bad[i]);
+        pac_setting_set("width", bad[i]);
         paint_init();
         assert(paint_px(16) == 16 && paint_item_w() == 380);
     }
 
-    setenv("PACHUD_FONT_SIZE", "0", 1);                          /* zero and negatives are out of range: the smallest */
-    setenv("PACHUD_WIDTH", "-4", 1);
+    pac_setting_set("font_size", "0");                          /* zero and negatives are out of range: the smallest */
+    pac_setting_set("width", "-4");
     paint_init();
     assert(paint_px(16) == PAINT_FONT_MIN && paint_item_w() == PAINT_WIDTH_MIN);
 
-    setenv("PACHUD_FONT_SIZE", " 20", 1);                       /* a stray space in front is forgiven */
-    unsetenv("PACHUD_WIDTH");
+    pac_setting_set("font_size", " 20");                       /* a stray space in front is forgiven */
+    pac_setting_set("width", NULL);
     paint_init();
     assert(paint_px(16) == 20 && paint_item_w() == 475);
 
-    unsetenv("PACHUD_FONT_SIZE");
-    unsetenv("PACHUD_WIDTH");
+    /* Lengths: the same real size on every screen. 96 dpi is 3.7795 px/mm; 200 px/mm is a made-up one */
+    double dpmm = 96 / 25.4;
+    pac_setting_set("font_size", "20px");                       /* a unit of pixels is pixels */
+    pac_setting_set("width", "10cm");                           /* not a unit we know */
+    paint_init();
+    assert(paint_px(16) == 20 && paint_item_w() == 475);       /* the width follows the font */
+    pac_setting_set("font_size", "5mm");                        /* 18.9 px */
+    pac_setting_set("width", "4in");                            /* 384 px */
+    pac_setting_set("icon_size", "10pt");                       /* 13.3 px */
+    paint_init();
+    paint_set_screen(dpmm, 1000, 0);
+    assert(paint_px(16) == 19 && paint_item_w() == 384 && sicon_size() == 13);
+    paint_set_screen(2 * dpmm, 1000, 0);                           /* a screen with twice the dots: twice the pixels */
+    assert(paint_px(16) == 38 && paint_item_w() == 768 && sicon_size() == 27);
+    pac_setting_set("font_size", "2%");                         /* of the width: 20 px at 1000 */
+    pac_setting_set("width", "50%");
+    pac_setting_set("icon_size", NULL);
+    paint_init();
+    paint_set_screen(dpmm, 1000, 0);
+    assert(paint_px(16) == 20 && paint_item_w() == 500);
+    paint_set_screen(dpmm, 100000, 0);                             /* too much: the largest */
+    assert(paint_px(16) == 48 && paint_item_w() == PAINT_WIDTH_MAX);
+    pac_setting_set("icon_size", NULL);
+
+    pac_setting_set("font_size", NULL);
+    pac_setting_set("width", NULL);
     paint_init();
     assert(paint_px(16) == 16 && paint_item_w() == 380);
+}
+
+/* ---- speech: what is said of what is shown ---- */
+
+static void test_speech(void) {
+    reset();
+    hud_set_speech(true);   /* only the speech test turns it on: a waiting bar would shorten every other timeout */
+    said[0] = '\0';
+    said_count = 0;
+    hud_toast("Battery at 20%", LEVEL_INFO, 1000);
+    assert(!strcmp(said, "Battery at 20%") && said_count == 1);          /* information: just what it says */
+    hud_toast("Battery at 10%", LEVEL_WARN, 1000);
+    assert(!strcmp(said, "Warning. Battery at 10%"));                     /* colour alone would not tell */
+    hud_toast("Battery at 3%", LEVEL_CRIT, 1000);
+    assert(!strcmp(said, "Critical. Battery at 3%"));
+    int count = said_count;
+    hud_toast("Battery at 3%", LEVEL_CRIT, 1000);                         /* the same message again: shown again, not said again */
+    assert(said_count == count);
+    card(7, "Mail", "from Bob", LEVEL_INFO, 1000);
+    assert(!strcmp(said, "Mail. from Bob"));                              /* summary, then body */
+    card(8, "Done", "", LEVEL_INFO, 1000);
+    assert(!strcmp(said, "Done"));                                        /* no empty body */
+    /* A bar is said where it stops, not at each step of a key held down */
+    count = said_count;
+    hud_slider("Volume", 40, false, NULL);
+    fake_ms += 100;
+    hud_slider("Volume", 50, false, NULL);
+    fake_ms += 100;
+    hud_slider("Volume", 60, false, NULL);
+    hud_tick();
+    assert(said_count == count);                                          /* still moving: nothing said */
+    fake_ms += SPEECH_SLIDER_SETTLE_MS;
+    assert(hud_timeout_ms() <= 0 + 1);
+    hud_tick();
+    assert(!strcmp(said, "Volume 60%") && said_count == count + 1);
+    hud_tick();
+    assert(said_count == count + 1);                                      /* and once */
+    hud_osd_slider("Brightness", 70, false, OSD_CENTER, NULL);
+    hud_toast("Done", LEVEL_INFO, 1000);                                  /* a message is not cut off by the bar */
+    fake_ms += SPEECH_SLIDER_SETTLE_MS;
+    hud_tick();
+    assert(!strcmp(said, "Done"));
+    hud_osd_clock("14:32", "Thursday");
+    assert(!strcmp(said, "14:32, Thursday"));
+    hud_osd_clock("14:32", "");
+    assert(!strcmp(said, "14:32"));
+
+    /* A long notification fits what is said, whole */
+    char body[PAINT_BODY_MAX];
+    memset(body, 'b', sizeof body - 1);
+    body[sizeof body - 1] = '\0';
+    card(9, "Long", body, LEVEL_CRIT, 1000);
+    assert(strlen(said) == strlen("Critical. Long. ") + strlen(body));
+    reset();
+}
+
+/* ---- text_size_min and text_size_max: the smallest text is held between them ---- */
+
+static void test_text_limits(void) {
+    const double dpmm = 96 / 25.4;
+    pac_setting_set("font_size", NULL);
+    pac_setting_set("width", NULL);
+    pac_setting_set("text_size_min", NULL);
+    pac_setting_set("text_size_max", NULL);
+    paint_init();
+    paint_set_screen(dpmm, 1080, 1920);
+    assert(paint_px(16) == 16);                                           /* 12 px text is 3.2 mm: no limits, no change */
+
+    pac_setting_set("text_size_min", "4mm");                              /* 15.1 px for the smallest text, which is 12 at 16 */
+    paint_init();
+    paint_set_screen(dpmm, 1080, 1920);
+    assert(paint_px(16) == 20 && paint_item_w() == 479);                  /* everything grows with it */
+    paint_set_screen(2 * dpmm, 1080, 1920);                               /* a denser screen has more pixels in 4 mm */
+    assert(paint_px(16) == 40);
+
+    pac_setting_set("font_size", "40");                                   /* the limit holds whatever the font: 30 px text is 7.9 mm */
+    pac_setting_set("text_size_min", "3mm");
+    pac_setting_set("text_size_max", "6mm");                              /* 22.7 px for the smallest text */
+    paint_init();
+    paint_set_screen(dpmm, 1080, 1920);
+    assert(paint_px(16) == 30);                                           /* held down to 6 mm: 12 / 16 of 40 px, times 22.7 / 30 */
+
+    pac_setting_set("font_size", NULL);
+    pac_setting_set("text_size_min", "100mm");                            /* a billboard is a mistake: held at the ceiling */
+    pac_setting_set("text_size_max", NULL);
+    paint_init();
+    paint_set_screen(dpmm, 1080, 100000);
+    assert(paint_px(16) == (int)lround(PAC_TEXT_MM_CEILING * dpmm * 16 / PAINT_SMALLEST_TEXT));
+    paint_set_screen(dpmm, 1080, 900);                                    /* but the items stay inside the screen */
+    assert(paint_item_w() <= 900);
+
+    pac_setting_set("text_size_min", "5mm");                              /* minimum above maximum: the minimum wins */
+    pac_setting_set("text_size_max", "3mm");
+    paint_init();
+    paint_set_screen(dpmm, 1080, 1920);
+    assert(paint_px(16) == (int)lround(5 * dpmm * 16 / PAINT_SMALLEST_TEXT));
+
+    pac_setting_set("text_size_min", NULL);
+    pac_setting_set("text_size_max", NULL);
+    paint_init();
+    assert(paint_px(16) == 16);
 }
 
 /* ---- status icons ---- */
@@ -1314,7 +1456,7 @@ static void test_size_environment(void) {
 static void test_status_icons(void) {
     /* A theme of our own, so what is on this machine does not matter */
     char root[64], path[256], cmd[320];
-    snprintf(root, sizeof root, "/tmp/pachud-hudicons-XXXXXX");
+    snprintf(root, sizeof root, "/tmp/pacreact-hudicons-XXXXXX");
     assert(mkdtemp(root));
     snprintf(path, sizeof path, "%s/data", root);
     setenv("XDG_DATA_DIRS", path, 1);
@@ -1414,34 +1556,34 @@ static void test_status_icons(void) {
     assert(h == 64);
     paint_configure_icons(true, 0);
 
-    /* The environment: PACHUD_ICONS=0 turns them off, PACHUD_ICON_SIZE is a size in pixels */
-    unsetenv("PACHUD_ICONS");
-    setenv("PACHUD_ICON_SIZE", "-3", 1);
+    /* The environment: icons=0 turns them off, icon_size is a size in pixels */
+    pac_setting_set("icons", NULL);
+    pac_setting_set("icon_size", "-3");
     paint_init();
     assert(sicon_size() == PAINT_ICON_MIN);                 /* out of range: the nearest end */
-    unsetenv("PACHUD_ICON_SIZE");
+    pac_setting_set("icon_size", NULL);
     paint_init();
     assert(sicon_enabled() && sicon_size() == 24);
-    setenv("PACHUD_ICONS", "0", 1);
+    pac_setting_set("icons", "0");
     paint_init();
     assert(!sicon_enabled());
-    setenv("PACHUD_ICONS", "1", 1);                         /* anything but 0 leaves them on */
+    pac_setting_set("icons", "1");                         /* anything but 0 leaves them on */
     paint_init();
     assert(sicon_enabled());
-    unsetenv("PACHUD_ICONS");
-    setenv("PACHUD_ICON_SIZE", "32", 1);
+    pac_setting_set("icons", NULL);
+    pac_setting_set("icon_size", "32");
     paint_init();
     assert(sicon_enabled() && sicon_size() == 32);
-    setenv("PACHUD_ICON_SIZE", "999", 1);
+    pac_setting_set("icon_size", "999");
     paint_init();
     assert(sicon_size() == PAINT_ICON_MAX);
-    const char *bad[] = { "big", "20px", "1.5" };
+    const char *bad[] = { "big", "20kg", "1.5" };
     for (size_t i = 0; i < sizeof bad / sizeof *bad; i++) {
-        setenv("PACHUD_ICON_SIZE", bad[i], 1);
+        pac_setting_set("icon_size", bad[i]);
         paint_init();
         assert(sicon_size() == 24);                         /* said so, and the default stays */
     }
-    unsetenv("PACHUD_ICON_SIZE");
+    pac_setting_set("icon_size", NULL);
     paint_init();
 
     /* In the HUD: an item keeps its icon, and a refresh brings the new one */
@@ -1463,7 +1605,7 @@ static void test_status_icons(void) {
     assert(system(cmd) == 0);
 }
 
-/* The clock the on-screen display shows for `pachud time` */
+/* The clock the on-screen display shows for `pacreact time` */
 static void test_clock_paint(void) {
     int w, h, plain;
     paint_clock(NULL, "14:32", "", PAINT_OSD_W, &w, &h);
@@ -1493,11 +1635,11 @@ static void test_clock_paint(void) {
     hud_osd_clock("14:32", "Thursday");                      /* no buffer from the stub: nothing to show, no crash */
 }
 
-/* PACHUD_OSD=stack: the volume bar and the clock go in the stack, like any toast; PACHUD_CONTRAST=high
+/* osd=stack: the volume bar and the clock go in the stack, like any toast; contrast=high
  * changes colours, not the layout */
 static void test_osd_stack_and_contrast(void) {
     int w, h, w2, h2;
-    setenv("PACHUD_OSD", "stack", 1);
+    pac_setting_set("osd", "stack");
     hud_init(NULL);
     while (nstack) hud_dismiss();
     hud_osd_slider("Volume", 40, false, OSD_CENTER, NULL);
@@ -1507,7 +1649,7 @@ static void test_osd_stack_and_contrast(void) {
     hud_osd_clock("14:32", "Thursday");
     assert(nstack == 2 && !stack[0].slider && strstr(stack[0].text, "14:32") && strstr(stack[0].text, "Thursday"));
     while (nstack) hud_dismiss();
-    unsetenv("PACHUD_OSD");
+    pac_setting_set("osd", NULL);
     hud_init(NULL);
 
     paint_clock(NULL, "14:32", "x", PAINT_OSD_W, &w, &h);
@@ -1553,6 +1695,8 @@ int main(void) {
     test_deck_moves();
     test_sizes();
     test_size_environment();
+    test_text_limits();
+    test_speech();
     test_status_icons();
     test_icon_files();
     test_dismiss_prefers_alerts();

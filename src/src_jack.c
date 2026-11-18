@@ -1,4 +1,5 @@
 #include "evdev.h"
+#include "setting.h"
 #include "hud.h"
 #include "i18n.h"
 #include "loop.h"
@@ -13,22 +14,21 @@
 #include <sys/timerfd.h>
 #include <time.h>
 #include <unistd.h>
+#include "tunables.h"
 
 /* Audio jacks: the kernel reports a plugged connector as a switch on an input device (the
  * "HDA Intel PCH Front Headphone" device, ...). Events arrive only when something is plugged in
  * or out, so there is nothing to poll. HDMI and DisplayPort audio also show up as jacks but
- * mean "the monitor woke up", so they are left alone. PACHUD_JACKS=0 turns this off.
+ * mean "the monitor woke up", so they are left alone. jacks = 0 turns this off.
  *
  * Some codecs report one 3.5 mm connector now as a headphone jack and then as a microphone jack,
  * depending on how their impedance detection felt that time. That cannot be told from two real
- * jacks, by the kernel or by the sound server's ports, so PACHUD_JACKS=generic says what the
+ * jacks, by the kernel or by the sound server's ports, so jacks = generic says what the
  * machine has: a plug on either is "an audio device", and the toast does not depend on the codec's
  * mood. */
 
-#define MAX_JACKS 16
 #define DEBOUNCE_MS 500   /* a headset reports its headphone and microphone contacts separately, and the
                            * codec detects the microphone a while after the headphones */
-#define TOAST_MS 2500
 
 typedef enum { K_NONE, K_HEADPHONES, K_MIC, K_LINEOUT, K_COUNT } JackKind;
 
@@ -43,7 +43,7 @@ typedef struct {
 static Jack jacks[MAX_JACKS];
 static int pending[K_COUNT];    /* per kind: +1 plugged in, -1 plugged out, since the last toast */
 static int debounce_fd = -1;
-static bool generic_names;         /* PACHUD_JACKS=generic: headphone and microphone jacks are one */
+static bool generic_names;         /* jacks = generic: headphone and microphone jacks are one */
 static bool shared_socket;         /* both switches were seen to change together: one connector reports both */
 static bool mic_seen;              /* the microphone contact said something in the pending window, whatever it ended as */
 static bool pending_headset_mic;   /* the pending microphone change came from a headset's contact */
@@ -63,9 +63,9 @@ static int switch_code(JackKind k) {
     return k == K_MIC ? SW_MICROPHONE_INSERT : k == K_LINEOUT ? SW_LINEOUT_INSERT : SW_HEADPHONE_INSERT;
 }
 
-/* PACHUD_JACKS_DEBUG=1: what the switches and the ports said, and when, to find out why a plug is named as it is */
+/* jacks_debug = 1: what the switches and the ports said, and when, to find out why a plug is named as it is */
 static void debug(const char *what, const char *detail, int value) {
-    if (!getenv("PACHUD_JACKS_DEBUG")) return;
+    if (!pac_setting("jacks_debug")) return;
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
     fprintf(stderr, "jacks %ld.%03ld %s %s %d\n", (long)ts.tv_sec % 1000, ts.tv_nsec / 1000000, what, detail, value);
@@ -142,11 +142,11 @@ static void announce(const int *kernel, const PortChanges *ports, bool mic_conta
     } else if (hp && hp == mic) {
         dir = hp;
         msg = dir > 0 ? _("Headset connected") : _("Headset disconnected");
-        icon = "audio-headset,audio-headphones";
+        icon = dir > 0 ? "audio-headset,audio-headphones" : "audio-headset-off,audio-headset,audio-headphones";
     } else if (hp) {
         dir = hp;
         msg = dir > 0 ? _("Headphones connected") : _("Headphones disconnected");
-        icon = "audio-headphones,audio-headset";
+        icon = dir > 0 ? "audio-headphones,audio-headset" : "audio-headphones-off,audio-headphones,audio-headset";
     } else if (lineout) {
         dir = lineout;
         msg = dir > 0 ? _("Line out connected") : _("Line out disconnected");
@@ -154,13 +154,13 @@ static void announce(const int *kernel, const PortChanges *ports, bool mic_conta
     } else if (mic) {
         dir = mic;
         msg = dir > 0 ? _("Microphone connected") : _("Microphone disconnected");
-        icon = "audio-input-microphone";
+        icon = dir > 0 ? "audio-input-microphone" : "audio-input-microphone-off,audio-input-microphone";
     }
     if (!msg) return;
-    if (getenv("PACHUD_JACKS_DEBUG"))
+    if (pac_setting("jacks_debug"))
         fprintf(stderr, "jacks switches hp=%d mic=%d line=%d, ports %s -> \"%s\"\n", kernel[K_HEADPHONES],
                 kernel[K_MIC], kernel[K_LINEOUT], ports ? "answered" : "unknown", msg);
-    hud_toast_icon(msg, LEVEL_INFO, TOAST_MS, icon);
+    hud_toast_icon(msg, LEVEL_INFO, SRC_JACK_TOAST_MS, icon);
     sound_play(dir > 0 ? SOUND_DEVICE_ADDED : SOUND_DEVICE_REMOVED);
 }
 
@@ -257,7 +257,6 @@ static void rescan(void) { evdev_scan(consider, NULL); }
  * microphone-in pin on the same panel position, both with a jack, are one headset connector that
  * the codec reports as two. `init` is the BIOS's table, `fixups` the driver's overrides of it (both
  * are "0xNN 0xCONFIG" lines, as sysfs prints them); the fixups win. */
-#define MAX_PINS 32
 
 static void read_pins(const char *text, uint32_t *nid, uint32_t *cfg, int *n) {
     for (const char *p = text; p && *p;) {
@@ -310,7 +309,7 @@ static void detect_combo(void) {
 }
 
 void jack_init(void) {
-    const char *off = getenv("PACHUD_JACKS");
+    const char *off = pac_setting("jacks");
     if (off && !strcmp(off, "0")) return;
     generic_names = off && !strcmp(off, "generic");
     if (!started) {

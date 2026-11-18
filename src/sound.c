@@ -1,4 +1,6 @@
 #include "sound.h"
+#include "setting.h"
+#include "i18n.h"
 #include "util.h"
 #include <signal.h>
 #include <stdio.h>
@@ -8,9 +10,9 @@
 #include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
+#include "tunables.h"
 
 #define DEFAULT_ALARM "alarm-clock-elapsed"
-#define MIN_GAP_MS 400  /* a burst of events plays once, not as a stack of overlapping sounds */
 
 static bool enabled;
 static char player[256];
@@ -64,7 +66,7 @@ static bool find_player(const char *name) {
 }
 
 static void configure(SoundKind kind, const char *env, const char *fallback) {
-    const char *v = getenv(env);
+    const char *v = pac_setting(env);
     const char *spec = v ? v : fallback;  /* an empty variable switches that sound off */
     files[kind][0] = '\0';
     if (spec && *spec && strcmp(spec, "0") != 0) sound_resolve(spec, files[kind], sizeof files[kind]);
@@ -72,13 +74,13 @@ static void configure(SoundKind kind, const char *env, const char *fallback) {
 
 /* The value of an opt-in variable, or NULL when it is off: unset, empty or "0". */
 static const char *opt_in(const char *env) {
-    const char *v = getenv(env);
+    const char *v = pac_setting(env);
     return v && *v && strcmp(v, "0") != 0 ? v : NULL;
 }
 
 static bool is_on(const char *v) { return !strcmp(v, "1") || !strcmp(v, "on"); }
 
-/* PACHUD_SOUND_VOLUME: off unless set. "1" (or "on") plays the sound theme's own sound; anything
+/* sound_volume: off unless set. "1" (or "on") plays the sound theme's own sound; anything
  * else is a name or path. */
 static void configure_toggle(SoundKind kind, const char *env, const char *theme_name) {
     files[kind][0] = '\0';
@@ -86,7 +88,7 @@ static void configure_toggle(SoundKind kind, const char *env, const char *theme_
     if (v) sound_resolve(is_on(v) ? theme_name : v, files[kind], sizeof files[kind]);
 }
 
-/* PACHUD_SOUND_POWER and its siblings: off unless set. "1" (or "on") plays the sound theme's own
+/* sound_power and its siblings: off unless set. "1" (or "on") plays the sound theme's own
  * pair for the event; a single name or path plays for both directions; "UP,DOWN" gives each its own,
  * and an empty half is silent. Names and paths are as for the other sounds. */
 static void configure_pair(SoundKind up, SoundKind down, const char *env, const char *theme_up,
@@ -113,11 +115,11 @@ static void configure_pair(SoundKind up, SoundKind down, const char *env, const 
 void sound_set_quiet(bool q) { quiet = q; }
 
 void sound_init(void) {
-    const char *off = getenv("PACHUD_SOUND");
+    const char *off = pac_setting("sound");
     enabled = !(off && !strcmp(off, "0"));
     player[0] = '\0';
 
-    const char *chosen = getenv("PACHUD_PLAYER");
+    const char *chosen = pac_setting("player");
     if (chosen && *chosen) {
         if (find_player(chosen)) snprintf(player, sizeof player, "%s", chosen);
     } else {
@@ -127,22 +129,30 @@ void sound_init(void) {
         }
     }
 
-    configure(SOUND_ALARM, "PACHUD_ALARM_SOUND", DEFAULT_ALARM);
-    configure(SOUND_NOTIFY, "PACHUD_NOTIFY_SOUND", NULL);
-    configure(SOUND_ALERT, "PACHUD_ALERT_SOUND", NULL);
-    configure_toggle(SOUND_VOLUME, "PACHUD_SOUND_VOLUME", "audio-volume-change");
-    configure_pair(SOUND_POWER_PLUGGED, SOUND_POWER_UNPLUGGED, "PACHUD_SOUND_POWER", "power-plug", "power-unplug");
-    configure_pair(SOUND_DEVICE_ADDED, SOUND_DEVICE_REMOVED, "PACHUD_SOUND_DEVICES", "device-added", "device-removed");
-    configure_pair(SOUND_NETWORK_UP, SOUND_NETWORK_DOWN, "PACHUD_SOUND_NETWORK",
+    configure(SOUND_ALARM, "alarm_sound", DEFAULT_ALARM);
+    configure(SOUND_NOTIFY, "notify_sound", NULL);
+    configure(SOUND_ALERT, "alert_sound", NULL);
+    configure_toggle(SOUND_VOLUME, "sound_volume", "audio-volume-change");
+    /* Whoever hears the volume said needs to hear each key press too, so it ticks unless told not to. */
+    const char *speech = pac_setting("speech");
+    if (!pac_setting("sound_volume") && !(speech && !strcmp(speech, "no")))
+        sound_resolve("audio-volume-change", files[SOUND_VOLUME], sizeof files[SOUND_VOLUME]);
+    configure_pair(SOUND_POWER_PLUGGED, SOUND_POWER_UNPLUGGED, "sound_power", "power-plug", "power-unplug");
+    configure_pair(SOUND_DEVICE_ADDED, SOUND_DEVICE_REMOVED, "sound_devices", "device-added", "device-removed");
+    configure_pair(SOUND_NETWORK_UP, SOUND_NETWORK_DOWN, "sound_network",
                    "network-connectivity-established", "network-connectivity-lost");
+
+    if (!player[0])
+        fputs(_("pacreact: no sound player found (install pw-play or paplay, or set player)\n"), stderr);
 
     signal(SIGCHLD, SIG_IGN);  /* players are fire-and-forget: let the kernel reap them */
 }
 
-static void play_file(const char *file) {
+/* every: play even within MIN_GAP_MS of the last sound (a tick for each key press) */
+static void play_file(const char *file, bool every) {
     if (!enabled || !*player || !*file) return;
     long long now = now_ms();
-    if (last_ms && now - last_ms < MIN_GAP_MS) return;
+    if (!every && last_ms && now - last_ms < MIN_GAP_MS) return;
     last_ms = now;
 
     pid_t pid = fork();
@@ -153,6 +163,7 @@ static void play_file(const char *file) {
     sigprocmask(SIG_SETMASK, &none, NULL);  /* the daemon blocks SIGINT/SIGTERM; a player must not */
     signal(SIGCHLD, SIG_DFL);
     prctl(PR_SET_PDEATHSIG, SIGTERM);
+    alarm(SOUND_PLAYER_DEADLINE_S);   /* a player that hangs is killed, not left behind */
     if (!freopen("/dev/null", "r", stdin) || !freopen("/dev/null", "w", stdout) ||
         !freopen("/dev/null", "w", stderr))
         _exit(127);
@@ -162,10 +173,10 @@ static void play_file(const char *file) {
 
 void sound_play(SoundKind kind) {
     if (quiet && kind >= SOUND_POWER_PLUGGED) return;
-    play_file(files[kind]);
+    play_file(files[kind], kind == SOUND_VOLUME);
 }
 
 void sound_play_spec(const char *spec) {
     char path[512];
-    if (sound_resolve(spec, path, sizeof path)) play_file(path);
+    if (sound_resolve(spec, path, sizeof path)) play_file(path, false);
 }

@@ -4,6 +4,7 @@
 #include "../src/loop.h"
 #include "../src/sound.h"
 #include <assert.h>
+#include "setting.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -74,7 +75,7 @@ static void test_limits(void) {
 }
 
 static void build_tree(void) {
-    snprintf(root, sizeof root, "/tmp/pachud-temp-XXXXXX");
+    snprintf(root, sizeof root, "/tmp/pacreact-temp-XXXXXX");
     assert(mkdtemp(root));
     put("hwmon0/name", "coretemp\n");
     set_temp("hwmon0/temp1_input", 46);  set_temp("hwmon0/temp1_crit", 100);
@@ -198,53 +199,53 @@ static void test_check(void) {
 
 static void test_init(void) {
     hwmon_root = "/sys/class/hwmon";
-    unsetenv("PACHUD_TEMP");
-    unsetenv("PACHUD_TEMP_INTERVAL");
+    pac_setting_set("temp", NULL);
+    pac_setting_set("temp_interval", NULL);
     registered = 0;
     temp_poke();                                            /* before init: harmless */
     temp_init();
     assert(registered == 1 && timer_fd >= 0 && max_interval_s == 120);
 
-    setenv("PACHUD_TEMP_INTERVAL", "30", 1);       temp_init();   assert(max_interval_s == 30);
-    setenv("PACHUD_TEMP_INTERVAL", "0", 1);        temp_init();   assert(max_interval_s == 0);   /* kernel events only */
+    pac_setting_set("temp_interval", "30");       temp_init();   assert(max_interval_s == 30);
+    pac_setting_set("temp_interval", "0");        temp_init();   assert(max_interval_s == 0);   /* kernel events only */
     const char *bad[] = { "abc", "1.5", "5s" };
     for (size_t i = 0; i < sizeof bad / sizeof *bad; i++) {
-        setenv("PACHUD_TEMP_INTERVAL", bad[i], 1);
+        pac_setting_set("temp_interval", bad[i]);
         max_interval_s = 77;
         temp_init();
-        assert(max_interval_s == DEFAULT_INTERVAL_S);       /* not a number: the default */
+        assert(max_interval_s == SRC_TEMP_DEFAULT_INTERVAL_S);       /* not a number: the default */
     }
-    setenv("PACHUD_TEMP_INTERVAL", "-1", 1);   temp_init();   assert(max_interval_s == 0);      /* out of range: */
-    setenv("PACHUD_TEMP_INTERVAL", "99999", 1); temp_init();  assert(max_interval_s == 3600);   /* the nearest end */
-    unsetenv("PACHUD_TEMP_INTERVAL");
-    max_interval_s = DEFAULT_INTERVAL_S;
+    pac_setting_set("temp_interval", "-1");   temp_init();   assert(max_interval_s == 0);      /* out of range: */
+    pac_setting_set("temp_interval", "99999"); temp_init();  assert(max_interval_s == 3600);   /* the nearest end */
+    pac_setting_set("temp_interval", NULL);
+    max_interval_s = SRC_TEMP_DEFAULT_INTERVAL_S;
 
-    setenv("PACHUD_TEMP", "0", 1);
+    pac_setting_set("temp", "0");
     registered = 0;
     temp_init();
     assert(registered == 0);
-    unsetenv("PACHUD_TEMP");
+    pac_setting_set("temp", NULL);
 
     /* CPU thresholds from the environment; nonsense falls back, and critical stays above high */
-    setenv("PACHUD_TEMP_WARN", "70", 1);
-    setenv("PACHUD_TEMP_CRIT", "80", 1);
+    pac_setting_set("temp_warn", "70");
+    pac_setting_set("temp_crit", "80");
     temp_init();
     assert(cpu_warn_c == 70 && cpu_hot_c == 80);
     Limits l = temp_limits(CLASS_CPU, 100);
     assert(l.warn == 70 && l.hot == 80);
-    setenv("PACHUD_TEMP_WARN", "abc", 1);
-    setenv("PACHUD_TEMP_CRIT", "abc", 1);
+    pac_setting_set("temp_warn", "abc");
+    pac_setting_set("temp_crit", "abc");
     temp_init();
     assert(cpu_warn_c == 85 && cpu_hot_c == 95);
-    setenv("PACHUD_TEMP_CRIT", "5", 1);                             /* below the range: its lowest, then pushed above high */
+    pac_setting_set("temp_crit", "5");                             /* below the range: its lowest, then pushed above high */
     temp_init();
     assert(cpu_warn_c == 85 && cpu_hot_c == 86);
-    setenv("PACHUD_TEMP_WARN", "90", 1);
-    setenv("PACHUD_TEMP_CRIT", "60", 1);                            /* critical below high: pushed above it */
+    pac_setting_set("temp_warn", "90");
+    pac_setting_set("temp_crit", "60");                            /* critical below high: pushed above it */
     temp_init();
     assert(cpu_warn_c == 90 && cpu_hot_c == 91);
-    unsetenv("PACHUD_TEMP_WARN");
-    unsetenv("PACHUD_TEMP_CRIT");
+    pac_setting_set("temp_warn", NULL);
+    pac_setting_set("temp_crit", NULL);
     temp_init();
     assert(cpu_warn_c == 85 && cpu_hot_c == 95);
 }

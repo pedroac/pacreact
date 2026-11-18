@@ -1,4 +1,5 @@
 #include "hud.h"
+#include "setting.h"
 #include "i18n.h"
 #include "loop.h"
 #include "sound.h"
@@ -18,6 +19,7 @@
 #include <sys/un.h>
 #include <time.h>
 #include <unistd.h>
+#include "tunables.h"
 
 /* Volume lives in the sound server (PulseAudio, or PipeWire's pulse layer), not the kernel.
  * This speaks just enough of the PulseAudio native protocol over its unix socket: subscribe to
@@ -29,12 +31,8 @@
 #define INVALID_INDEX 0xFFFFFFFFu
 #define VOLUME_NORM 0x10000u
 #define COOKIE_LEN 256
-#define MAX_FRAME 60000
 #define DESCRIPTOR_LEN 20
 
-#define DEBOUNCE_MS 40     /* coalesces a volume drag into few redraws */
-#define RECONNECT_MIN_S 5
-#define RECONNECT_MAX_S 300  /* the server may be absent; don't hammer */
 
 enum { CMD_ERROR = 0, CMD_REPLY = 2, CMD_AUTH = 8, CMD_SET_CLIENT_NAME = 9,
        CMD_GET_SINK_INFO = 21, CMD_GET_SOURCE_INFO = 23, CMD_SUBSCRIBE = 35,
@@ -61,20 +59,21 @@ typedef struct {
     const char *object;    /* the alias the server resolves to the current default device */
     uint32_t command;
     int last_pct, last_muted;
-    char name[128];        /* the output's name, to notice that the default changed (outputs only) */
+    char name[128];        /* the device's name, to notice that the default changed */
+    char port[128];        /* its active port: a different one brings that port's own remembered volume */
+    long long settle_until_ms;   /* after a change of device or port the server may still be setting its volume */
     bool dirty;            /* an event arrived: ask once the burst settles */
     bool want, want_announce;  /* a request is queued, and whether its answer may show a HUD */
 } Track;
 
 static Track tracks[T_COUNT] = {
-    [T_SINK] = { "@DEFAULT_SINK@", CMD_GET_SINK_INFO, -1, -1, "", false, false, false },
-    [T_SOURCE] = { "@DEFAULT_SOURCE@", CMD_GET_SOURCE_INFO, -1, -1, "", false, false, false },
-    [T_CARDS] = { NULL, CMD_GET_CARD_INFO_LIST, -1, -1, "", false, false, false },
+    [T_SINK] = { "@DEFAULT_SINK@", CMD_GET_SINK_INFO, -1, -1, "", "", 0, false, false, false },
+    [T_SOURCE] = { "@DEFAULT_SOURCE@", CMD_GET_SOURCE_INFO, -1, -1, "", "", 0, false, false, false },
+    [T_CARDS] = { NULL, CMD_GET_CARD_INFO_LIST, -1, -1, "", "", 0, false, false, false },
 };
 static int pending = -1;   /* the track the outstanding request is for, or -1 */
 static bool announce;      /* whether the outstanding answer may show a HUD */
-#define PLUG_QUIET_MS 1500  /* after a jack plug: its port's remembered volume is not the user's doing */
-static long long quiet_until_ms;
+
 
 static long long now_ms(void) {
     struct timespec ts;
@@ -82,7 +81,8 @@ static long long now_ms(void) {
     return ts.tv_sec * 1000LL + ts.tv_nsec / 1000000;
 }
 
-void audio_jack_plugged(void) { quiet_until_ms = now_ms() + PLUG_QUIET_MS; }
+static long long jack_until_ms;
+void audio_jack_plugged(void) { jack_until_ms = now_ms() + JACK_MS; }
 
 /* The status icon for a level: the speaker with more or fewer waves, struck through when muted */
 static const char *icon_for(TrackId t, int pct, bool muted) {
@@ -280,6 +280,11 @@ static void skip_s64(In *in) {  /* 'r' and eight bytes */
     in->p += 9;
 }
 
+static void skip_usec(In *in) {  /* 'U' and eight bytes */
+    if (!need(in, 9) || in->p[0] != 'U') { in->bad = true; return; }
+    in->p += 9;
+}
+
 /* 'P', then key (string), length (u32) and value (arbitrary) until a null string */
 static void skip_proplist(In *in) {
     if (!need(in, 1) || in->p[0] != 'P') { in->bad = true; return; }
@@ -300,7 +305,6 @@ static void skip_proplist(In *in) {
 
 /* ---- card ports: what a jack plug did, as the server sees it ---- */
 
-#define MAX_PORTS 64
 
 typedef struct {
     char key[200];     /* card and port name */
@@ -369,7 +373,7 @@ static void handle_cards(In *in) {
             for (int k = 0; k < n_port_state; k++) {
                 if (strcmp(port_state[k].key, st->key) || port_state[k].present == st->present) continue;
                 *kind = st->present ? 1 : -1;
-                if (getenv("PACHUD_JACKS_DEBUG")) {
+                if (pac_setting("jacks_debug")) {
                     struct timespec ts;
                     clock_gettime(CLOCK_MONOTONIC, &ts);
                     fprintf(stderr, "jacks %ld.%03ld port %s: %s (available=%u)\n", (long)ts.tv_sec % 1000,
@@ -396,6 +400,36 @@ void audio_port_changes(void (*cb)(const PortChanges *)) {
     want_info(T_CARDS, false);   /* answered once the reading after this call has been compared */
 }
 
+/* The active port, which follows the mute flag after fields this does not need: the monitor, the
+ * latency, the driver, the flags, the property list, the base volume, the state, the volume steps,
+ * the card and the ports with what each is. Read from a copy of the reply: a server that words
+ * this differently (an older protocol) leaves the port unknown, not the volume unreadable. */
+static void read_active_port(In in, char *port, size_t n) {
+    char text[128];
+    port[0] = '\0';
+    get_u32(&in);                         /* monitor source (or the sink a source monitors) */
+    get_string(&in, text, sizeof text);   /* its name */
+    skip_usec(&in);                       /* latency */
+    get_string(&in, text, sizeof text);   /* driver */
+    get_u32(&in);                         /* flags */
+    skip_proplist(&in);
+    skip_usec(&in);                       /* configured latency */
+    if (!need(&in, 5) || in.p[0] != 'V') return;
+    in.p += 5;                            /* base volume */
+    get_u32(&in); get_u32(&in); get_u32(&in);   /* state, volume steps, card */
+    uint32_t ports = get_u32(&in);
+    for (uint32_t i = 0; i < ports && !in.bad; i++) {
+        get_string(&in, text, sizeof text);   /* name */
+        get_string(&in, text, sizeof text);   /* description */
+        get_u32(&in); get_u32(&in);           /* priority, available */
+        get_string(&in, text, sizeof text);   /* availability group */
+        get_u32(&in);                         /* type */
+    }
+    if (in.bad || !ports) return;
+    get_string(&in, text, sizeof text);       /* the active one */
+    if (!in.bad) snprintf(port, n, "%s", text);
+}
+
 /* A sink and a source reply start the same way: index, name, description, sample spec,
  * channel map, owner module, then the volume and the mute flag, which is all that is read. */
 static void handle_info(TrackId t, In *in) {
@@ -414,39 +448,50 @@ static void handle_info(TrackId t, In *in) {
     uint32_t volume = get_cvolume(in);
     bool muted = get_bool(in);
     if (in->bad) return;
+    char port[sizeof tracks[t].port];
+    read_active_port(*in, port, sizeof port);
 
     Track *k = &tracks[t];
     int pct = (int)(((uint64_t)volume * 100 + VOLUME_NORM / 2) / VOLUME_NORM);
 
-    if (getenv("PACHUD_JACKS_DEBUG")) {
-        long long left = quiet_until_ms - now_ms();
-        fprintf(stderr, "jacks %lld.%03lld volume %s \"%s\" %d%%%s (was %d%% on \"%s\") announce=%d quiet_left=%lld ms\n",
-                now_ms() / 1000 % 1000, now_ms() % 1000, t == T_SINK ? "output" : "input", name, pct, muted ? " muted" : "",
-                k->last_pct, k->name, announce, left > 0 ? left : 0);
+    if (pac_setting("jacks_debug")) {
+        fprintf(stderr, "jacks %lld.%03lld volume %s \"%s\" port \"%s\" %d%%%s (was %d%% on \"%s\" \"%s\") announce=%d\n",
+                now_ms() / 1000 % 1000, now_ms() % 1000, t == T_SINK ? "output" : "input", name, port, pct,
+                muted ? " muted" : "", k->last_pct, k->name, k->port, announce);
     }
 
-    /* A different default output (a headset connected over USB or Bluetooth, a monitor's speakers):
-     * say so, instead of a volume bar that would just be about the new device. A different default
-     * input (plugging a headset moves it to the headset's microphone) is only learned: the jack or
-     * device toast already said what happened, and its volume is not something the user changed. */
+    /* A different default device, or the same one on another port: the level that comes with it is
+     * that device's or port's own, and the server may set it in a second step right after, so none of
+     * it is the user changing the volume. It is learned, not shown. A different default output is
+     * said once, as a message, unless a 3.5 mm jack moved it: that toast already told of the headset.
+     * A different default input is only learned. */
+    bool changed = false;
     if (name[0] && strcmp(name, k->name) != 0) {
         bool known = k->name[0] != '\0';   /* the first reading only learns the name */
         snprintf(k->name, sizeof k->name, "%s", name);
         if (known) {
-            if (announce && t == T_SINK && now_ms() >= quiet_until_ms) {
+            changed = true;
+            if (announce && t == T_SINK && now_ms() >= jack_until_ms) {
                 char msg[192];
                 snprintf(msg, sizeof msg, _("Audio output: %s"), description[0] ? description : name);
-                hud_osd_slider(msg, pct, muted, OSD_CENTER, "audio-speakers,audio-card");  /* show device change with current volume */
+                hud_toast(msg, LEVEL_INFO, 2500);
             }
-            k->last_pct = pct;
-            k->last_muted = muted;
-            return;
         }
+    }
+    if (strcmp(port, k->port) != 0) {
+        snprintf(k->port, sizeof k->port, "%s", port);
+        if (k->last_pct >= 0) changed = true;
+    }
+    if (changed) k->settle_until_ms = now_ms() + SRC_AUDIO_SETTLE_MS;
+    if (changed || now_ms() < k->settle_until_ms) {
+        k->last_pct = pct;
+        k->last_muted = muted;
+        return;
     }
     if (pct == k->last_pct && muted == k->last_muted) return;  /* e.g. a device state change */
     k->last_pct = pct;
     k->last_muted = muted;
-    if (announce && now_ms() >= quiet_until_ms) {
+    if (announce) {
         hud_osd_slider(label_for(t, muted), pct, muted, OSD_CENTER, icon_for(t, pct, muted));
         if (t == T_SINK) sound_play(SOUND_VOLUME);   /* the output, not the microphone */
     }
@@ -458,10 +503,10 @@ static void on_reply(In *in) {
     case S_AUTH:
         state = S_NAME;
         command(&o, CMD_SET_CLIENT_NAME);
-        o.b[o.n++] = 'P';  /* property list: application.name = "pachud" */
+        o.b[o.n++] = 'P';  /* property list: application.name = "pacreact" */
         put_str(&o, "application.name");
         put_u32(&o, 7);
-        put_arbitrary(&o, "pachud", 7);
+        put_arbitrary(&o, "pacreact", 7);
         o.b[o.n++] = 'N';
         if (!send_packet(&o)) disconnect();
         break;
@@ -514,7 +559,7 @@ static void handle_frame(const uint8_t *payload, size_t len) {
         if (facility == FACILITY_SINK || facility == FACILITY_SERVER) tracks[T_SINK].dirty = true;
         if (facility == FACILITY_SOURCE || facility == FACILITY_SERVER) tracks[T_SOURCE].dirty = true;
         if (facility == FACILITY_CARD) tracks[T_CARDS].dirty = true;
-        if (tracks[T_SINK].dirty || tracks[T_SOURCE].dirty || tracks[T_CARDS].dirty) arm(debounce_fd, DEBOUNCE_MS);
+        if (tracks[T_SINK].dirty || tracks[T_SOURCE].dirty || tracks[T_CARDS].dirty) arm(debounce_fd, SRC_AUDIO_DEBOUNCE_MS);
     }
 }
 

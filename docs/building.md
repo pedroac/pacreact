@@ -8,11 +8,12 @@
 | `cairo` | drawing |
 | `libsystemd` | sd-bus, for notifications only (`NOTIFY=0` drops it) |
 | `freetype2`, `harfbuzz`, `fribidi` | per-language fonts and Arabic/Hebrew shaping (`I18N=0` drops them) |
+| `libspeechd` (speech-dispatcher) | speaking what the HUD shows (`SPEECH=none` drops it; at run time the server must be running, or speech is said once to be missing and nothing else changes) |
 | `rsvg-convert` (from `librsvg`) | run time only, optional: draws the SVG status icons that most icon themes ship now. Nothing links against librsvg; without the tool, icons are found only as PNG files |
 | `gettext` (`msgfmt`) | building the translation catalogs at build time |
 | `pkgconf`, a C compiler, `make` | build |
 
-There is no build or runtime dependency on `libpulse` or `pactl`: volume is read by talking to the sound server's socket directly. Without a PulseAudio-compatible server the volume HUD simply never appears, and pachud keeps retrying quietly.
+There is no build or runtime dependency on `libpulse` or `pactl`: volume is read by talking to the sound server's socket directly. Without a PulseAudio-compatible server the volume HUD simply never appears, and pacreact keeps retrying quietly.
 
 ## Build
 
@@ -20,6 +21,7 @@ There is no build or runtime dependency on `libpulse` or `pactl`: volume is read
 make                 # everything
 make NOTIFY=0        # no notification daemon, no libsystemd
 make I18N=0          # English only: no catalogs, FreeType, HarfBuzz or FriBidi
+make SPEECH=none     # no speech: no libspeechd
 make LOCALEDIR=$PWD/build/locale   # development: find catalogs in the build tree
 make test            # unit tests (no display needed)
 ```
@@ -33,7 +35,7 @@ sudo make install                       # /usr/local
 make install PREFIX=/usr DESTDIR=pkg    # for packaging
 ```
 
-Installs the binary, `pachud.service` (to `$(PREFIX)/lib/systemd/user`, override with `UNITDIR`), and, unless `NOTIFY=0`, a D-Bus activation file (to `$(PREFIX)/share/dbus-1/services`, override with `DBUSDIR`). `make uninstall` removes them.
+Installs the binary, `pacreact.service` (to `$(PREFIX)/lib/systemd/user`, override with `UNITDIR`), and, unless `NOTIFY=0`, a D-Bus activation file (to `$(PREFIX)/share/dbus-1/services`, override with `DBUSDIR`). `make uninstall` removes them.
 
 ## Arch Linux package
 
@@ -43,7 +45,7 @@ Installs the binary, `pachud.service` (to `$(PREFIX)/lib/systemd/user`, override
 cd contrib && makepkg -si
 ```
 
-It runs `make test` as its check step, installs the binary, the man page (`man pachud`), the user unit, the D-Bus activation file and the catalogs, and provides `notification-daemon`. If mako or dunst is installed as well, their D-Bus files claim the same name: stop and disable them (see [Usage](usage.md#replacing-your-notification-daemon)) so D-Bus activates pachud.
+It runs `make test` as its check step, installs the binary, the man page (`man pacreact`), the user unit, the D-Bus activation file and the catalogs, and provides `notification-daemon`. If mako or dunst is installed as well, their D-Bus files claim the same name: stop and disable them (see [Usage](usage.md#replacing-your-notification-daemon)) so D-Bus activates pacreact.
 
 ## Tests
 
@@ -58,7 +60,7 @@ It runs `make test` as its check step, installs the binary, the man page (`man p
 | `hud` | the HUD stack (stacking order, refresh, replacement, removal, full-stack and overflow rules, close reasons) with a fake clock, and the drawing helpers in `paint.c` (markup stripping, word wrap, ellipsis, icon files, including hostile ones) |
 | `ipc` | the real unix socket: round trips, error replies, single-instance detection, stale sockets, silent clients |
 | `notify` | notification timeouts from urgency and requested expiry (skipped with `NOTIFY=0`) |
-| `alerts` | the start-up grace period: same, milder and worse alerts, the 30-minute window, restarts reading the saved state, the clock going backwards, damaged state files, `PACHUD_STARTUP_GRACE` parsing |
+| `alerts` | the start-up grace period: same, milder and worse alerts, the 30-minute window, restarts reading the saved state, the clock going backwards, damaged state files, `startup_grace` parsing |
 | `mem` | the memory alert's cooldown: repeats are held back, escalations are not, and an alert left out as already shown does not start the cooldown |
 | `sound` | resolving sound names and paths (and refusing traversal), which sounds are on by default, a fake player started with the right file |
 | `history` | the notification history ring (replacement in place, close reasons, wrap-around, listing limits and the footer, text flattening, wiping) |
@@ -66,7 +68,7 @@ It runs `make test` as its check step, installs the binary, the man page (`man p
 | `image` | raw notification pixels into the fixed icon buffer: scaling, letterboxing, premultiplied alpha, rejecting malformed data |
 | `util` | the shared helpers: strict whole-number settings (defaults, ranges, clamping, garbage), the data-directory list and finding a tool on `PATH` |
 | `icon` | icon-theme lookup across theme layouts and precedence, and refusing anything that could leave the icon directories |
-| `scale` | fractional scale arithmetic and `PACHUD_SCALE` parsing |
+| `scale` | fractional scale arithmetic and `scale` parsing |
 | `display` | how the display reacts to the compositor's preferred scale (no compositor needed) |
 | `text` | font choice and the split of mixed-script text into runs, with real-font checks where the fonts exist (skipped with `I18N=0`) |
 
@@ -74,4 +76,4 @@ Several suites `#include` the source file under test so that its static internal
 
 The rest was checked by running the daemon on a real Wayland session, with isolated environments so nothing else was affected: a private session bus for notifications (`dbus-run-session`) and a private network namespace for network and probe behaviour (`unshare -Urn`).
 
-Checks that need a Wayland session (and `grim`) live in `tests/manual/` and write screenshots to `build/shots/`: `i18n_test.sh` (translations, scripts, right-to-left; build with `make LOCALEDIR=$PWD/build/locale` first), `fade_test.sh` (fade and surface cleanup, Hyprland only), `dnd_test.sh` and `notify_features_test.sh` (run under `dbus-run-session`: do not disturb, actions, icon names, `image-data`), `startup_grace_test.sh` (a real memory-pressure alert across restarts; needs a machine that is actually under pressure), `stack_test.sh` (several HUDs stacked, at the default and a bottom-left anchor), `icons_test.sh` (status icons, `PACHUD_ICONS`, `PACHUD_ICON_SIZE` and `PACHUD_MARGIN`, measured in screenshots with the installed theme), `size_test.sh` (`PACHUD_FONT_SIZE`, `PACHUD_WIDTH` and `PACHUD_FONT`: the same card measured at several sizes and with another font), `deck_test.sh` (ordinary notifications at the top right; critical ones, calls and critical system toasts at the top centre as a pile; clicking a strip; run under `dbus-run-session`), `expand_test.sh` (a long notification opening on hover and with `pachud expand`, measured in screenshots), `click_test.sh` (clicking a card with a virtual pointer, with and without `PACHUD_CLICK=0`; run under `dbus-run-session`), `spec_test.sh` (`CloseNotification` and its error, the signal for a notification do-not-disturb suppressed, a critical card that outlives 15 s, and `pachud history`; run under `dbus-run-session`), and `output_test.sh` and `scale_test.sh` (two virtual outputs and the viewport path in a nested headless `labwc`).
+Checks that need a Wayland session (and `grim`) live in `tests/manual/` and write screenshots to `build/shots/`: `i18n_test.sh` (translations, scripts, right-to-left; build with `make LOCALEDIR=$PWD/build/locale` first), `fade_test.sh` (fade and surface cleanup, Hyprland only), `dnd_test.sh` and `notify_features_test.sh` (run under `dbus-run-session`: do not disturb, actions, icon names, `image-data`), `startup_grace_test.sh` (a real memory-pressure alert across restarts; needs a machine that is actually under pressure), `stack_test.sh` (several HUDs stacked, at the default and a bottom-left anchor), `icons_test.sh` (status icons, `icons`, `icon_size` and `margin`, measured in screenshots with the installed theme), `size_test.sh` (`font_size`, `width` and `font`: the same card measured at several sizes and with another font), `deck_test.sh` (ordinary notifications at the top right; critical ones, calls and critical system toasts at the top centre as a pile; clicking a strip; run under `dbus-run-session`), `expand_test.sh` (a long notification opening on hover and with `pacreact expand`, measured in screenshots), `click_test.sh` (clicking a card with a virtual pointer, with and without `click = 0`; run under `dbus-run-session`), `spec_test.sh` (`CloseNotification` and its error, the signal for a notification do-not-disturb suppressed, a critical card that outlives 15 s, and `pacreact history`; run under `dbus-run-session`), and `output_test.sh` and `scale_test.sh` (two virtual outputs and the viewport path in a nested headless `labwc`).

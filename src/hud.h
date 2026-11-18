@@ -5,13 +5,18 @@
 #include "image.h"
 #include <stdbool.h>
 #include <stdint.h>
-
-typedef enum { LEVEL_INFO, LEVEL_WARN, LEVEL_CRIT } Level;
+#include "tunables.h"
 
 /* A timeout_ms that never runs out: the item stays until it is closed, removed or replaced. */
 #define HUD_NEVER (-1)
 
+typedef enum { LEVEL_INFO, LEVEL_WARN, LEVEL_CRIT } Level;
+
+
 void hud_init(Display *dpy);
+/* Tells the HUD whether speech is running, so a bar that moves does not wake the loop to say
+ * something nobody will hear. Off until set. */
+void hud_set_speech(bool on);
 /* Shows a toast for timeout_ms, stacked with the others. Every item in the stack is the same width,
  * so a long text wraps onto up to three lines (ending in an ellipsis beyond that). The same text again refreshes
  * the one already shown. */
@@ -25,9 +30,8 @@ void hud_slider(const char *label, int percent, bool dim, const char *icon);   /
 
 /* OSD (on-screen display) versions: centered on screen, single instance, no queue. */
 void hud_osd_slider(const char *label, int percent, bool dim, OsdAnchor anchor, const char *icon);
-/* The time, big, in the middle of the screen for a moment (`pachud time`): for a glance at the clock. */
+/* The time, big, in the middle of the screen for a moment (`pacreact time`): for a glance at the clock. */
 void hud_osd_clock(const char *time_text, const char *detail);
-#define HUD_MAX_ACTIONS 3
 
 /* The attention deck: a few things must not be ignored, so they do not go in the stack with the
  * rest but in a place of their own, at the top centre: cards that say they are `attention` (the
@@ -69,7 +73,7 @@ const char *hud_action_key(int n, uint32_t *id);
  * call comes a moment after the click, once the compositor has answered. The card is then handled
  * as by hud_action_invoked(). A left click on a card without a default action, and any right
  * click, dismiss the card without calling this. Clicks are taken only on cards, and only where
- * the display allows them (PACHUD_CLICK). */
+ * the display allows them (click). */
 typedef void (*HudClickFn)(uint32_t id, const char *token);
 void hud_on_click(HudClickFn fn);
 

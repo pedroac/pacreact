@@ -1,4 +1,5 @@
 #include "ipc.h"
+#include "i18n.h"
 #include <errno.h>
 #include <poll.h>
 #include <stdbool.h>
@@ -25,13 +26,13 @@ static int sock_path(struct sockaddr_un *a, bool create) {
     const char *dir = getenv("XDG_RUNTIME_DIR");
     a->sun_family = AF_UNIX;
     if (dir && *dir) {
-        snprintf(a->sun_path, sizeof a->sun_path, "%s/pachud.sock", dir);
+        snprintf(a->sun_path, sizeof a->sun_path, "%s/pacreact.sock", dir);
         return 0;
     }
     char priv[64];
-    snprintf(priv, sizeof priv, "/tmp/pachud-%u", (unsigned)geteuid());
+    snprintf(priv, sizeof priv, "/tmp/pacreact-%u", (unsigned)geteuid());
     if (private_dir(priv, create) < 0) return -1;
-    snprintf(a->sun_path, sizeof a->sun_path, "%s/pachud.sock", priv);
+    snprintf(a->sun_path, sizeof a->sun_path, "%s/pacreact.sock", priv);
     return 0;
 }
 
@@ -106,6 +107,6 @@ int ipc_send(const char *msg) {
         if (reply[2]) puts(reply + 3);
         return 0;
     }
-    fprintf(stderr, "pachud: %s\n", reply);
+    fprintf(stderr, "pacreact: %s\n", reply);
     return 1;
 }

@@ -145,7 +145,7 @@ static void wait_readable(int fd) {
 
 static void test_commands(void) {
     char reply[1024], state[1024];
-    snprintf(state_dir, sizeof state_dir, "/tmp/pachud-timer-XXXXXX");
+    snprintf(state_dir, sizeof state_dir, "/tmp/pacreact-timer-XXXXXX");
     assert(mkdtemp(state_dir));
     setenv("XDG_STATE_HOME", state_dir, 1);
 

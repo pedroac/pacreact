@@ -1,12 +1,12 @@
-# Arabic translations for pachud.
-# This file is distributed under the same license as the pachud package.
+# Arabic translations for pacreact.
+# This file is distributed under the same license as the pacreact package.
 # Machine-written: please review with a native speaker.
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: pachud\n"
+"Project-Id-Version: pacreact\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-12 11:12+0000\n"
+"POT-Creation-Date: 2026-11-15 19:46+0000\n"
 "PO-Revision-Date: 2026-11-10 00:00+0000\n"
 "Last-Translator: \n"
 "Language-Team: Arabic\n"
@@ -16,6 +16,18 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=6; plural=(n==0 ? 0 : n==1 ? 1 : n==2 ? 2 : n%100>=3 "
 "&& n%100<=10 ? 3 : n%100>=11 ? 4 : 5);\n"
+
+#: src/display.c
+#, c-format
+msgid ""
+"pacreact: anchor \"%s\" is not one of top-right, top-left, top, bottom-"
+"right, bottom-left, bottom\n"
+msgstr ""
+
+#: src/display.c
+#, c-format
+msgid "pacreact: output \"%s\" not found; available:"
+msgstr ""
 
 #: src/dnd.c
 #, c-format
@@ -94,8 +106,8 @@ msgid "Open"
 msgstr "فتح"
 
 #: src/main.c
-msgid "pachud: daemon not running\n"
-msgstr "pachud: الخدمة غير قيد التشغيل\n"
+msgid "pacreact: daemon not running\n"
+msgstr "pacreact: الخدمة غير قيد التشغيل\n"
 
 #: src/main.c
 msgid "bad toast message"
@@ -131,12 +143,12 @@ msgid "unknown command"
 msgstr "أمر غير معروف"
 
 #: src/main.c
-msgid "pachud: already running\n"
-msgstr "pachud: قيد التشغيل بالفعل\n"
+msgid "pacreact: already running\n"
+msgstr "pacreact: قيد التشغيل بالفعل\n"
 
 #: src/main.c
-msgid "pachud: cannot connect to a Wayland compositor with layer-shell\n"
-msgstr "pachud: تعذّر الاتصال بمدير نوافذ Wayland يدعم layer-shell\n"
+msgid "pacreact: cannot connect to a Wayland compositor with layer-shell\n"
+msgstr "pacreact: تعذّر الاتصال بمدير نوافذ Wayland يدعم layer-shell\n"
 
 #: src/notify.c
 msgid "no such action on screen"
@@ -145,6 +157,29 @@ msgstr "لا يوجد إجراء كهذا على الشاشة"
 #: src/notify.c
 msgid "notifications unavailable"
 msgstr "الإشعارات غير متاحة"
+
+#: src/notify.c
+msgid ""
+"pacreact: another notification daemon owns org.freedesktop.Notifications "
+"(stop mako/dunst/...); notifications disabled\n"
+msgstr ""
+
+#: src/notify.c
+#, fuzzy, c-format
+msgid "pacreact: notifications disabled: %s\n"
+msgstr "الإشعارات غير متاحة"
+
+#: src/sicon.c
+#, c-format
+msgid ""
+"pacreact: icon_font \"%s\" is not a font file that can be read; using the "
+"theme's icons\n"
+msgstr ""
+
+#: src/sound.c
+msgid ""
+"pacreact: no sound player found (install pw-play or paplay, or set player)\n"
+msgstr ""
 
 #: src/src_audio.c
 msgid "Microphone — muted"
@@ -245,6 +280,13 @@ msgstr ""
 
 #: src/src_locks.c
 msgid "Num Lock off"
+msgstr ""
+
+#: src/src_locks.c
+#, c-format
+msgid ""
+"pacreact: this kernel cannot filter keyboard events; lock key notices are "
+"off\n"
 msgstr ""
 
 #: src/src_mem.c
@@ -369,6 +411,11 @@ msgstr "الشبكة لا تستجيب — لا رد من %s"
 msgid "Network back to normal"
 msgstr "عادت الشبكة إلى وضعها الطبيعي"
 
+#: src/src_probe.c
+#, c-format
+msgid "pacreact: probe_host must be an IPv4 address; probe disabled\n"
+msgstr ""
+
 #: src/src_temp.c
 #, fuzzy, c-format
 msgid "CPU temperature critical — %d °C"
@@ -395,6 +442,18 @@ msgstr "جهاز USB"
 
 #: src/src_usb.c
 #, c-format
+msgid ""
+"pacreact: usb: \"%s\" is not one of camera, printer, tablet, storage, audio, "
+"input, other\n"
+msgstr ""
+
+#: src/src_usb.c
+#, fuzzy, c-format
+msgid "pacreact: usb names no kind; announcing all\n"
+msgstr "pacreact: الخدمة غير قيد التشغيل\n"
+
+#: src/src_usb.c
+#, c-format
 msgid "%s connected"
 msgstr "تم توصيل %s"
 
@@ -402,6 +461,13 @@ msgstr "تم توصيل %s"
 #, c-format
 msgid "%s disconnected"
 msgstr "تم فصل %s"
+
+#: src/text.c
+#, c-format
+msgid ""
+"pacreact: cannot use the font \"%s\" (not a font file that can be read); "
+"using the default\n"
+msgstr ""
 
 #: src/timer.c
 #, c-format
@@ -508,3 +574,61 @@ msgstr "مدة غير صالحة \"%s\": استخدم مثل 90s أو 5m أو 1h
 #, c-format
 msgid "bad time \"%s\": use HH:MM or YYYY-MM-DD HH:MM"
 msgstr "وقت غير صالح \"%s\": استخدم HH:MM أو YYYY-MM-DD HH:MM"
+
+#: src/util.c
+#, c-format
+msgid "pacreact: %s must be a whole number of %s, not \"%s\"; ignored\n"
+msgstr ""
+
+#: src/util.c
+#, c-format
+msgid "pacreact: %s=%ld is outside %ld to %ld; using %ld\n"
+msgstr ""
+
+#: ../pacommon/src/config_file.c
+#, c-format
+msgid "%s: %s: cannot be read: %s\n"
+msgstr ""
+
+#: ../pacommon/src/config_file.c
+msgid "not a regular file"
+msgstr ""
+
+#: ../pacommon/src/config_file.c
+#, fuzzy
+msgid "too large"
+msgstr "بعيد جدًا في المستقبل"
+
+#: ../pacommon/src/config_file.c
+msgid "cannot be read"
+msgstr ""
+
+#: ../pacommon/src/config_file.c
+#, c-format
+msgid "%s: %s: %s, ignored\n"
+msgstr ""
+
+#: ../pacommon/src/config_file.c
+#, c-format
+msgid "%s: %s:%d: line too long, ignored\n"
+msgstr ""
+
+#: ../pacommon/src/config_file.c
+#, c-format
+msgid "%s: %s:%d: line has a NUL byte, ignored\n"
+msgstr ""
+
+#: ../pacommon/src/config_file.c
+#, c-format
+msgid "%s: %s:%d: expected \"key = value\"\n"
+msgstr ""
+
+#: ../pacommon/src/config_file.c
+#, c-format
+msgid "%s: %s:%d: ignoring \"%s = %s\"\n"
+msgstr ""
+
+#: ../pacommon/src/config_file.c
+#, c-format
+msgid "%s: %s: too large, the rest is ignored\n"
+msgstr ""

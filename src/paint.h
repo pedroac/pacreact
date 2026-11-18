@@ -6,25 +6,24 @@
 #include <cairo/cairo.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include "tunables.h"
 
 /* Drawing of the HUD's items. Each function draws one item with its top-left at the origin of cr,
  * or only measures it when cr is NULL; either way it reports the item's size in logical pixels. */
 
-/* Sizes. Everything is designed for a 16 px font and scaled by PACHUD_FONT_SIZE / 16, so a larger
+/* Sizes. Everything is designed for a 16 px font and scaled by font_size / 16, so a larger
  * font gets proportionally larger cards, padding, icons and bars (and a smaller one the opposite).
- * PACHUD_WIDTH sets the width of the stack's items on its own. paint_init() reads both. */
+ * width sets the width of the stack's items on its own. paint_init() reads both. */
 void paint_init(void);
+/* font_size, width and icon_size may be lengths with a unit (mm, in, pt, %): this turns them into
+ * pixels for the screen they are shown on, `px_per_mm` logical pixels to the millimetre and `whole`
+ * pixels across the shorter side (what 100% is). It also holds the smallest text between text_size_min
+ * and text_size_max, as large as `screen_w` (0 if not known) lets the items be. Call it when the
+ * screen is known, and again when it changes. */
+void paint_set_screen(double px_per_mm, double whole, int screen_w);
 /* The same, from numbers: 0 for either means the default. Out of range values are brought in. */
 void paint_configure(int font_px, int width_px);
-#define PAINT_FONT_MIN 10
-#define PAINT_FONT_MAX 48
-#define PAINT_WIDTH_MIN 200
-#define PAINT_WIDTH_MAX 1200
-/* The status icons (see sicon.h): on unless PACHUD_ICONS=0, at PACHUD_ICON_SIZE pixels or, by default,
- * 24 at the default font size and larger or smaller with it. */
-#define PAINT_ICON_MIN 12
-#define PAINT_ICON_MAX 128
-void paint_set_contrast(bool high);   /* black and white with brighter accents; paint_init() reads PACHUD_CONTRAST */
+void paint_set_contrast(bool high);   /* black and white with brighter accents; paint_init() reads contrast */
 void paint_configure_icons(bool enabled, int size_px);   /* 0: the default size */
 int paint_px(int design_px);          /* a length at the default size, as it is now */
 double paint_font(double design_px);  /* a font size, likewise */
@@ -48,8 +47,6 @@ void paint_slider(cairo_t *cr, const char *label, int percent, bool dim, const c
  * glance at the clock. `detail` may be "". */
 void paint_clock(cairo_t *cr, const char *time_text, const char *detail, int width, int *w, int *h);
 
-/* The most of a notification body that is kept (bytes); a longer one is cut. */
-#define PAINT_BODY_MAX 2048
 
 /* A card behind the front one in the attention deck: one line of text, and the top PAINT_STRIP_TUCK
  * pixels of it lie under the card in front, so only the rest shows. */

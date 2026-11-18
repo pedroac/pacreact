@@ -10,12 +10,12 @@
 
 typedef enum {
     SOUND_ALARM,   /* a timer or alarm went off */
-    SOUND_NOTIFY,  /* a notification card, when PACHUD_NOTIFY_SOUND is set */
-    SOUND_ALERT,   /* battery or memory alerts, when PACHUD_ALERT_SOUND is set */
-    SOUND_VOLUME,  /* the output volume or mute changed, when PACHUD_SOUND_VOLUME is set; it answers
+    SOUND_NOTIFY,  /* a notification card, when notify_sound is set */
+    SOUND_ALERT,   /* battery or memory alerts, when alert_sound is set */
+    SOUND_VOLUME,  /* the output volume or mute changed, when sound_volume is set; it answers
                     * something the user just did, so do-not-disturb does not hold it back */
-    /* Things that merely happened: opt-in, one variable each for the pair (PACHUD_SOUND_POWER,
-     * PACHUD_SOUND_DEVICES, PACHUD_SOUND_NETWORK), and held back while do-not-disturb is on. */
+    /* Things that merely happened: opt-in, one variable each for the pair (sound_power,
+     * sound_devices, sound_network), and held back while do-not-disturb is on. */
     SOUND_POWER_PLUGGED, SOUND_POWER_UNPLUGGED,    /* the charger */
     SOUND_DEVICE_ADDED, SOUND_DEVICE_REMOVED,      /* a headset, headphones, a Bluetooth device */
     SOUND_NETWORK_UP, SOUND_NETWORK_DOWN,          /* the default route appeared or went */

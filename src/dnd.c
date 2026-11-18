@@ -12,9 +12,9 @@
 #include <sys/timerfd.h>
 #include <time.h>
 #include <unistd.h>
+#include "tunables.h"
 
 #define CRITICAL 2
-#define NOTE_MS 2500
 
 static bool active;
 static int skipped;

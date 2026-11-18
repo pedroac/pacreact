@@ -242,7 +242,7 @@ static void test_announcements(void) {
 
     event("add", path, "3f0/d711/100");
     assert(ntoasts == 0);                                     /* its names are not there yet */
-    fake_ms += SETTLE_MS - 1;
+    fake_ms += SRC_USB_SETTLE_MS - 1;
     settle();
     assert(ntoasts == 0);
     fake_ms += 1;
@@ -251,7 +251,7 @@ static void test_announcements(void) {
     assert(nsounds == 1 && last_sound == SOUND_DEVICE_ADDED);
 
     event("remove", path, "3f0/d711/100");
-    fake_ms += SETTLE_MS;
+    fake_ms += SRC_USB_SETTLE_MS;
     settle();
     assert(ntoasts == 2 && !strcmp(toasts[1], "HP ENVY 4520 series disconnected") && last_sound == SOUND_DEVICE_REMOVED);
     assert(!find(path));                                      /* the slot is free again */
@@ -260,32 +260,32 @@ static void test_announcements(void) {
     forget();
     event("add", path, "3f0/d711/100");
     event("add", path, "3f0/d711/100");
-    fake_ms += SETTLE_MS;
+    fake_ms += SRC_USB_SETTLE_MS;
     settle();
     assert(ntoasts == 1);
 
     /* out and straight back (a resume, a loose cable): nothing to say */
     forget();
     event("add", path, "3f0/d711/100");
-    fake_ms += SETTLE_MS;
+    fake_ms += SRC_USB_SETTLE_MS;
     settle();
     ntoasts = 0;
     event("remove", path, "3f0/d711/100");
-    fake_ms += SETTLE_MS / 2;
+    fake_ms += SRC_USB_SETTLE_MS / 2;
     settle();
     event("add", path, "3f0/d711/100");
-    fake_ms += SETTLE_MS * 2;
+    fake_ms += SRC_USB_SETTLE_MS * 2;
     settle();
     assert(ntoasts == 0 && find(path)->state == D_SHOWN);
     event("remove", path, "3f0/d711/100");
-    fake_ms += SETTLE_MS;
+    fake_ms += SRC_USB_SETTLE_MS;
     settle();
     assert(ntoasts == 1 && strstr(toasts[0], "disconnected"));  /* and it can still be taken out */
 
     /* a different device in the same port at once: the first is gone for good, then the new one appears */
     forget();
     event("add", path, "3f0/d711/100");
-    fake_ms += SETTLE_MS;
+    fake_ms += SRC_USB_SETTLE_MS;
     settle();
     ntoasts = 0;
     event("remove", path, "3f0/d711/100");
@@ -293,7 +293,7 @@ static void test_announcements(void) {
     make_device("2-1", "removable", "00", "0781", "5581", "SanDisk", "Ultra", drive, 1);
     event("add", path, "781/5581/100");
     assert(ntoasts == 1 && !strcmp(toasts[0], "HP ENVY 4520 series disconnected"));
-    fake_ms += SETTLE_MS;
+    fake_ms += SRC_USB_SETTLE_MS;
     settle();
     assert(ntoasts == 2 && !strcmp(toasts[1], "SanDisk Ultra connected") && !strcmp(icons[1], "drive-removable-media-usb,drive-removable-media"));
 
@@ -301,7 +301,7 @@ static void test_announcements(void) {
     forget();
     event("add", path, "3f0/d711/100");
     event("remove", path, "3f0/d711/100");
-    fake_ms += SETTLE_MS * 2;
+    fake_ms += SRC_USB_SETTLE_MS * 2;
     settle();
     assert(ntoasts == 0 && !find(path));
 
@@ -310,11 +310,11 @@ static void test_announcements(void) {
     const Ifc hub[] = { { "09", "00", NULL } };
     const char *hpath = make_device("2-2", "removable", "09", "05e3", "0610", NULL, "USB2.0 Hub", hub, 1);
     event("add", hpath, "5e3/610/100");
-    fake_ms += SETTLE_MS;
+    fake_ms += SRC_USB_SETTLE_MS;
     settle();
     assert(ntoasts == 0 && find(hpath)->state == D_QUIET);
     event("remove", hpath, "5e3/610/100");
-    fake_ms += SETTLE_MS * 2;
+    fake_ms += SRC_USB_SETTLE_MS * 2;
     settle();
     assert(ntoasts == 0 && !find(hpath));
 
@@ -322,11 +322,11 @@ static void test_announcements(void) {
     forget();
     enabled = (1u << U_CAMERA) | (1u << U_TABLET);
     event("add", path, "3f0/d711/100");                       /* a printer: not asked for */
-    fake_ms += SETTLE_MS;
+    fake_ms += SRC_USB_SETTLE_MS;
     settle();
     assert(ntoasts == 0);
     event("remove", path, "3f0/d711/100");
-    fake_ms += SETTLE_MS * 2;
+    fake_ms += SRC_USB_SETTLE_MS * 2;
     settle();
     assert(ntoasts == 0);
 
@@ -341,7 +341,7 @@ static void test_announcements(void) {
     usb_uevent(buf, n);
     n = uevent(buf, "bind", path, "3f0/d711/100", "usb_device", "usb");
     usb_uevent(buf, n);
-    fake_ms += SETTLE_MS * 2;
+    fake_ms += SRC_USB_SETTLE_MS * 2;
     settle();
     assert(ntoasts == 0 && !find(path));
 
@@ -349,7 +349,7 @@ static void test_announcements(void) {
     forget();
     off = true;
     event("add", path, "3f0/d711/100");
-    fake_ms += SETTLE_MS * 2;
+    fake_ms += SRC_USB_SETTLE_MS * 2;
     settle();
     assert(ntoasts == 0 && !find(path));
     off = false;
@@ -378,24 +378,24 @@ static void test_start_up(void) {
 
     /* so taking it out is announced, though it was never announced coming in */
     event("remove", mpath, "30fa/400/100");
-    fake_ms += SETTLE_MS;
+    fake_ms += SRC_USB_SETTLE_MS;
     settle();
-    assert(ntoasts == 1 && !strcmp(toasts[0], "USB Optical Mouse disconnected") && !strcmp(icons[0], "input-mouse"));
+    assert(ntoasts == 1 && !strcmp(toasts[0], "USB Optical Mouse disconnected") && !strcmp(icons[0], "input-mouse-off,input-mouse"));
     forget();
 
     /* and the same device is recognised coming back, whichever way the number is written */
     scan();
     assert(find(mpath));
     event("remove", mpath, "30fa/400/100");
-    fake_ms += SETTLE_MS / 2;
+    fake_ms += SRC_USB_SETTLE_MS / 2;
     event("add", mpath, "30fa/400/100");
-    fake_ms += SETTLE_MS;
+    fake_ms += SRC_USB_SETTLE_MS;
     settle();
     assert(ntoasts == 0 && find(mpath)->state == D_SHOWN);
 }
 
 int main(void) {
-    snprintf(root, sizeof root, "/tmp/pachud-usb-XXXXXX");
+    snprintf(root, sizeof root, "/tmp/pacreact-usb-XXXXXX");
     assert(mkdtemp(root));
     char *real = realpath(root, NULL);                       /* the tree is found through its real path */
     assert(real && strlen(real) < sizeof root);

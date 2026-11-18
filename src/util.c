@@ -1,5 +1,8 @@
 #include "util.h"
+#include "i18n.h"
+#include "setting.h"
 #include <errno.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -46,17 +49,41 @@ long int_value(const char *name, const char *value, long def, long lo, long hi, 
     errno = 0;
     long n = strtol(value, &end, 10);
     if (end == value || *end || errno == ERANGE) {
-        fprintf(stderr, "pachud: %s must be a whole number of %s, not \"%s\"; ignored\n", name, unit, value);
+        fprintf(stderr, _("pacreact: %s must be a whole number of %s, not \"%s\"; ignored\n"), name, unit, value);
         return def;
     }
     if (n < lo || n > hi) {
         long to = n < lo ? lo : hi;
-        fprintf(stderr, "pachud: %s=%ld is outside %ld to %ld; using %ld\n", name, n, lo, hi, to);
+        fprintf(stderr, _("pacreact: %s=%ld is outside %ld to %ld; using %ld\n"), name, n, lo, hi, to);
         return to;
     }
     return n;
 }
 
-long env_int(const char *name, long def, long lo, long hi, const char *unit) {
-    return int_value(name, getenv(name), def, lo, hi, unit);
+long setting_int(const char *name, long def, long lo, long hi, const char *unit) {
+    return int_value(name, pac_setting(name), def, lo, hi, unit);
+}
+
+Size setting_size(const char *name, long lo, long hi) {
+    Size size = { 0 };
+    const char *value = pac_setting(name);
+    if (!value || !*value) return size;
+    char *end;
+    errno = 0;
+    strtol(value, &end, 10);
+    if (end != value && !*end && errno != ERANGE) {
+        size.px = int_value(name, value, 0, lo, hi, "pixels");
+        size.set = true;
+    } else if (pac_length_parse(value, &size.len)) {
+        size.set = size.unit = true;
+    } else {
+        fprintf(stderr, _("pacreact: %s must be a whole number of pixels or a length such as 4mm, 0.2in, 10pt or 5%%, not \"%s\"; ignored\n"), name, value);
+    }
+    return size;
+}
+
+long size_px(const Size *size, long def, long lo, long hi, double px_per_mm, double whole) {
+    if (!size->set) return def;
+    long px = size->unit ? lround(pac_length_px(size->len, px_per_mm, whole)) : size->px;
+    return px < lo ? lo : px > hi ? hi : px;
 }

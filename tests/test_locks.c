@@ -4,6 +4,7 @@
 #include "../src/hud.h"
 #include "../src/loop.h"
 #include <assert.h>
+#include "setting.h"
 #include <fcntl.h>
 #include <stdio.h>
 #include <string.h>
@@ -107,17 +108,17 @@ static void test_opt_in_and_real_keyboards(void) {
     started = true;
     reset();
 
-    /* off unless PACHUD_LOCK_KEYS is exactly 1 */
+    /* off unless lock_keys is exactly 1 */
     const char *no[] = { NULL, "", "0", "true", "yes", "11" };
     for (size_t i = 0; i < sizeof no / sizeof *no; i++) {
-        if (no[i]) setenv("PACHUD_LOCK_KEYS", no[i], 1); else unsetenv("PACHUD_LOCK_KEYS");
+        if (no[i]) pac_setting_set("lock_keys", no[i]); else pac_setting_set("lock_keys", NULL);
         registered = 0;
         locks_init();
         assert(registered == 0);
         for (int k = 0; k < MAX_KEYBOARDS; k++) assert(keyboards[k].fd < 0);
     }
 
-    setenv("PACHUD_LOCK_KEYS", "1", 1);
+    pac_setting_set("lock_keys", "1");
     registered = 0;
     locks_init();
     int opened = 0;
@@ -139,7 +140,7 @@ static void test_opt_in_and_real_keyboards(void) {
     int before = registered;
     rescan();
     assert(registered == before);
-    unsetenv("PACHUD_LOCK_KEYS");
+    pac_setting_set("lock_keys", NULL);
 }
 
 int main(void) {

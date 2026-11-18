@@ -2,12 +2,11 @@
 #define SCALE_H
 
 #include <stdlib.h>
+#include "tunables.h"
 
 /* Scales are kept as integers in 120ths, as the fractional-scale protocol sends them:
  * 120 is 1x, 180 is 1.5x, 240 is 2x. */
 #define SCALE_UNIT 120
-#define SCALE_MIN 120
-#define SCALE_MAX 480
 
 /* Buffer pixels needed for `logical` pixels at the given scale (rounded up, so the content
  * never ends up smaller than the surface it fills). */

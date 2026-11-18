@@ -1,6 +1,7 @@
 #include "activity.h"
 #include "alerts.h"
-#include "config_file.h"
+#include "clock.h"
+#include "settings_file.h"
 #include "display.h"
 #include "hud.h"
 #include "i18n.h"
@@ -9,6 +10,8 @@
 #include "ipc.h"
 #include "loop.h"
 #include "paint.h"
+#include "setting.h"
+#include "speech.h"
 #include "sound.h"
 #include "text.h"
 #ifndef NO_NOTIFY
@@ -27,35 +30,35 @@
 #include <time.h>
 #include <sys/signalfd.h>
 #include <unistd.h>
+#include "tunables.h"
 
-#define DEFAULT_TIMEOUT_MS 3000
 
 static const char usage_text[] =
-"usage: pachud                      run the daemon\n"
-    "       pachud toast [-l info|warn|crit] [-t SECONDS] [-i ICON] TEXT...\n"
-    "       pachud slider [-i ICON] PERCENT LABEL...\n"
-    "       pachud timer DURATION [LABEL...]   e.g. 90s, 5m, 1h30m\n"
-    "       pachud alarm [-r daily|weekdays|weekends|mon,wed,...] [YYYY-MM-DD] HH:MM [LABEL...]\n"
-    "       pachud peek [-r daily|weekdays|weekends|mon,wed,...] HH:MM [LABEL...]   show the time, quietly\n"
-    "       pachud peek every DURATION [LABEL...]   show the time after that much use, e.g. 30m, 1h\n"
-    "       pachud time                        show the time in the middle of the screen\n"
-    "       pachud snooze [DURATION]           re-arm the last timer/alarm that went off\n"
-    "       pachud pause ID | resume ID | extend ID DURATION   (timers)\n"
-    "       pachud list | cancel ID|all\n"
-    "       pachud dismiss                     close the HUD on screen\n"
-    "       pachud dnd [on [DURATION]|off|toggle|status]\n"
-    "       pachud action [N]                  invoke action N of the notification on screen\n"
-    "       pachud history [N|clear]           the last notifications (kept in memory only)\n"
-    "       pachud print                       the print jobs that have not finished\n"
-    "       pachud count                       notifications on screen or waiting (for a status bar)\n"
-    "       pachud expand                      show more of the newest notification, or less again\n";
+"usage: pacreact                      run the daemon\n"
+    "       pacreact toast [-l info|warn|crit] [-t SECONDS] [-i ICON] TEXT...\n"
+    "       pacreact slider [-i ICON] PERCENT LABEL...\n"
+    "       pacreact timer DURATION [LABEL...]   e.g. 90s, 5m, 1h30m\n"
+    "       pacreact alarm [-r daily|weekdays|weekends|mon,wed,...] [YYYY-MM-DD] HH:MM [LABEL...]\n"
+    "       pacreact peek [-r daily|weekdays|weekends|mon,wed,...] HH:MM [LABEL...]   show the time, quietly\n"
+    "       pacreact peek every DURATION [LABEL...]   show the time after that much use, e.g. 30m, 1h\n"
+    "       pacreact time                        show the time in the middle of the screen\n"
+    "       pacreact snooze [DURATION]           re-arm the last timer/alarm that went off\n"
+    "       pacreact pause ID | resume ID | extend ID DURATION   (timers)\n"
+    "       pacreact list | cancel ID|all\n"
+    "       pacreact dismiss                     close the HUD on screen\n"
+    "       pacreact dnd [on [DURATION]|off|toggle|status]\n"
+    "       pacreact action [N]                  invoke action N of the notification on screen\n"
+    "       pacreact history [N|clear]           the last notifications (kept in memory only)\n"
+    "       pacreact print                       the print jobs that have not finished\n"
+    "       pacreact count                       notifications on screen or waiting (for a status bar)\n"
+    "       pacreact expand                      show more of the newest notification, or less again\n";
 
 static int usage(void) {
     fputs(usage_text, stderr);
     return 2;
 }
 
-/* pachud slider [-i ICON] PERCENT LABEL...: the daemon takes percent, icon ("-" for none), label */
+/* pacreact slider [-i ICON] PERCENT LABEL...: the daemon takes percent, icon ("-" for none), label */
 static int client_slider(int argc, char **argv) {
     const char *icon = "-";
     int i = 2;
@@ -67,7 +70,7 @@ static int client_slider(int argc, char **argv) {
     for (i++; i < argc && n < (int)sizeof msg - 1; i++)
         n += snprintf(msg + n, sizeof msg - n, "%s%s", argv[i], i + 1 < argc ? " " : "");
     int r = ipc_send(msg);
-    if (r < 0) fputs(_("pachud: daemon not running\n"), stderr);
+    if (r < 0) fputs(_("pacreact: daemon not running\n"), stderr);
     return r != 0;
 }
 
@@ -91,21 +94,28 @@ static int client_toast(int argc, char **argv) {
         n += snprintf(msg + n, sizeof msg - n, "%s%s", argv[i], i + 1 < argc ? " " : "");
 
     int r = ipc_send(msg);
-    if (r < 0) fputs(_("pachud: daemon not running\n"), stderr);
+    if (r < 0) fputs(_("pacreact: daemon not running\n"), stderr);
     return r != 0;
 }
 
 /* Commands shaped "cmd ARG [REST...]": the daemon gets them tab-separated. */
+
+/* snprintf() returns the length the text would have had; the length of what was written is never
+ * past the end of the buffer, so that the next write cannot start there. */
+static int clamp(int written, size_t size) {
+    return written < 0 ? 0 : written >= (int)size ? (int)size - 1 : written;
+}
+
 static int client_generic(int argc, char **argv, int min_args) {
     if (argc < 2 + min_args) return usage();
     char msg[1024];
-    int n = snprintf(msg, sizeof msg, "%s", argv[1]);
-    if (argc > 2) n += snprintf(msg + n, sizeof msg - n, "\t%s", argv[2]);
-    if (argc > 3) n += snprintf(msg + n, sizeof msg - n, "\t");
+    int n = clamp(snprintf(msg, sizeof msg, "%s", argv[1]), sizeof msg);
+    if (argc > 2) n = clamp(n + snprintf(msg + n, sizeof msg - n, "\t%s", argv[2]), sizeof msg);
+    if (argc > 3) n = clamp(n + snprintf(msg + n, sizeof msg - n, "\t"), sizeof msg);
     for (int i = 3; i < argc && n < (int)sizeof msg - 1; i++)
-        n += snprintf(msg + n, sizeof msg - n, "%s%s", argv[i], i + 1 < argc ? " " : "");
+        n = clamp(n + snprintf(msg + n, sizeof msg - n, "%s%s", argv[i], i + 1 < argc ? " " : ""), sizeof msg);
     int r = ipc_send(msg);
-    if (r < 0) fputs(_("pachud: daemon not running\n"), stderr);
+    if (r < 0) fputs(_("pacreact: daemon not running\n"), stderr);
     return r != 0;
 }
 
@@ -113,7 +123,7 @@ static bool looks_like_date(const char *s) {  /* YYYY-MM-DD */
     return strlen(s) == 10 && s[4] == '-' && s[7] == '-';
 }
 
-/* pachud alarm [-r RECUR] [YYYY-MM-DD] HH:MM [LABEL...]. The daemon takes one field: "HH:MM",
+/* pacreact alarm [-r RECUR] [YYYY-MM-DD] HH:MM [LABEL...]. The daemon takes one field: "HH:MM",
  * "HH:MM@RECUR" or "YYYY-MM-DDTHH:MM". */
 static int client_alarm(int argc, char **argv) {
     int i = 2;
@@ -134,7 +144,8 @@ static int client_alarm(int argc, char **argv) {
         snprintf(spec + len, sizeof spec - len, "@%s", recur);
     }
 
-    char *nargv[argc + 1];
+    if (argc >= CLIENT_ARGV_MAX) return usage();
+    char *nargv[CLIENT_ARGV_MAX];
     int n = 0;
     nargv[n++] = argv[0];
     nargv[n++] = argv[1];
@@ -143,13 +154,14 @@ static int client_alarm(int argc, char **argv) {
     return client_generic(n, nargv, 1);
 }
 
-/* pachud peek [-r RECUR] HH:MM [LABEL...] and pachud peek every DURATION [LABEL...]: the daemon takes
+/* pacreact peek [-r RECUR] HH:MM [LABEL...] and pacreact peek every DURATION [LABEL...]: the daemon takes
  * "HH:MM", "HH:MM@RECUR" or "every@DURATION" as its one field, like an alarm. */
 static int client_peek(int argc, char **argv) {
     if (argc > 3 && !strcmp(argv[2], "every")) {
         char spec[64];
         snprintf(spec, sizeof spec, "every@%s", argv[3]);
-        char *nargv[argc + 1];
+        if (argc >= CLIENT_ARGV_MAX) return usage();
+        char *nargv[CLIENT_ARGV_MAX];
         int n = 0;
         nargv[n++] = argv[0];
         nargv[n++] = argv[1];
@@ -158,17 +170,6 @@ static int client_peek(int argc, char **argv) {
         return client_generic(n, nargv, 1);
     }
     return client_alarm(argc, argv);
-}
-
-/* The time and the date, in the middle of the screen (`pachud time`). */
-static void show_time(void) {
-    time_t now = time(NULL);
-    struct tm tm;
-    localtime_r(&now, &tm);
-    char hm[16], date[96];
-    strftime(hm, sizeof hm, "%H:%M", &tm);
-    strftime(date, sizeof date, "%A %d %B", &tm);
-    hud_osd_clock(hm, date);
 }
 
 static void handle(char *msg, char *reply, size_t n) {
@@ -194,7 +195,7 @@ static void handle(char *msg, char *reply, size_t n) {
         return;
     }
     if (cmd && !strcmp(cmd, "time")) {
-        show_time();
+        clock_show();
         snprintf(reply, n, "ok");
         return;
     }
@@ -267,7 +268,7 @@ static void on_signal(void *ctx, uint32_t ev) {
 }
 
 static int run_daemon(void) {
-    config_load();
+    settings_load();
     /* The notification history lives in this process: keep it out of core dumps and out of reach of
      * other processes that ptrace it or read /proc/PID/mem. */
     prctl(PR_SET_DUMPABLE, 0);
@@ -280,18 +281,23 @@ static int run_daemon(void) {
 
     static int lfd;
     lfd = ipc_listen();
-    if (lfd == -2) { fputs(_("pachud: already running\n"), stderr); return 1; }
-    if (lfd < 0) { perror("pachud: socket"); return 1; }
+    if (lfd == -2) { fputs(_("pacreact: already running\n"), stderr); return 1; }
+    if (lfd < 0) { perror("pacreact: socket"); return 1; }
 
     text_init();
     sound_init();
     alerts_init();
     Display *dpy = display_open();
-    if (!dpy) { fputs(_("pachud: cannot connect to a Wayland compositor with layer-shell\n"), stderr); return 1; }
-    paint_init();   /* PACHUD_FONT_SIZE and PACHUD_WIDTH, before anything is measured */
+    if (!dpy) { fputs(_("pacreact: cannot connect to a Wayland compositor with layer-shell\n"), stderr); return 1; }
+    /* Speech, unless speech = no: opened here, where a server that is not running is said once and the HUD goes on. */
+    const char *speech = pac_setting("speech");
+    bool speaking = (!speech || strcmp(speech, "no")) && speech_open("pacreact", pac_setting("language"));
+    paint_init();   /* font_size and width, before anything is measured */
+    paint_set_screen(display_px_per_mm(dpy), display_output_short_side(dpy), display_output_width(dpy));   /* sizes in mm are in pixels of this screen */
     hud_init(dpy);
+    hud_set_speech(speaking);
 
-    if (loop_init() < 0) { perror("pachud: epoll"); return 1; }
+    if (loop_init() < 0) { perror("pacreact: epoll"); return 1; }
     loop_add(display_fd(dpy), EPOLLIN, on_wayland, NULL);
     loop_add(lfd, EPOLLIN, on_ipc, &lfd);
     loop_add(sfd, EPOLLIN, on_signal, NULL);
@@ -314,6 +320,7 @@ static int run_daemon(void) {
     notify_init();
 #endif
     timer_init();
+    clock_init();
     activity_init(dpy);
     activity_on_change(timer_activity);
     timer_usage_config(activity_break_secs());
@@ -330,6 +337,7 @@ static int run_daemon(void) {
 #ifndef NO_NOTIFY
     print_shutdown();
 #endif
+    speech_close();
     display_close(dpy);
     text_finish();
     return 0;
@@ -342,7 +350,7 @@ int main(int argc, char **argv) {
         return 0;
     }
     if (!strcmp(argv[1], "-V") || !strcmp(argv[1], "--version")) {
-        puts("pachud " PACHUD_VERSION);
+        puts("pacreact " PACREACT_VERSION);
         return 0;
     }
     if (!strcmp(argv[1], "toast")) return client_toast(argc, argv);

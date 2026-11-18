@@ -13,18 +13,14 @@
 #include <string.h>
 #include <sys/epoll.h>
 #include <systemd/sd-bus.h>
+#include "tunables.h"
 
 #define PATH "/org/freedesktop/Notifications"
 #define IFACE "org.freedesktop.Notifications"
 
-#define MIN_MS 1500
-#define LOW_MS 3000
-#define NORMAL_MS 6000
 
 enum { REASON_CLOSED_BY_CALL = 3, REASON_UNDEFINED = 4 };
 
-/* One "default" action plus the ones the card can show, as key/label pairs */
-#define MAX_ACTION_STRINGS ((HUD_MAX_ACTIONS + 1) * 2)
 
 static sd_bus *bus;
 static uint32_t next_id = 1;
@@ -32,13 +28,13 @@ static uint32_t next_id = 1;
 static int method_caps(sd_bus_message *m, void *ud, sd_bus_error *err) {
     (void)ud; (void)err;
     /* No markup rendering: plain summary and body. Actions are offered as numbered hints and
-     * invoked with `pachud action N`, since the HUD cannot be clicked. */
+     * invoked with `pacreact action N`, since the HUD cannot be clicked. */
     return sd_bus_reply_method_return(m, "as", 4, "actions", "body", "icon-static", "sound");
 }
 
 static int method_info(sd_bus_message *m, void *ud, sd_bus_error *err) {
     (void)ud; (void)err;
-    return sd_bus_reply_method_return(m, "ssss", "pachud", "pachud", PACHUD_VERSION, "1.2");
+    return sd_bus_reply_method_return(m, "ssss", "pacreact", "pacreact", PACREACT_VERSION, "1.2");
 }
 
 static void emit_closed(uint32_t id, int reason) {
@@ -271,10 +267,10 @@ void notify_init(void) {
     if (r >= 0) r = sd_bus_request_name(bus, IFACE, 0);  /* 0: fail rather than queue */
     if (r < 0) {
         if (r == -EEXIST)
-            fputs("pachud: another notification daemon owns org.freedesktop.Notifications "
-                  "(stop mako/dunst/...); notifications disabled\n", stderr);
+            fputs(_("pacreact: another notification daemon owns org.freedesktop.Notifications "
+                    "(stop mako/dunst/...); notifications disabled\n"), stderr);
         else
-            fprintf(stderr, "pachud: notifications disabled: %s\n", strerror(-r));
+            fprintf(stderr, _("pacreact: notifications disabled: %s\n"), strerror(-r));
         sd_bus_flush_close_unref(bus);
         bus = NULL;
         return;

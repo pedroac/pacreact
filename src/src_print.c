@@ -1,4 +1,5 @@
 #include "hud.h"
+#include "setting.h"
 #include "i18n.h"
 #include "loop.h"
 #include "sound.h"
@@ -19,37 +20,31 @@
 #include <sys/un.h>
 #include <systemd/sd-bus.h>
 #include <unistd.h>
+#include "tunables.h"
 
 /* Printing: a job that starts, finishes or fails, and a printer that needs attention (out of paper, a jam, ink or
  * toner, a cover, offline). CUPS announces these on the system bus, but only to whoever has asked: the
  * subscription is made over IPP on CUPS's socket, as GNOME's print notifications do, and renewed before
  * its lease runs out. The signals arrive on the bus connection, one more fd in the loop, so nothing runs
- * while nothing prints. `pachud print` lists the queue by asking CUPS when it is run.
- * PACHUD_PRINT=0 turns the toasts off, PACHUD_PRINT=done only the one for a job starting;
- * PACHUD_PRINT_DEBUG=1 says what CUPS and the bus did. */
+ * while nothing prints. `pacreact print` lists the queue by asking CUPS when it is run.
+ * print = 0 turns the toasts off, print = done only the one for a job starting;
+ * print_debug = 1 says what CUPS and the bus did. */
 
-#define TOAST_MS 4000
-#define LEASE_S 86400
-#define RETRY_MIN_S 60
-#define RETRY_MAX_S 3600
-#define HTTP_TIMEOUT_S 2
-#define MAX_PRINTERS 8
-#define NAME_MAX_SHOWN 80
 #define SERVER_URI "ipp://localhost/"
 
 static sd_bus *bus;
 static int tfd = -1;
 static int sub_id = -1;
 static int retry_s = RETRY_MIN_S;
-static bool announce_start = true;   /* PACHUD_PRINT=done leaves the "Printing" toast out */
+static bool announce_start = true;   /* print = done leaves the "Printing" toast out */
 
-static bool debug_on(void) { return getenv("PACHUD_PRINT_DEBUG") != NULL; }
+static bool debug_on(void) { return pac_setting("print_debug") != NULL; }
 #define DEBUG(...) do { if (debug_on()) { fprintf(stderr, "print: " __VA_ARGS__); fputc('\n', stderr); } } while (0)
 
 /* ---- IPP: requests are built, answers read, by hand ---- */
 
 enum { OP_GET_JOBS = 0x000A, OP_CREATE_SUB = 0x0016, OP_GET_SUBS = 0x0019, OP_RENEW_SUB = 0x001A, OP_CANCEL_SUB = 0x001B };
-#define MARKER "pachud"    /* notify-user-data of our subscriptions is "pachud:PID": whose they are, and whether that one still runs */
+#define MARKER "pacreact"    /* notify-user-data of our subscriptions is "pacreact:PID": whose they are, and whether that one still runs */
 enum { TAG_OPERATION = 0x01, TAG_JOB = 0x02, TAG_END = 0x03, TAG_SUBSCRIPTION = 0x06,
        T_INTEGER = 0x21, T_ENUM = 0x23, T_KEYWORD = 0x44, T_URI = 0x45, T_CHARSET = 0x47, T_LANGUAGE = 0x48,
        T_NAME = 0x42, T_BOOLEAN = 0x22, T_OCTETS = 0x30 };
@@ -288,8 +283,8 @@ static void cancel_sub(int id) {
     if (n_cancelled < 16) cancelled[n_cancelled++] = id;
 }
 
-/* Whether a subscription's user data says it was made by a pachud that is no longer running: "pachud:PID" with no such
- * process (a different one's, still running, is left alone), or the bare "pachud" of an earlier version. */
+/* Whether a subscription's user data says it was made by a pacreact that is no longer running: "pacreact:PID" with no such
+ * process (a different one's, still running, is left alone), or the bare "pacreact" of an earlier version. */
 static bool left_behind(const IppAttr *a) {
     char data[32];
     attr_text(a, data, sizeof data);
@@ -375,10 +370,10 @@ static void job_event(const char *printer, unsigned state, const char *reasons, 
     if (state == JOB_COMPLETED) {
         bool errors = reasons && (strstr(reasons, "completed-with-errors") || strstr(reasons, "completed-with-warnings"));
         snprintf(msg, sizeof msg, errors ? _("Printed with errors — %s") : _("Printed — %s"), name);
-        hud_toast_icon(msg, errors ? LEVEL_WARN : LEVEL_INFO, TOAST_MS, errors ? "printer-warning,printer-error,printer" : "printer");
+        hud_toast_icon(msg, errors ? LEVEL_WARN : LEVEL_INFO, SRC_PRINT_TOAST_MS, errors ? "printer-warning,printer-error,printer" : "printer");
     } else if (state == JOB_ABORTED) {
         snprintf(msg, sizeof msg, _("Print failed — %s"), name);
-        hud_toast_icon(msg, LEVEL_WARN, TOAST_MS, "printer-error,printer-warning,printer");
+        hud_toast_icon(msg, LEVEL_WARN, SRC_PRINT_TOAST_MS, "printer-error,printer-warning,printer");
         sound_play(SOUND_ALERT);
     }
     /* canceled: by you, so you know */
@@ -415,7 +410,7 @@ static void job_state(const char *printer, uint32_t id, uint32_t state, const ch
     clean_name(name, shown, sizeof shown);
     if (!*shown) snprintf(shown, sizeof shown, "%s", _("Document"));
     snprintf(msg, sizeof msg, _("Printing — %s"), shown);
-    hud_toast_icon(msg, LEVEL_INFO, TOAST_MS, "printer");
+    hud_toast_icon(msg, LEVEL_INFO, SRC_PRINT_TOAST_MS, "printer");
 }
 
 enum { P_PAPER = 1 << 0, P_JAM = 1 << 1, P_INK_EMPTY = 1 << 2, P_INK_LOW = 1 << 3, P_COVER = 1 << 4, P_OFFLINE = 1 << 5,
@@ -460,12 +455,12 @@ static void say_problem(const char *label, unsigned bit) {
     case P_INK_EMPTY: fmt = _("%s: out of ink or toner"); break;
     case P_INK_LOW: fmt = _("%s: ink or toner low"); level = LEVEL_INFO; icon = "printer-warning,printer"; break;
     case P_COVER: fmt = _("%s: cover open"); break;
-    case P_OFFLINE: fmt = _("%s: offline"); break;
+    case P_OFFLINE: fmt = _("%s: offline"); icon = "printer-off,printer-error,printer-warning,printer"; break;
     case P_STOPPED: fmt = _("%s: stopped"); break;
     default: return;
     }
     snprintf(msg, sizeof msg, fmt, label);
-    hud_toast_icon(msg, level, TOAST_MS, icon);
+    hud_toast_icon(msg, level, SRC_PRINT_TOAST_MS, icon);
     if (level == LEVEL_WARN) sound_play(SOUND_ALERT);
 }
 
@@ -494,7 +489,7 @@ static void printer_event(const char *name, unsigned state, const char *reasons)
     if (p->problems && !now) {
         char msg[160];
         snprintf(msg, sizeof msg, _("%s: ready"), label);
-        hud_toast_icon(msg, LEVEL_INFO, TOAST_MS, "printer");
+        hud_toast_icon(msg, LEVEL_INFO, SRC_PRINT_TOAST_MS, "printer");
     }
     p->problems = now;
 }
@@ -549,7 +544,7 @@ static const char *job_state_word(int state) {
 }
 
 /* The whole reply for a Get-Jobs answer: "ok", then one line per job that has not finished, like
- * "98 held HP_ENVY_4520_series pachud test job". The attributes of a job come in no fixed order, so a job is
+ * "98 held HP_ENVY_4520_series pacreact test job". The attributes of a job come in no fixed order, so a job is
  * what lies between two group tags. */
 static void format_jobs(const uint8_t *resp, size_t n, char *reply, size_t cap) {
     typedef struct { int id, state; char printer[128], name[128]; } Job;
@@ -613,7 +608,7 @@ bool print_command(const char *cmd, char *args, char *reply, size_t n) {
 }
 
 void print_init(void) {
-    const char *off = getenv("PACHUD_PRINT");
+    const char *off = pac_setting("print");
     if (off && !strcmp(off, "0")) return;
     announce_start = !(off && !strcmp(off, "done"));
     if (access(server_path(), F_OK) != 0) return;     /* no CUPS here: nothing to ask, and nothing to start */

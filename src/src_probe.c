@@ -1,4 +1,5 @@
 #include "hud.h"
+#include "setting.h"
 #include "i18n.h"
 #include "loop.h"
 #include "sources.h"
@@ -14,16 +15,12 @@
 #include <sys/timerfd.h>
 #include <time.h>
 #include <unistd.h>
+#include "tunables.h"
 
-/* Opt-in: PACHUD_PROBE_HOST=<IPv4 address> sends one ICMP echo every PACHUD_PROBE_INTERVAL
+/* Opt-in: probe_host = <IPv4 address> sends one ICMP echo every probe_interval
  * seconds (default 30), and only while the network is up. It needs an unprivileged ping
  * socket (net.ipv4.ping_group_range). Nothing runs, and nothing wakes, without the variable. */
 
-#define DEFAULT_INTERVAL_S 30
-#define TIMEOUT_MS 2000
-#define SLOW_MS 400
-#define BAD_TO_ALERT 2    /* consecutive bad probes before alerting */
-#define GOOD_TO_CLEAR 2   /* consecutive good probes before saying it recovered */
 
 static char host_name[64] = "probe host";
 static int bad, good;
@@ -52,7 +49,7 @@ void probe_result(bool ok, int rtt_ms) {
 
 static int sock = -1, timer_fd = -1;
 static struct sockaddr_in target;
-static int interval_s = DEFAULT_INTERVAL_S;
+static int interval_s = SRC_PROBE_DEFAULT_INTERVAL_S;
 static bool waiting;
 static unsigned short seq;
 static long long sent_ms;
@@ -102,19 +99,19 @@ static void on_reply(void *ctx, uint32_t ev) {
 }
 
 void probe_init(void) {
-    const char *host = getenv("PACHUD_PROBE_HOST"), *every = getenv("PACHUD_PROBE_INTERVAL");
+    const char *host = pac_setting("probe_host"), *every = pac_setting("probe_interval");
     if (!host || !*host) return;
     target.sin_family = AF_INET;
     if (inet_pton(AF_INET, host, &target.sin_addr) != 1) {
-        fprintf(stderr, "pachud: PACHUD_PROBE_HOST must be an IPv4 address; probe disabled\n");
+        fprintf(stderr, _("pacreact: probe_host must be an IPv4 address; probe disabled\n"));
         return;
     }
     snprintf(host_name, sizeof host_name, "%s", host);
-    interval_s = (int)int_value("PACHUD_PROBE_INTERVAL", every, interval_s, 5, 3600, "seconds");
+    interval_s = (int)int_value("probe_interval", every, interval_s, 5, 3600, "seconds");
 
     sock = socket(AF_INET, SOCK_DGRAM | SOCK_NONBLOCK | SOCK_CLOEXEC, IPPROTO_ICMP);
     if (sock < 0) {
-        perror("pachud: probe disabled (ICMP socket; see net.ipv4.ping_group_range)");
+        perror("pacreact: probe disabled (ICMP socket; see net.ipv4.ping_group_range)");
         return;
     }
     timer_fd = timerfd_create(CLOCK_MONOTONIC, TFD_CLOEXEC | TFD_NONBLOCK);

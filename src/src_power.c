@@ -14,12 +14,8 @@
 #include <sys/socket.h>
 #include <sys/timerfd.h>
 #include <unistd.h>
+#include "tunables.h"
 
-#define WARN_PCT 15
-#define CRIT_PCT 5
-#define REARM_PCT 20
-#define POLL_SECS 60  /* fallback for drivers that don't emit uevents on capacity changes */
-#define ALERT_MS 8000
 
 static int ac = -1;        /* last known charger state, -1 unknown */
 static bool warned, critical;
@@ -28,7 +24,7 @@ static char bat_dir[300];  /* sysfs dir of the first battery, if any */
 
 /* Pure logic, kept free of I/O so it can be tested. */
 void battery_update(int capacity, bool discharging) {
-    if (!discharging || capacity > REARM_PCT) {
+    if (!discharging || capacity > SRC_POWER_REARM_PCT) {
         warned = critical = false;
         return;
     }
@@ -37,13 +33,13 @@ void battery_update(int capacity, bool discharging) {
         critical = warned = true;
         if (!alert_allowed("battery", LEVEL_CRIT)) return;
         snprintf(msg, sizeof msg, _("Battery critical — %d%%"), capacity);
-        hud_toast_icon(msg, LEVEL_CRIT, ALERT_MS, "battery-caution,battery-low");
+        hud_toast_icon(msg, LEVEL_CRIT, SRC_POWER_ALERT_MS, "battery-caution,battery-low");
         sound_play(SOUND_ALERT);
     } else if (capacity <= WARN_PCT && !warned) {
         warned = true;
         if (!alert_allowed("battery", LEVEL_WARN)) return;
         snprintf(msg, sizeof msg, _("Battery low — %d%%"), capacity);
-        hud_toast_icon(msg, LEVEL_WARN, ALERT_MS, "battery-low,battery-caution");
+        hud_toast_icon(msg, LEVEL_WARN, SRC_POWER_ALERT_MS, "battery-low,battery-caution");
         sound_play(SOUND_ALERT);
     }
 }
@@ -103,7 +99,7 @@ static void check_battery(void) {
         discharging = !strcmp(status, "Discharging");
         battery_update(atoi(cap), discharging);
     }
-    struct itimerspec its = { .it_value.tv_sec = discharging ? POLL_SECS : 0 };
+    struct itimerspec its = { .it_value.tv_sec = discharging ? SRC_POWER_POLL_SECS : 0 };
     timerfd_settime(timer_fd, 0, &its, NULL);
 }
 

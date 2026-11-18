@@ -2,6 +2,7 @@
  * event handler can be called directly: it only touches plain fields and a callback, so no
  * compositor is needed. */
 #include <assert.h>
+#include "setting.h"
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -20,10 +21,10 @@ static Display *fresh(void) {
     return d;
 }
 
-/* PACHUD_MARGIN: pixels from the edge */
+/* margin: pixels from the edge */
 static long margin_of(const char *v) {
-    if (v) setenv("PACHUD_MARGIN", v, 1); else unsetenv("PACHUD_MARGIN");
-    return env_int("PACHUD_MARGIN", DEFAULT_MARGIN, 0, MARGIN_MAX, "pixels");
+    if (v) pac_setting_set("margin", v); else pac_setting_set("margin", NULL);
+    return setting_int("margin", DEFAULT_MARGIN, 0, MARGIN_MAX, "pixels");
 }
 
 static void test_margin(void) {
@@ -33,11 +34,37 @@ static void test_margin(void) {
     assert(margin_of("200") == 200);
     assert(margin_of("999") == 200);            /* too much: the most */
     assert(margin_of("-5") == 0);               /* below the range: the least */
-    const char *bad[] = { "abc", "10px", "1.5", "5 " };
+    const char *bad[] = { "abc", "1.5", "5 " };
     for (size_t i = 0; i < sizeof bad / sizeof *bad; i++)
         assert(margin_of(bad[i]) == 16);        /* said so, and the default stays */
     assert(margin_of(" 12") == 12);             /* a stray space in front is forgiven */
-    unsetenv("PACHUD_MARGIN");
+    pac_setting_set("margin", NULL);
+}
+
+/* margin with a unit: a length that is the same on every screen */
+static void test_margin_length(void) {
+    Display *d = fresh();
+    d->outputs[0] = (Output){ .proxy = (struct wl_output *)1, .logical_w = 1920, .logical_h = 1080, .physical_mm = 508, .mode_px = 1920, .scale = 1 };
+    d->last_out = 1;
+    double ppm = 1920.0 / 508;
+    pac_setting_set("margin", "5mm");
+    d->margin_size = setting_size("margin", 0, MARGIN_MAX);
+    assert(d->margin_size.unit && margin_px(d) == (int)lround(5 * ppm));
+    d->outputs[0].scale = 2; d->outputs[0].mode_px = 3840;       /* a sharper panel of the same size: the same logical size */
+    assert(margin_px(d) == (int)lround(5 * ppm));
+    d->outputs[0].physical_mm = 0;                               /* not told: 96 dpi */
+    assert(margin_px(d) == (int)lround(5 * 96 / 25.4 / 2));
+    pac_setting_set("margin", "10%");
+    d->margin_size = setting_size("margin", 0, MARGIN_MAX);
+    assert(margin_px(d) == 108);                                 /* of the shorter side, 1080 */
+    pac_setting_set("margin", "100in");                          /* too much: the most */
+    d->margin_size = setting_size("margin", 0, MARGIN_MAX);
+    assert(margin_px(d) == MARGIN_MAX);
+    pac_setting_set("margin", "3cm");                            /* not a unit: ignored, the default stays */
+    d->margin_size = setting_size("margin", 0, MARGIN_MAX);
+    assert(!d->margin_size.set && margin_px(d) == DEFAULT_MARGIN);
+    pac_setting_set("margin", NULL);
+    free(d);
 }
 
 static void test_deck_apart(void) {
@@ -67,7 +94,7 @@ static void test_deck_apart(void) {
     surface_enter(&sf, NULL, (struct wl_output *)&out[2]);          /* an output we do not know: ignored */
     assert(d->last_out == 2);
 
-    /* PACHUD_OUTPUT decides, whatever happened before; an unknown name tells nothing */
+    /* output decides, whatever happened before; an unknown name tells nothing */
     d->want_output = "BIG";
     assert(display_output_width(d) == 1920 && display_deck_apart(d, 380));
     d->want_output = "SMALL";
@@ -156,7 +183,7 @@ int main(void) {
     preferred_scale(d, NULL, SCALE_MAX);
     assert(d->scale120 == 480 && rescales == 4);
 
-    /* PACHUD_SCALE pins the scale: the compositor's preference is ignored */
+    /* scale pins the scale: the compositor's preference is ignored */
     d->scale_fixed = true;
     d->scale120 = 180;
     preferred_scale(d, NULL, 240);
@@ -214,6 +241,7 @@ int main(void) {
 
     free(d);
     test_margin();
+    test_margin_length();
     test_deck_apart();
     puts("display: ok");
     return 0;

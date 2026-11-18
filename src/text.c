@@ -1,4 +1,5 @@
 #include "text.h"
+#include "setting.h"
 #include "config.h"
 #include "i18n.h"
 #include <locale.h>
@@ -7,16 +8,18 @@
 #include <string.h>
 
 #ifndef NO_I18N
+#include "fontfind.h"
 #include "shape.h"
 #include "utf8.h"
+#include "language.h"
 #include <cairo/cairo-ft.h>
 #include <ft2build.h>
 #include FT_FREETYPE_H
 #include <sys/stat.h>
 #include <unistd.h>
 #endif
+#include "tunables.h"
 
-#define MAX_TEXT 1024
 
 static cairo_t *scratch;  /* 1x1 context for measuring, created on first use */
 static bool ui_rtl;
@@ -56,51 +59,16 @@ void text_finish(void) {}
 
 #else
 
-/* Font files are looked up directly, without fontconfig. Noto first, then DejaVu/Liberation. */
-static const char *const latin_fonts[] = {
-    "/usr/share/fonts/noto/NotoSans-Regular.ttf",
-    "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
-    "/usr/share/fonts/TTF/DejaVuSans.ttf",
-    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-    "/usr/share/fonts/liberation/LiberationSans-Regular.ttf",
-    "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
-    NULL,
-};
-static const char *const latin_bold_fonts[] = {
-    "/usr/share/fonts/noto/NotoSans-Bold.ttf",
-    "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf",
-    "/usr/share/fonts/TTF/DejaVuSans-Bold.ttf",
-    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-    "/usr/share/fonts/liberation/LiberationSans-Bold.ttf",
-    "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
-    NULL,
-};
+/* Font files are looked up by name in the font directories, without fontconfig. Noto first, then
+ * DejaVu/Liberation. */
+static const char *const latin_fonts[] = { "NotoSans-Regular.ttf", "DejaVuSans.ttf", "LiberationSans-Regular.ttf", NULL };
+static const char *const latin_bold_fonts[] = { "NotoSans-Bold.ttf", "DejaVuSans-Bold.ttf", "LiberationSans-Bold.ttf", NULL };
 /* DejaVu Sans covers Arabic and Hebrew together with Latin, so a Wi-Fi name in Latin letters
  * still renders inside right-to-left text (Noto's Arabic fonts lack Latin). */
-static const char *const rtl_fonts[] = {
-    "/usr/share/fonts/TTF/DejaVuSans.ttf",
-    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-    NULL,
-};
-static const char *const rtl_bold_fonts[] = {
-    "/usr/share/fonts/TTF/DejaVuSans-Bold.ttf",
-    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-    NULL,
-};
-static const char *const cjk_fonts[] = {
-    "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
-    "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
-    "/usr/share/fonts/google-noto-cjk/NotoSansCJK-Regular.ttc",
-    "/usr/share/fonts/google-noto-sans-cjk-fonts/NotoSansCJK-Regular.ttc",
-    NULL,
-};
-static const char *const cjk_bold_fonts[] = {
-    "/usr/share/fonts/noto-cjk/NotoSansCJK-Bold.ttc",
-    "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
-    "/usr/share/fonts/google-noto-cjk/NotoSansCJK-Bold.ttc",
-    "/usr/share/fonts/google-noto-sans-cjk-fonts/NotoSansCJK-Bold.ttc",
-    NULL,
-};
+static const char *const rtl_fonts[] = { "DejaVuSans.ttf", NULL };
+static const char *const rtl_bold_fonts[] = { "DejaVuSans-Bold.ttf", NULL };
+static const char *const cjk_fonts[] = { "NotoSansCJK-Regular.ttc", NULL };
+static const char *const cjk_bold_fonts[] = { "NotoSansCJK-Bold.ttc", NULL };
 
 typedef struct {
     const char *prefix;  /* start of the locale name, longest match first */
@@ -158,60 +126,67 @@ static const cairo_user_data_key_t ft_face_key;
 
 static void done_face(void *face) { FT_Done_Face(face); }
 
-static void load_face(Face *f, const char *const *candidates, int index, int synthesize) {
+static void load_face(Face *f, const char *path, int index, int synthesize) {
     f->tried = true;
     if (!ft_ready) {
         if (FT_Init_FreeType(&ft) != 0) return;
         ft_ready = true;
     }
-    for (const char *const *c = candidates; *c; c++) {
-        FT_Face face;
-        if (access(*c, R_OK) != 0 || FT_New_Face(ft, *c, index, &face) != 0) continue;
-        snprintf(f->path, sizeof f->path, "%s", *c);
-        f->index = index;
-        f->face = cairo_ft_font_face_create_for_ft_face(face, 0);   /* (0: FreeType's load flags) */
-        if (synthesize) cairo_ft_font_face_set_synthesize(f->face, synthesize);
-        cairo_font_face_set_user_data(f->face, &ft_face_key, face, done_face);
-        return;
-    }
+    FT_Face face;
+    if (access(path, R_OK) != 0 || FT_New_Face(ft, path, index, &face) != 0) return;
+    snprintf(f->path, sizeof f->path, "%s", path);
+    f->index = index;
+    f->face = cairo_ft_font_face_create_for_ft_face(face, 0);   /* (0: FreeType's load flags) */
+    if (synthesize) cairo_ft_font_face_set_synthesize(f->face, synthesize);
+    cairo_font_face_set_user_data(f->face, &ft_face_key, face, done_face);
 }
 
-/* PACHUD_FONT: a font file for Latin text instead of the default (the other scripts keep theirs).
- * PACHUD_FONT_BOLD is its bold; without one, bold text is the same file with the bold made by
+/* The first of these file names that is installed (NULL-terminated, best first). */
+static void find_face(Face *f, const char *const *names, int index) {
+    static FontDirs dirs;
+    static bool dirs_ready;
+    if (!dirs_ready) {
+        font_dirs_init(&dirs);
+        dirs_ready = true;
+    }
+    f->tried = true;
+    char path[FONT_PATH_MAX];
+    if (font_find(dirs.list, names, path, sizeof path)) load_face(f, path, index, 0);
+}
+
+/* font: a font file for Latin text instead of the default (the other scripts keep theirs).
+ * font_bold is its bold; without one, bold text is the same file with the bold made by
  * the renderer. Anything that is not a readable regular file is said so once and ignored. */
 static void load_user_face(Face *f, bool bold) {
-    const char *path = getenv(bold ? "PACHUD_FONT_BOLD" : "PACHUD_FONT");
+    const char *path = pac_setting(bold ? "font_bold" : "font");
     int flags = 0;
     if (bold && !(path && *path)) {
-        path = getenv("PACHUD_FONT");
+        path = pac_setting("font");
         flags = CAIRO_FT_SYNTHESIZE_BOLD;
     }
     if (!path || !*path) return;
     struct stat st;
-    const char *list[] = { path, NULL };
-    if (stat(path, &st) == 0 && S_ISREG(st.st_mode)) load_face(f, list, 0, flags);
+    if (stat(path, &st) == 0 && S_ISREG(st.st_mode)) load_face(f, path, 0, flags);
     static bool warned[2];
     if (!f->face && !warned[bold]) {
         warned[bold] = true;
-        fprintf(stderr, "pachud: cannot use the font \"%s\" (not a font file that can be read); using the default\n", path);
+        fprintf(stderr, _("pacreact: cannot use the font \"%s\" (not a font file that can be read); using the default\n"), path);
     }
 }
 
 static Face *get_face(int slot, bool bold) {
     Face *f = &faces[slot][bold];
     if (!f->tried && slot >= SLOT_SCRIPT) {
-        char a[256], b[256];
-        const char *name = ltr_scripts[slot - SLOT_SCRIPT].font, *weight = bold ? "Bold" : "Regular";
-        snprintf(a, sizeof a, "/usr/share/fonts/noto/%s-%s.ttf", name, weight);
-        snprintf(b, sizeof b, "/usr/share/fonts/truetype/noto/%s-%s.ttf", name, weight);
-        const char *list[] = { a, b, NULL };
-        load_face(f, list, 0, 0);
+        char file[128];
+        snprintf(file, sizeof file, "%s-%s.ttf", ltr_scripts[slot - SLOT_SCRIPT].font, bold ? "Bold" : "Regular");
+        const char *names[] = { file, NULL };
+        find_face(f, names, 0);
     } else if (!f->tried) {
         const char *const *list = slot == SLOT_LATIN ? (bold ? latin_bold_fonts : latin_fonts)
                                 : slot == SLOT_RTL   ? (bold ? rtl_bold_fonts : rtl_fonts)
                                                      : (bold ? cjk_bold_fonts : cjk_fonts);
-        if (slot == SLOT_LATIN) load_user_face(f, bold);   /* PACHUD_FONT, if there is one and it works */
-        if (!f->face) load_face(f, list, slot >= SLOT_CJK ? slot - SLOT_CJK : 0, 0);
+        if (slot == SLOT_LATIN) load_user_face(f, bold);   /* font, if there is one and it works */
+        if (!f->face) find_face(f, list, slot >= SLOT_CJK ? slot - SLOT_CJK : 0);
     }
     if (!f->face && bold) return get_face(slot, false);  /* no bold file: regular will do */
     return f;
@@ -324,10 +299,12 @@ static const Script *script_for_locale(void) {
 
 void text_init(void) {
     /* Only what is displayed is localized; other categories would just cost memory. */
-    setlocale(LC_MESSAGES, "");
-    bindtextdomain("pachud", LOCALEDIR);
-    bind_textdomain_codeset("pachud", "UTF-8");
-    textdomain("pachud");
+    const char *language = pac_setting("language");
+    if (language && *language) pac_set_language(language);
+    else setlocale(LC_MESSAGES, "");
+    bindtextdomain("pacreact", LOCALEDIR);
+    bind_textdomain_codeset("pacreact", "UTF-8");
+    textdomain("pacreact");
 
     const Script *s = script_for_locale();
     ui_rtl = s && s->rtl;

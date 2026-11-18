@@ -6,6 +6,7 @@
 #include "../src/sound.h"
 #include "../src/sources.h"
 #include <assert.h>
+#include "setting.h"
 #include <fcntl.h>
 #include <stdio.h>
 #include <string.h>
@@ -30,8 +31,7 @@ int loop_remove(int fd) { (void)fd; removed++; return 0; }
 
 /* The sound server is not here: the test says what it would have answered */
 static void (*ask_cb)(const PortChanges *);
-static int plugs_told;
-void audio_jack_plugged(void) { plugs_told++; }
+void audio_jack_plugged(void) {}
 void audio_port_changes(void (*cb)(const PortChanges *)) { ask_cb = cb; }
 
 #include "../src/src_jack.c"
@@ -348,11 +348,11 @@ static void test_real_devices(void) {
     rescan();
     assert(registered == before);
 
-    setenv("PACHUD_JACKS", "0", 1);
+    pac_setting_set("jacks", "0");
     registered = 0;
     jack_init();
     assert(registered == 0);
-    unsetenv("PACHUD_JACKS");
+    pac_setting_set("jacks", NULL);
 }
 
 static void test_combo_pins(void) {

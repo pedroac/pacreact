@@ -1,6 +1,7 @@
 /* The start-up grace period for repeated alerts. alerts.c is included so the decision can be
  * driven with explicit clocks. */
 #include <assert.h>
+#include "setting.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -24,10 +25,10 @@ static void read_file(char *out, size_t n) {
 static void restart(void) { alerts_init(); }   /* a new process: reads what the last one saved */
 
 int main(void) {
-    snprintf(dir, sizeof dir, "/tmp/pachud-alerts-XXXXXX");
+    snprintf(dir, sizeof dir, "/tmp/pacreact-alerts-XXXXXX");
     assert(mkdtemp(dir));
     setenv("XDG_STATE_HOME", dir, 1);
-    unsetenv("PACHUD_STARTUP_GRACE");
+    pac_setting_set("startup_grace", NULL);
 
     char file[512];
     restart();
@@ -85,14 +86,14 @@ int main(void) {
     t0 = start_mono;
     assert(decide("battery", WARN, wall - 5000000, t0 + 1));
 
-    /* PACHUD_STARTUP_GRACE */
-    setenv("PACHUD_STARTUP_GRACE", "0", 1);
+    /* startup_grace */
+    pac_setting_set("startup_grace", "0");
     restart();
     assert(grace_s == 0);
     t0 = start_mono;
     assert(decide("memory", WARN, wall + 10000100, t0));
     assert(decide("memory", WARN, wall + 10000101, t0));    /* never left out */
-    setenv("PACHUD_STARTUP_GRACE", "30", 1);
+    pac_setting_set("startup_grace", "30");
     restart();
     assert(grace_s == 30);
     t0 = start_mono;
@@ -100,17 +101,17 @@ int main(void) {
     assert(decide("memory", WARN, wall + 10000103, t0 + 30));
     const char *bad[] = { "abc", "1.5", "", "10s" };
     for (size_t i = 0; i < sizeof bad / sizeof *bad; i++) {
-        setenv("PACHUD_STARTUP_GRACE", bad[i], 1);
+        pac_setting_set("startup_grace", bad[i]);
         restart();
         assert(grace_s == 60);                               /* not a number: the default */
     }
-    setenv("PACHUD_STARTUP_GRACE", "-5", 1);
+    pac_setting_set("startup_grace", "-5");
     restart();
     assert(grace_s == 0);                                    /* out of range: the nearest end of it */
-    setenv("PACHUD_STARTUP_GRACE", "99999", 1);
+    pac_setting_set("startup_grace", "99999");
     restart();
     assert(grace_s == MAX_GRACE_S);
-    unsetenv("PACHUD_STARTUP_GRACE");
+    pac_setting_set("startup_grace", NULL);
 
     /* A damaged state file does no harm */
     char path[512];

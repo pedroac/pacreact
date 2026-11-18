@@ -1,9 +1,8 @@
 #include "activity.h"
 #include "util.h"
 #include <time.h>
+#include "tunables.h"
 
-#define IDLE_DEFAULT_MIN 5
-#define BREAK_DEFAULT_MIN 15
 
 static void (*change_fn)(bool active, long secs, bool restart);
 static long idle_secs = IDLE_DEFAULT_MIN * 60, break_secs = BREAK_DEFAULT_MIN * 60;
@@ -31,7 +30,7 @@ void activity_on_change(void (*fn)(bool active, long secs, bool restart)) { chan
 long activity_break_secs(void) { return break_secs; }
 
 void activity_init(Display *dpy) {
-    idle_secs = env_int("PACHUD_PEEK_IDLE", IDLE_DEFAULT_MIN, 1, 120, "minutes") * 60;
-    break_secs = env_int("PACHUD_PEEK_BREAK", BREAK_DEFAULT_MIN, 1, 720, "minutes") * 60;
+    idle_secs = setting_int("peek_idle", IDLE_DEFAULT_MIN, 1, 120, "minutes") * 60;
+    break_secs = setting_int("peek_break", BREAK_DEFAULT_MIN, 1, 720, "minutes") * 60;
     display_watch_idle(dpy, (unsigned)(idle_secs * 1000), idled, resumed);
 }

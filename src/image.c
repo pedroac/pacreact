@@ -1,7 +1,7 @@
 #include "image.h"
 #include <string.h>
+#include "tunables.h"
 
-#define MAX_DIM 4096  /* beyond this it is not an icon */
 
 static uint32_t premultiplied(uint8_t r, uint8_t g, uint8_t b, uint8_t a) {
     return (uint32_t)a << 24 | (uint32_t)(r * a / 255) << 16 | (uint32_t)(g * a / 255) << 8 |

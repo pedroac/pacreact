@@ -1,5 +1,5 @@
 #!/bin/bash
-# Live check of the status icons and of PACHUD_ICONS, PACHUD_ICON_SIZE and PACHUD_MARGIN, in a nested
+# Live check of the status icons and of icons, icon_size and margin, in a nested
 # headless compositor with a private session bus, using whatever icon theme is installed (Adwaita's
 # symbolic SVG icons need rsvg-convert). Run it as:
 #   dbus-run-session -- bash tests/manual/icons_test.sh
@@ -7,7 +7,7 @@
 # build/shots/.
 cd "$(dirname "$0")/../.."
 mkdir -p build/shots
-R=$(mktemp -d /tmp/pachud-icons-XXXXXX)
+R=$(mktemp -d /tmp/pacreact-icons-XXXXXX)
 chmod 700 "$R"
 export XDG_RUNTIME_DIR=$R
 WLR_BACKENDS=headless WLR_HEADLESS_OUTPUTS=1 WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 \
@@ -16,22 +16,22 @@ C=$!
 trap 'kill $C $P 2>/dev/null; rm -rf $R' EXIT
 for i in $(seq 1 50); do [ -S $R/wayland-0 ] && break; sleep 0.1; done
 [ -S $R/wayland-0 ] || { echo "labwc did not start:"; cat $R/labwc.log; exit 1; }
-export WAYLAND_DISPLAY=$R/wayland-0 XDG_STATE_HOME=$R/state PACHUD_SOUND=0 PACHUD_FADE_MS=0
+export WAYLAND_DISPLAY=$R/wayland-0 XDG_STATE_HOME=$R/state
 
 fail=0
 check() { if eval "$2"; then echo "ok:   $1"; else echo "FAIL: $1"; fail=1; fi; }
 
-# run NAME VAR=VALUE... -- COMMAND...: start pachud with those variables, run the command (which
+# run NAME VAR=VALUE... -- COMMAND...: start pacreact with those variables, run the command (which
 # shows something), and take build/shots/icons_NAME.png
 run() {
     local name=$1; shift
     local vars=()
     while [ "$1" != "--" ]; do vars+=("$1"); shift; done
     shift
-    env "${vars[@]}" ./pachud 2> $R/stderr_$name &
+    tests/manual/pacreact-with.sh "${vars[@]}" 2> $R/stderr_$name &
     P=$!
     sleep 1.2
-    for i in 1 2 3 4 5; do ./pachud dismiss >/dev/null 2>&1; done   # a real alert of this machine, if any
+    for i in 1 2 3 4 5; do ./pacreact dismiss >/dev/null 2>&1; done   # a real alert of this machine, if any
     "$@"
     sleep 0.7
     grim -o HEADLESS-1 build/shots/icons_$name.png
@@ -67,16 +67,16 @@ print(sum(1 for x in range(x0, x1) for y in range(y0, y1) if min(im.getpixel((x,
 PY
 }
 
-TOAST=(./pachud toast -t 30 -i network-offline "Offline")
-PLAIN=(./pachud toast -t 30 "Offline")
+TOAST=(./pacreact toast -t 30 -i network-offline "Offline")
+PLAIN=(./pacreact toast -t 30 "Offline")
 
 run withicon A=1 -- "${TOAST[@]}"
 run noicon A=1 -- "${PLAIN[@]}"
-run off PACHUD_ICONS=0 -- "${TOAST[@]}"
-run big PACHUD_ICON_SIZE=48 -- "${TOAST[@]}"
-run zoom PACHUD_FONT_SIZE=24 -- "${TOAST[@]}"
-run margin PACHUD_MARGIN=40 -- "${PLAIN[@]}"
-run nomargin PACHUD_MARGIN=0 -- "${PLAIN[@]}"
+run off icons=0 -- "${TOAST[@]}"
+run big icon_size=48 -- "${TOAST[@]}"
+run zoom font_size=24 -- "${TOAST[@]}"
+run margin margin=40 -- "${PLAIN[@]}"
+run nomargin margin=0 -- "${PLAIN[@]}"
 
 read t0 h0 <<< "$(card noicon)"
 read t1 h1 <<< "$(card withicon)"
@@ -92,21 +92,21 @@ check "there is an icon where the text would have been" '[ "$glyph" -gt 20 ]'
 check "the text starts after the icon, not under it" '[ "$gap_icon" -eq 0 ] && [ "$gap_plain" -gt 0 ]'
 
 read t2 h2 <<< "$(card off)"
-check "PACHUD_ICONS=0 gives the card it would have without one" 'cmp -s build/shots/icons_off.png build/shots/icons_noicon.png'
+check "icons=0 gives the card it would have without one" 'cmp -s build/shots/icons_off.png build/shots/icons_noicon.png'
 
 read t3 h3 <<< "$(card big)"
-echo "PACHUD_ICON_SIZE=48: ${h3}px tall"
-check "PACHUD_ICON_SIZE=48 makes the card as tall as that icon (48 + 32)" '[ "$h3" -eq 80 ]'
+echo "icon_size=48: ${h3}px tall"
+check "icon_size=48 makes the card as tall as that icon (48 + 32)" '[ "$h3" -eq 80 ]'
 
 read t4 h4 <<< "$(card zoom)"
-echo "PACHUD_FONT_SIZE=24: ${h4}px tall"
+echo "font_size=24: ${h4}px tall"
 check "the icon follows the font by default (36 px at 24, so 36 + 48 padding)" '[ "$h4" -eq 84 ]'
 
 read t5 h5 <<< "$(card margin)"; read t6 h6 <<< "$(card nomargin)"
-echo "margin: default top at $t0, PACHUD_MARGIN=40 at $t5, PACHUD_MARGIN=0 at $t6"
+echo "margin: default top at $t0, margin=40 at $t5, margin=0 at $t6"
 check "the default margin is 16" '[ "$t0" -eq 16 ]'
-check "PACHUD_MARGIN=40 puts the card 40 from the edge" '[ "$t5" -eq 40 ]'
-check "PACHUD_MARGIN=0 puts it against the edge" '[ "$t6" -eq 0 ]'
+check "margin=40 puts the card 40 from the edge" '[ "$t5" -eq 40 ]'
+check "margin=0 puts it against the edge" '[ "$t6" -eq 0 ]'
 python3 - <<'PY'
 from PIL import Image
 im = Image.open("build/shots/icons_margin.png").convert("RGB")
@@ -118,11 +118,11 @@ PY
 
 # Something with all kinds of icons for a look: the stack and the deck, and sliders
 many() {
-    ./pachud toast -t 30 -i network-offline "Offline"
-    ./pachud toast -l warn -t 30 -i battery-low "Battery low — 15%"
-    ./pachud toast -t 30 -i audio-headset "Headset connected"
-    ./pachud slider -i audio-volume-medium 50 Volume
-    ./pachud toast -l crit -t 30 -i battery-caution "Battery critical — 4%"
+    ./pacreact toast -t 30 -i network-offline "Offline"
+    ./pacreact toast -l warn -t 30 -i battery-low "Battery low — 15%"
+    ./pacreact toast -t 30 -i audio-headset "Headset connected"
+    ./pacreact slider -i audio-volume-medium 50 Volume
+    ./pacreact toast -l crit -t 30 -i battery-caution "Battery critical — 4%"
 }
 run many A=1 -- many
 echo "(a look at all of them: build/shots/icons_many.png)"

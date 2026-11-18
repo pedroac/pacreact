@@ -2,6 +2,7 @@
 #define I18N_H
 
 #include "config.h"
+#include <stdbool.h>
 
 #ifdef NO_I18N
 #define _(s) (s)

@@ -1,4 +1,5 @@
 #include "hud.h"
+#include "setting.h"
 #include "i18n.h"
 #include "loop.h"
 #include "sound.h"
@@ -14,18 +15,16 @@
 #include <sys/epoll.h>
 #include <sys/timerfd.h>
 #include <unistd.h>
+#include "tunables.h"
 
 /* USB devices the user plugs in: a webcam, a printer, a drawing tablet, a drive, a headset, a keyboard.
  * The kernel announces each one as a uevent (the same socket as the charger's), but with nothing a person
  * would call a name: that is in sysfs, which is read a moment later, once the device's interfaces are
  * there. Nothing is announced for what is found at start-up, nor for hubs, Bluetooth adapters and devices
  * the kernel says are built in (a laptop's own webcam), which are not things the user connects.
- * PACHUD_USB=0 turns this off; a comma separated list (camera,printer,tablet,storage,audio,input,other)
+ * usb = 0 turns this off; a comma separated list (camera,printer,tablet,storage,audio,input,other)
  * says which kinds to announce, and unset means all. */
 
-#define MAX_DEVICES 64
-#define SETTLE_MS 800     /* names and interfaces appear after the device does; a re-enumeration is a remove and an add */
-#define TOAST_MS 3000
 
 typedef enum { U_CAMERA, U_PRINTER, U_STORAGE, U_AUDIO, U_TABLET, U_INPUT, U_OTHER, U_KINDS } UsbKind;
 
@@ -86,7 +85,9 @@ static void make_name(const char *vendor_in, const char *product, char *out, siz
     char first[32];
     snprintf(first, sizeof first, "%.*s", (int)strcspn(vendor, " "), vendor);
     /* the brand in front, unless the product already says it */
-    if (*product && *vendor && !(*first && strcasestr(product, first))) snprintf(out, n, "%s %s", vendor, product);
+    if (*product && *vendor && !(*first && strcasestr(product, first))) {
+        if (snprintf(out, n, "%s %s", vendor, product) < 0) out[0] = '\0';   /* cut to fit, as intended */
+    }
     else if (*product) snprintf(out, n, "%s", product);
     else if (*vendor) snprintf(out, n, "%s", vendor);
     else snprintf(out, n, "%s", _("USB device"));
@@ -225,7 +226,7 @@ static bool classify(const char *syspath, Found *out) {
     return true;
 }
 
-/* PACHUD_USB: unset or "all" is everything, "0" nothing, else the kinds named. A name that is not a kind is said. */
+/* usb: unset or "all" is everything, "0" nothing, else the kinds named. A name that is not a kind is said. */
 static unsigned parse_kinds(const char *value, bool *none) {
     *none = false;
     if (!value || !*value || !strcmp(value, "all")) return (1u << U_KINDS) - 1;
@@ -238,9 +239,9 @@ static unsigned parse_kinds(const char *value, bool *none) {
         for (k = 0; k < U_KINDS; k++)
             if (!strcasecmp(tok, kind_names[k])) break;
         if (k < U_KINDS) mask |= 1u << k;
-        else fprintf(stderr, "pachud: PACHUD_USB: \"%s\" is not one of camera, printer, tablet, storage, audio, input, other\n", tok);
+        else fprintf(stderr, _("pacreact: usb: \"%s\" is not one of camera, printer, tablet, storage, audio, input, other\n"), tok);
     }
-    if (!mask) { fprintf(stderr, "pachud: PACHUD_USB names no kind; announcing all\n"); return (1u << U_KINDS) - 1; }
+    if (!mask) { fprintf(stderr, _("pacreact: usb names no kind; announcing all\n")); return (1u << U_KINDS) - 1; }
     return mask;
 }
 
@@ -308,7 +309,15 @@ static void rearm(void) {
 static void say(const Dev *d, bool connected) {
     char msg[160];
     snprintf(msg, sizeof msg, connected ? _("%s connected") : _("%s disconnected"), d->found.name);
-    hud_toast_icon(msg, LEVEL_INFO, TOAST_MS, d->found.icon);
+    /* Gone: the first name's "-off" glyph, when the Nerd Font has one (a theme passes over it) */
+    char icon[160];
+    if (connected) {
+        snprintf(icon, sizeof icon, "%s", d->found.icon);
+    } else {
+        int first = (int)strcspn(d->found.icon, ",");
+        snprintf(icon, sizeof icon, "%.*s-off,%s", first, d->found.icon, d->found.icon);
+    }
+    hud_toast_icon(msg, LEVEL_INFO, SRC_USB_TOAST_MS, icon);
     sound_play(connected ? SOUND_DEVICE_ADDED : SOUND_DEVICE_REMOVED);
 }
 
@@ -362,7 +371,7 @@ static void device_added(const char *path, const char *product) {
     d = take(path, product);
     if (!d) return;
     d->state = D_ADDING;
-    d->due = now_ms() + SETTLE_MS;
+    d->due = now_ms() + SRC_USB_SETTLE_MS;
     rearm();
 }
 
@@ -371,7 +380,7 @@ static void device_removed(const char *path) {
     if (!d) return;
     if (d->state == D_SHOWN) {
         d->state = D_REMOVING;
-        d->due = now_ms() + SETTLE_MS;
+        d->due = now_ms() + SRC_USB_SETTLE_MS;
     } else {
         d->state = D_FREE;                    /* never announced: nothing to take back */
     }
@@ -421,7 +430,7 @@ static void scan(void) {
 }
 
 void usb_init(void) {
-    const char *value = getenv("PACHUD_USB");
+    const char *value = pac_setting("usb");
     enabled = parse_kinds(value, &off);
     if (off) return;
     tfd = timerfd_create(CLOCK_MONOTONIC, TFD_CLOEXEC | TFD_NONBLOCK);

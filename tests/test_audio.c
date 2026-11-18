@@ -67,6 +67,32 @@ static Buf8 sink_info_named(uint32_t vol, char mute, const char *name, const cha
     return o;
 }
 
+/* The same reply continued as pipewire-pulse sends it (protocol 35, captured from the real server):
+ * the monitor, latency, driver, flags, an empty property list, base volume, state, volume steps, the
+ * card, two ports and the active one. */
+static Buf8 sink_info_port(uint32_t vol, const char *name, const char *active) {
+    Buf8 o = sink_info_named(vol, '0', name, "Built-in Audio");
+    o.b[o.n++] = 't'; raw(&o, "monitor", 8);
+    o.b[o.n++] = 'U'; raw(&o, "\0\0\0\0\0\0\0\0", 8);
+    o.b[o.n++] = 't'; raw(&o, "PipeWire", 9);
+    be_u32(&o, 183);                           /* flags */
+    o.b[o.n++] = 'P'; o.b[o.n++] = 'N';        /* property list, empty */
+    o.b[o.n++] = 'U'; raw(&o, "\0\0\0\0\0\0\0\0", 8);
+    o.b[o.n++] = 'V'; raw(&o, "\0\1\0\0", 4);   /* base volume */
+    be_u32(&o, 2); be_u32(&o, 0); be_u32(&o, 44);   /* state, volume steps, card */
+    be_u32(&o, 2);                                  /* ports */
+    const char *ports[2] = { "analog-output-lineout", "analog-output-headphones" };
+    for (int i = 0; i < 2; i++) {
+        o.b[o.n++] = 't'; raw(&o, ports[i], strlen(ports[i]) + 1);
+        o.b[o.n++] = 't'; raw(&o, "Port", 5);
+        be_u32(&o, 9000); be_u32(&o, 1);
+        o.b[o.n++] = 't'; raw(&o, "Legacy 4", 9);
+        be_u32(&o, 4);
+    }
+    o.b[o.n++] = 't'; raw(&o, active, strlen(active) + 1);
+    return o;
+}
+
 static Buf8 sink_info(uint32_t vol, char mute) {
     return sink_info_named(vol, mute, "alsa_output.pci-0000_00_1f.3.analog-stereo", "Built-in Audio Analog Stereo");
 }
@@ -99,7 +125,7 @@ static void connect_pair(State st) {
     }
     slider_calls = 0;
     toast_calls = 0;
-    for (int t = 0; t < T_COUNT; t++) tracks[t].name[0] = '\0';
+    for (int t = 0; t < T_COUNT; t++) tracks[t].name[0] = tracks[t].port[0] = '\0', tracks[t].settle_until_ms = 0, jack_until_ms = 0;
 }
 
 static void drop_pair(void) {
@@ -219,6 +245,7 @@ static void test_sink_info_parsing(void) {
 }
 
 static void read_reply(TrackId t, Buf8 reply, bool show) {
+    tracks[t].settle_until_ms = 0;   /* a reply that comes later than the settling time */
     pending = t;
     announce = show;
     In in = { reply.b + 10, reply.b + reply.n, false };
@@ -238,31 +265,31 @@ static void test_output_change(void) {
     read_reply(T_SINK, sink_info_named(0x8000, '0', a, "Built-in Audio"), true);
     assert(slider_calls == 1 && slider_pct == 50);
 
-    /* A different default output: one centred bar naming it, at the new device's volume */
+    /* A different default output: one message naming it, no volume bar: that volume is the new device's */
     read_reply(T_SINK, sink_info_named(0x6000, '0', b, "WH-1000XM4"), true);
-    assert(slider_calls == 2 && !strcmp(slider_label, "Audio output: WH-1000XM4") && slider_pct == 38);
+    assert(slider_calls == 1 && toast_calls == 1 && !strcmp(toast_text, "Audio output: WH-1000XM4"));
     assert(tracks[T_SINK].last_pct == 38 && !strcmp(tracks[T_SINK].name, b));
     /* ...and it is not repeated, nor does the same volume come back as a change */
     read_reply(T_SINK, sink_info_named(0x6000, '0', b, "WH-1000XM4"), true);
-    assert(slider_calls == 2);
+    assert(slider_calls == 1 && toast_calls == 1);
     read_reply(T_SINK, sink_info_named(0x4000, '0', b, "WH-1000XM4"), true);
-    assert(slider_calls == 3 && !strcmp(slider_label, "Volume"));
+    assert(slider_calls == 2 && !strcmp(slider_label, "Volume"));
 
     /* Back again; without a description the name is used */
     read_reply(T_SINK, sink_info_named(0x4000, '0', a, ""), true);
-    assert(slider_calls == 4 && !strcmp(slider_label, "Audio output: alsa_output.pci-0000_00_1f.3.analog-stereo"));
+    assert(slider_calls == 2 && toast_calls == 2 && !strcmp(toast_text, "Audio output: alsa_output.pci-0000_00_1f.3.analog-stereo"));
 
     /* Re-learning after a reconnect (not announced) updates the name quietly */
     read_reply(T_SINK, sink_info_named(0x4000, '0', b, "WH-1000XM4"), false);
-    assert(slider_calls == 4 && !strcmp(tracks[T_SINK].name, b));
+    assert(slider_calls == 2 && toast_calls == 2 && !strcmp(tracks[T_SINK].name, b));
 
     /* The default microphone changing (a headset's jack moves it) is learned, not announced: the
      * bar would be about a device whose volume the user did not touch */
     read_reply(T_SOURCE, sink_info_named(0x8000, '0', "alsa_input.pci-a", "Built-in mic"), false);   /* start-up */
     read_reply(T_SOURCE, sink_info_named(0x4000, '0', "alsa_input.usb-a", "USB mic"), true);
-    assert(slider_calls == 4 && !strcmp(tracks[T_SOURCE].name, "alsa_input.usb-a"));
+    assert(slider_calls == 2 && !strcmp(tracks[T_SOURCE].name, "alsa_input.usb-a"));
     read_reply(T_SOURCE, sink_info_named(0x2000, '0', "alsa_input.usb-a", "USB mic"), true);
-    assert(slider_calls == 5 && !strcmp(slider_label, "Microphone"));   /* a real change still is */
+    assert(slider_calls == 3 && !strcmp(slider_label, "Microphone"));   /* a real change still is */
 
     drop_pair();
 }
@@ -297,26 +324,68 @@ static void test_microphone_track(void) {
     drop_pair();
 }
 
-static void test_plug_is_quiet(void) {
+static void test_port_change_is_not_a_volume_change(void) {
     connect_pair(S_READY);
-    announce = true;
+    const char *a = "alsa_output.pci-0000_00_1f.3.analog-stereo";
+    read_reply(T_SINK, sink_info_port(0x4000, a, "analog-output-lineout"), false);
+    assert(!strcmp(tracks[T_SINK].port, "analog-output-lineout"));
+
+    /* Plugging headphones: the same output, another port, with that port's own volume. Not shown */
+    read_reply(T_SINK, sink_info_port(0xA000, a, "analog-output-headphones"), true);
+    assert(slider_calls == 0 && tracks[T_SINK].last_pct == 63 && !strcmp(tracks[T_SINK].port, "analog-output-headphones"));
+
+    /* The user changing it afterwards is a volume change, as ever */
+    read_reply(T_SINK, sink_info_port(0x8000, a, "analog-output-headphones"), true);
+    assert(slider_calls == 1 && !strcmp(slider_label, "Volume") && slider_pct == 50);
+
+    /* A reply this parser cannot take apart past the mute flag leaves the port unknown, the volume fine */
+    read_reply(T_SINK, sink_info(0x4000, '0'), true);
+    assert(slider_calls == 1 && !strcmp(tracks[T_SINK].port, "") && tracks[T_SINK].last_pct == 25);
+    read_reply(T_SINK, sink_info(0x2000, '0'), true);
+    assert(slider_calls == 2 && slider_pct == 13);
+    drop_pair();
+}
+
+static void test_volume_settling(void) {
+    connect_pair(S_READY);
+    const char *a = "alsa_input.pci-0000_00_1f.3.analog-stereo", *m = "alsa_output.hdmi-stereo.monitor";
+    read_reply(T_SOURCE, sink_info_named(0x8000, '0', a, "Built-in"), false);
+    read_reply(T_SOURCE, sink_info_named(0x10000, '0', m, "Monitor"), true);   /* the default moved to the monitor */
     int before = slider_calls;
 
-    /* A plug moves the output to a port with its own remembered volume: learned, not shown */
-    audio_jack_plugged();
-    pending = T_SINK;
-    Buf8 reply = sink_info(0x8000, '0');
+    /* Back to the microphone: the server first reports the level it carried over, then sets the real one
+     * a moment later. Neither is the user's doing */
+    tracks[T_SOURCE].settle_until_ms = 0;
+    pending = T_SOURCE; announce = true;
+    Buf8 reply = sink_info_named(0x10000, '0', a, "Built-in");
     In in = { reply.b + 10, reply.b + reply.n, false };
     on_reply(&in);
-    assert(slider_calls == before && tracks[T_SINK].last_pct == 50);
-
-    /* Afterwards the user's own changes show again */
-    quiet_until_ms = 0;
-    pending = T_SINK;
-    reply = sink_info(0x4000, '0');
+    pending = T_SOURCE; announce = true;
+    reply = sink_info_named(0x8000, '0', a, "Built-in");
     in = (In){ reply.b + 10, reply.b + reply.n, false };
     on_reply(&in);
+    assert(slider_calls == before && tracks[T_SOURCE].last_pct == 50);
+
+    /* Once it has settled, a change is the user's */
+    read_reply(T_SOURCE, sink_info_named(0x4000, '0', a, "Built-in"), true);
     assert(slider_calls == before + 1);
+    drop_pair();
+}
+
+static void test_jack_output_change_is_quiet(void) {
+    connect_pair(S_READY);
+    const char *a = "alsa_output.analog", *h = "alsa_output.hdmi";
+    read_reply(T_SINK, sink_info_named(0x8000, '0', a, "Built-in"), false);
+
+    /* The output moved because a jack was plugged: the jack's toast said it */
+    audio_jack_plugged();
+    read_reply(T_SINK, sink_info_named(0x8000, '0', h, "HDMI"), true);
+    assert(toast_calls == 0 && slider_calls == 0 && !strcmp(tracks[T_SINK].name, h));
+
+    /* Without one (a USB or Bluetooth device) it is said */
+    jack_until_ms = 0;
+    read_reply(T_SINK, sink_info_named(0x8000, '0', a, "Built-in"), true);
+    assert(toast_calls == 1 && slider_calls == 0);
     drop_pair();
 }
 
@@ -558,7 +627,7 @@ static void test_volume_sound(void) {
 
     /* Switching to another output is announced by name, not as a volume change */
     read_reply(T_SINK, sink_info_named(0x6000, '1', b, "Headset"), true);
-    assert(volume_sounds == 2 && !strcmp(slider_label, "Audio output: Headset"));
+    assert(volume_sounds == 2 && !strcmp(toast_text, "Audio output: Headset"));
 
     /* The microphone is not the volume */
     read_reply(T_SOURCE, sink_info_named(0x4000, '0', "alsa_input.mic", "Mic"), true);
@@ -594,7 +663,7 @@ static void test_volume_icons(void) {
     read_reply(T_SINK, sink_info_named(0x4000, '0', "out", "Speakers"), true);       /* 25% */
     assert(!strcmp(slider_icon, "audio-volume-low"));
     read_reply(T_SINK, sink_info_named(0x4000, '0', "out2", "Headset"), true);       /* another output */
-    assert(strstr(slider_icon, "audio-speakers") && !strcmp(slider_label, "Audio output: Headset"));
+    assert(!strcmp(toast_text, "Audio output: Headset") && !strcmp(slider_label, "Volume"));   /* a message, no bar */
     read_reply(T_SOURCE, sink_info_named(0xC000, '0', "mic", "Mic"), true);          /* 75% */
     assert(!strcmp(slider_icon, "microphone-sensitivity-high") && !strcmp(slider_label, "Microphone"));
     drop_pair();
@@ -710,7 +779,9 @@ int main(void) {
     test_volume_sound();
     test_volume_icons();
     test_microphone_track();
-    test_plug_is_quiet();
+    test_port_change_is_not_a_volume_change();
+    test_volume_settling();
+    test_jack_output_change_is_quiet();
     test_card_ports();
     test_request_queue();
     test_events();

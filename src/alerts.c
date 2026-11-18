@@ -7,11 +7,8 @@
 #include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
+#include "tunables.h"
 
-#define MAX_SOURCES 8
-#define DEFAULT_GRACE_S 60
-#define MAX_GRACE_S 3600
-#define REPEAT_WINDOW_S (30 * 60)
 
 typedef struct {
     char source[24];
@@ -33,7 +30,7 @@ static long long mono_seconds(void) {
 static void load(void) {
     char path[512], line[128];
     state_file("alerts", path, sizeof path, false);
-    FILE *f = fopen(path, "r");
+    FILE *f = state_open_read(path);
     if (!f) return;
     while (count < MAX_SOURCES && fgets(line, sizeof line, f)) {
         Shown s;
@@ -46,7 +43,7 @@ static void save(void) {
     char path[512], tmp[520];
     state_file("alerts", path, sizeof path, true);
     snprintf(tmp, sizeof tmp, "%s.tmp", path);
-    FILE *f = fopen(tmp, "w");
+    FILE *f = state_create(tmp);
     if (!f) return;
     for (int i = 0; i < count; i++)
         fprintf(f, "%s %d %lld\n", shown[i].source, shown[i].level, shown[i].when);
@@ -55,7 +52,7 @@ static void save(void) {
 }
 
 void alerts_init(void) {
-    grace_s = env_int("PACHUD_STARTUP_GRACE", DEFAULT_GRACE_S, 0, MAX_GRACE_S, "seconds");
+    grace_s = setting_int("startup_grace", DEFAULT_GRACE_S, 0, MAX_GRACE_S, "seconds");
     start_mono = mono_seconds();
     count = 0;
     load();

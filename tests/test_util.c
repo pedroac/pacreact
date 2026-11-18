@@ -1,13 +1,53 @@
 /* The shared helpers: strict whole numbers from settings, the data directory list, finding a tool. */
 #include "../src/util.h"
 #include <assert.h>
+#include "setting.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 static long num(const char *v) { return int_value("X", v, 7, 0, 100, "things"); }
 
+/* A size: pixels, or a length that is converted for the screen */
+static void test_size(void) {
+    const double ppm = 96 / 25.4;
+    pac_setting_set("S", NULL);
+    Size z = setting_size("S", 0, 100);
+    assert(!z.set && size_px(&z, 7, 0, 100, ppm, 1000) == 7);
+    pac_setting_set("S", "40");
+    z = setting_size("S", 0, 100);
+    assert(z.set && !z.unit && size_px(&z, 7, 0, 100, ppm, 1000) == 40);
+    pac_setting_set("S", "400");                                  /* a number of pixels out of range: said, and the end */
+    z = setting_size("S", 0, 100);
+    assert(z.set && size_px(&z, 7, 0, 100, ppm, 1000) == 100);
+    pac_setting_set("S", "10mm");
+    z = setting_size("S", 0, 100);
+    assert(z.unit && size_px(&z, 7, 0, 100, ppm, 1000) == 38);
+    assert(size_px(&z, 7, 0, 100, 2 * ppm, 1000) == 76);          /* the same size on a denser screen */
+    assert(size_px(&z, 7, 50, 100, ppm, 1000) == 50);             /* a length is brought into range quietly */
+    pac_setting_set("S", "0.5in");
+    z = setting_size("S", 0, 100);
+    assert(size_px(&z, 7, 0, 100, ppm, 1000) == 48);
+    pac_setting_set("S", "12pt");
+    z = setting_size("S", 0, 100);
+    assert(size_px(&z, 7, 0, 100, ppm, 1000) == 16);
+    pac_setting_set("S", "5%");
+    z = setting_size("S", 0, 100);
+    assert(size_px(&z, 7, 0, 100, ppm, 1000) == 50);
+    pac_setting_set("S", "12px");
+    z = setting_size("S", 0, 100);
+    assert(size_px(&z, 7, 0, 100, ppm, 1000) == 12);
+    const char *bad[] = { "abc", "1.5", "3cm", "-2mm", "mm", "4 mm x" };
+    for (size_t i = 0; i < sizeof bad / sizeof *bad; i++) {
+        pac_setting_set("S", bad[i]);
+        z = setting_size("S", 0, 100);
+        assert(!z.set && size_px(&z, 7, 0, 100, ppm, 1000) == 7);
+    }
+    pac_setting_set("S", NULL);
+}
+
 int main(void) {
+    test_size();
     /* Unset or empty: the default */
     assert(num(NULL) == 7 && num("") == 7);
     /* Inside the range, ends included */
@@ -21,10 +61,10 @@ int main(void) {
     /* The lower end need not be 0 */
     assert(int_value("X", "3", 50, 20, 150, "degrees") == 20 && int_value("X", "0", 50, 20, 150, "degrees") == 20);
 
-    setenv("PACHUD_TEST_NUMBER", "33", 1);
-    assert(env_int("PACHUD_TEST_NUMBER", 1, 0, 100, "things") == 33);
-    unsetenv("PACHUD_TEST_NUMBER");
-    assert(env_int("PACHUD_TEST_NUMBER", 1, 0, 100, "things") == 1);
+    pac_setting_set("test_number", "33");
+    assert(setting_int("test_number", 1, 0, 100, "things") == 33);
+    pac_setting_set("test_number", NULL);
+    assert(setting_int("test_number", 1, 0, 100, "things") == 1);
 
     /* Data directories: the user's first, then the system's; defaults when unset */
     char list[1024];

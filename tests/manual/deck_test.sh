@@ -7,7 +7,7 @@
 # 1280 x 720). A virtual pointer (tests/manual/vptr_click.c) clicks. Screenshots land in build/shots/.
 cd "$(dirname "$0")/../.."
 mkdir -p build/shots
-R=$(mktemp -d /tmp/pachud-deck-XXXXXX)
+R=$(mktemp -d /tmp/pacreact-deck-XXXXXX)
 chmod 700 "$R"
 S=tests/manual
 for kind in client-header private-code; do
@@ -24,12 +24,12 @@ C=$!
 trap 'kill $C $P 2>/dev/null; rm -rf $R' EXIT
 for i in $(seq 1 50); do [ -S $R/wayland-0 ] && break; sleep 0.1; done
 [ -S $R/wayland-0 ] || { echo "labwc did not start:"; cat $R/labwc.log; exit 1; }
-export WAYLAND_DISPLAY=$R/wayland-0 XDG_STATE_HOME=$R/state PACHUD_SOUND=0 PACHUD_FADE_MS=0
+export WAYLAND_DISPLAY=$R/wayland-0 XDG_STATE_HOME=$R/state
 mkfifo $R/pointer
 build/vptr_click 1280 720 < $R/pointer &
 V=$!
 exec 9> $R/pointer
-./pachud 2> $R/stderr &
+tests/manual/pacreact-with.sh 2> $R/stderr &
 P=$!
 trap 'kill $C $P $V 2>/dev/null; rm -rf $R' EXIT
 sleep 1.5
@@ -56,7 +56,7 @@ for i in 1 2 3 4 5; do
     read dx dy dh <<< "$(deck 0_start)"
     [ "$dh" -eq 0 ] && break
     echo "clearing a start-up alert from the deck (${dh}px)"
-    ./pachud dismiss > /dev/null
+    ./pacreact dismiss > /dev/null
     sleep 0.5
 done
 
@@ -81,14 +81,14 @@ echo "incoming call: deck ${dh}px"
 check "an incoming call joins the deck behind it, as a strip" '[ "$dh" -gt "$one" ] && [ "$dh" -lt $((one + 40)) ]'
 two=$dh
 
-./pachud toast -l crit -t 30 "Battery critical: 4%"
+./pacreact toast -l crit -t 30 "Battery critical: 4%"
 sleep 0.6
 read dx dy dh <<< "$(deck 4_system)"
 echo "critical system toast: deck ${dh}px"
 check "a critical system alert joins it, as another strip" '[ "$dh" -gt "$two" ] && [ "$dh" -lt $((two + 40)) ]'
 three=$dh
 
-./pachud toast -l crit -t 30 "A fourth, which has to wait"
+./pacreact toast -l crit -t 30 "A fourth, which has to wait"
 sleep 0.6
 read dx dy dh <<< "$(deck 5_fourth)"
 # Clicking a strip brings that card to the front. The accent bar at the front card's left edge says
@@ -118,20 +118,20 @@ read dx dy dh <<< "$(deck 4c_after_click)"
 check "...and the deck is as large as before (nothing was closed)" '[ "$dh" -eq "$three" ]'
 
 check "a fourth waits: the deck does not grow" '[ "$dh" -eq "$three" ]'
-check "...and no card is lost: the critical one, the call and the ordinary one are all counted" '[ "$(./pachud count)" = 3 ]'
+check "...and no card is lost: the critical one, the call and the ordinary one are all counted" '[ "$(./pacreact count)" = 3 ]'
 
 notify-send -t 30000 "Another ordinary one" "still in the usual place"
 sleep 0.6
 read dx dy dh <<< "$(deck 6_more_ordinary)"; read sx3 sy3 sh3 <<< "$(stack 6_more_ordinary)"
 check "ordinary notifications keep arriving at the top right, the deck unchanged" '[ "$sh3" -gt "$sh2" ] && [ "$dh" -eq "$three" ]'
 
-./pachud dismiss > /dev/null
+./pacreact dismiss > /dev/null
 sleep 0.6
 read dx dy dh <<< "$(deck 7_dismissed)"; read sx4 sy4 sh4 <<< "$(stack 7_dismissed)"
 check "dismiss closes the deck's front card first (the stack is untouched)" '[ "$sh4" -eq "$sh3" ]'
 echo "after dismiss: deck ${dh}px"
 
-for i in 1 2 3 4 5; do ./pachud dismiss > /dev/null; done
+for i in 1 2 3 4 5; do ./pacreact dismiss > /dev/null; done
 sleep 0.6
 read dx dy dh <<< "$(deck 8_cleared)"
 check "with the deck emptied, nothing is left at the top centre" '[ "$dh" -eq 0 ]'

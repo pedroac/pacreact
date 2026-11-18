@@ -3,6 +3,7 @@
 
 #include <cairo/cairo.h>
 #include <stdbool.h>
+#include "tunables.h"
 
 /* The Wayland connection stays open, but the layer surface and its buffers exist only while
  * a HUD is on screen. */
@@ -30,12 +31,11 @@ void display_hide(Display *dpy);
 typedef enum { OSD_CENTER, OSD_TOP, OSD_BOTTOM } OsdAnchor;
 void display_osd_present(Display *dpy, Buf *buf, cairo_t *cr, OsdAnchor anchor);
 void display_osd_hide(Display *dpy);
-/* Clicks (PACHUD_CLICK=0 turns them off): the areas of the HUD surface that take clicks, in
+/* Clicks (click = 0 turns them off): the areas of the HUD surface that take clicks, in
  * logical pixels from its top-left corner; everywhere else clicks pass through to the windows
  * below. fn gets the position of each left or right click inside one of them; secondary is
  * true for the right button. */
 typedef struct { int x, y, w, h; } ClickRect;
-#define CLICK_RECTS_MAX 8
 /* The HUD has two areas, each its own surface: the notification stack, and the attention deck at
  * the top centre. Clicks and rectangles are per area. */
 #define DISPLAY_AREA_STACK 0
@@ -44,7 +44,7 @@ void display_set_click_rects(Display *dpy, int area, const ClickRect *rects, int
 void display_on_click(Display *dpy, void (*fn)(int area, int x, int y, bool secondary));
 /* The pointer over the HUD: fn gets its position (logical pixels from the HUD's top-left corner)
  * as it enters and moves, and over = false when it leaves. Only where clicks are taken, so only
- * over notification cards (and not at all with PACHUD_CLICK=0). */
+ * over notification cards (and not at all with click = 0). */
 void display_on_hover(Display *dpy, void (*fn)(int area, int x, int y, bool over));
 /* Asks the compositor for an activation token (xdg-activation-v1) for the click being handled, so
  * the app whose notification was clicked is allowed to take focus. fn runs with the token once
@@ -58,20 +58,24 @@ bool display_request_token(Display *dpy, void (*fn)(const char *token, void *ctx
 void display_deck_present(Display *dpy, Buf *buf, cairo_t *cr);
 void display_deck_hide(Display *dpy);
 /* Whether the deck can sit apart from the stack, with items item_width wide. It cannot when the
- * stack itself is at the top centre (PACHUD_ANCHOR=top), and it cannot when the screen is too
+ * stack itself is at the top centre (anchor = top), and it cannot when the screen is too
  * narrow for the stack in its top corner and the deck in the middle to clear each other; the
- * attention items then join the stack. The screen is the output named by PACHUD_OUTPUT, else the
+ * attention items then join the stack. The screen is the output named by output, else the
  * one the HUD last appeared on, else the narrowest; its logical width comes from xdg-output and
  * follows it as it changes. When the width is not known, it is taken to be enough. */
 bool display_deck_apart(Display *dpy, int item_width);
 /* The logical width of that output in pixels, or 0 if it is not known. */
 int display_output_width(Display *dpy);
+/* The shorter side of that output, in logical pixels: what 100% is for a size in a setting (0 if not known). */
+int display_output_short_side(Display *dpy);
+/* Logical pixels per millimetre of that output (96 dpi if it does not say how large it is). */
+double display_px_per_mm(Display *dpy);
 /* Calls idled() once the user has not touched the keyboard or the pointer for timeout_ms, and
  * resumed() when they do again (ext-idle-notify-v1). Returns false, calling nothing, when the
  * compositor has no such protocol: the caller then cannot tell when the user is away. One watch per
  * display. */
 bool display_watch_idle(Display *dpy, unsigned timeout_ms, void (*idled)(void), void (*resumed)(void));
-/* Where the stack sits horizontally within its surface: 0 left, 1 centre, 2 right (PACHUD_ANCHOR). */
+/* Where the stack sits horizontally within its surface: 0 left, 1 centre, 2 right (anchor). */
 int display_align(Display *dpy);
 /* The scale buffers are rendered at, in 120ths (see scale.h). */
 int display_scale(Display *dpy);

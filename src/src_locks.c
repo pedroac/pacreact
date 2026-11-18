@@ -1,4 +1,5 @@
 #include "evdev.h"
+#include "setting.h"
 #include "hud.h"
 #include "i18n.h"
 #include "loop.h"
@@ -9,15 +10,14 @@
 #include <string.h>
 #include <sys/epoll.h>
 #include <unistd.h>
+#include "tunables.h"
 
 /* Caps Lock and Num Lock. A keyboard reports its lock LEDs as events on its input device, so
  * nothing is polled. Reading a keyboard device normally means being able to see every key press,
- * so this is opt-in (PACHUD_LOCK_KEYS=1), and it takes a precaution: the device is opened with a
+ * so this is opt-in (lock_keys = 1), and it takes a precaution: the device is opened with a
  * kernel event filter that lets only LED events through, so key events are never even delivered
  * to this process. If the kernel cannot apply the filter, the device is not used at all. */
 
-#define MAX_KEYBOARDS 8
-#define TOAST_MS 1500
 
 typedef struct {
     int fd;           /* -1: slot unused */
@@ -38,7 +38,7 @@ void lock_changed(int led, bool on) {
     if (!known) return;                              /* the first reading is the starting point, not news */
     const char *msg = led == LED_CAPSL ? (on ? _("Caps Lock on") : _("Caps Lock off"))
                                        : (on ? _("Num Lock on") : _("Num Lock off"));
-    hud_toast(msg, LEVEL_INFO, TOAST_MS);
+    hud_toast(msg, LEVEL_INFO, SRC_LOCKS_TOAST_MS);
 }
 
 static void drop(Keyboard *k) {
@@ -78,7 +78,7 @@ static void consider(const char *path, void *ctx) {
     if (!evdev_deliver_only(fd, only_leds, 1) || evdev_delivers(fd, EV_KEY)) {
         if (!warned) {
             warned = true;
-            fprintf(stderr, "pachud: this kernel cannot filter keyboard events; lock key notices are off\n");
+            fprintf(stderr, _("pacreact: this kernel cannot filter keyboard events; lock key notices are off\n"));
         }
         close(fd);
         return;
@@ -95,7 +95,7 @@ static void consider(const char *path, void *ctx) {
 static void rescan(void) { evdev_scan(consider, NULL); }
 
 void locks_init(void) {
-    const char *on = getenv("PACHUD_LOCK_KEYS");
+    const char *on = pac_setting("lock_keys");
     if (!on || strcmp(on, "1") != 0) return;          /* opt-in */
     if (!started) {
         for (int i = 0; i < MAX_KEYBOARDS; i++) keyboards[i].fd = -1;

@@ -1,4 +1,5 @@
 #include "hud.h"
+#include "setting.h"
 #include "i18n.h"
 #include "loop.h"
 #include "sources.h"
@@ -9,13 +10,13 @@
 #include <string.h>
 #include <sys/epoll.h>
 #include <systemd/sd-bus.h>
+#include "tunables.h"
 
 /* Bluetooth devices connecting and disconnecting. The kernel offers nothing unprivileged for
  * this, so it listens to BlueZ's PropertiesChanged signals on the system bus (the bus
  * connection is one more fd in the loop: nothing to poll). It only works while bluetoothd runs;
- * if it starts later the signals simply begin. PACHUD_BLUETOOTH=0 turns it off. */
+ * if it starts later the signals simply begin. bluetooth = 0 turns it off. */
 
-#define TOAST_MS 3000
 
 static sd_bus *bus;
 
@@ -40,7 +41,7 @@ static void announce(bool connected, const char *name) {
     char msg[160];
     snprintf(msg, sizeof msg, connected ? _("Bluetooth: %s connected") : _("Bluetooth: %s disconnected"),
              name && *name ? name : "?");
-    hud_toast_icon(msg, LEVEL_INFO, TOAST_MS,
+    hud_toast_icon(msg, LEVEL_INFO, SRC_BT_TOAST_MS,
                    connected ? "bluetooth-active,bluetooth" : "bluetooth-disconnected,bluetooth-disabled,bluetooth");
     sound_play(connected ? SOUND_DEVICE_ADDED : SOUND_DEVICE_REMOVED);
 }
@@ -89,7 +90,7 @@ static void on_bus(void *ctx, uint32_t ev) {
 }
 
 void bt_init(void) {
-    const char *off = getenv("PACHUD_BLUETOOTH");
+    const char *off = pac_setting("bluetooth");
     if (off && !strcmp(off, "0")) return;
     if (sd_bus_open_system(&bus) < 0) { bus = NULL; return; }
     int r = sd_bus_add_match(bus, NULL,

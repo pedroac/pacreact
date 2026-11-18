@@ -1,14 +1,14 @@
 # SOME DESCRIPTIVE TITLE.
 # Copyright (C) YEAR THE PACKAGE'S COPYRIGHT HOLDER
-# This file is distributed under the same license as the pachud package.
+# This file is distributed under the same license as the pacreact package.
 # FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
 #
 #, fuzzy
 msgid ""
 msgstr ""
-"Project-Id-Version: pachud\n"
+"Project-Id-Version: pacreact\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-12 11:12+0000\n"
+"POT-Creation-Date: 2026-11-17 20:11+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -17,6 +17,18 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=INTEGER; plural=EXPRESSION;\n"
+
+#: src/display.c
+#, c-format
+msgid ""
+"pacreact: anchor \"%s\" is not one of top-right, top-left, top, bottom-"
+"right, bottom-left, bottom\n"
+msgstr ""
+
+#: src/display.c
+#, c-format
+msgid "pacreact: output \"%s\" not found; available:"
+msgstr ""
 
 #: src/dnd.c
 #, c-format
@@ -85,11 +97,19 @@ msgid "older not shown"
 msgstr ""
 
 #: src/hud.c
+msgid "Critical"
+msgstr ""
+
+#: src/hud.c
+msgid "Warning"
+msgstr ""
+
+#: src/hud.c
 msgid "Open"
 msgstr ""
 
 #: src/main.c
-msgid "pachud: daemon not running\n"
+msgid "pacreact: daemon not running\n"
 msgstr ""
 
 #: src/main.c
@@ -125,11 +145,11 @@ msgid "unknown command"
 msgstr ""
 
 #: src/main.c
-msgid "pachud: already running\n"
+msgid "pacreact: already running\n"
 msgstr ""
 
 #: src/main.c
-msgid "pachud: cannot connect to a Wayland compositor with layer-shell\n"
+msgid "pacreact: cannot connect to a Wayland compositor with layer-shell\n"
 msgstr ""
 
 #: src/notify.c
@@ -138,6 +158,29 @@ msgstr ""
 
 #: src/notify.c
 msgid "notifications unavailable"
+msgstr ""
+
+#: src/notify.c
+msgid ""
+"pacreact: another notification daemon owns org.freedesktop.Notifications "
+"(stop mako/dunst/...); notifications disabled\n"
+msgstr ""
+
+#: src/notify.c
+#, c-format
+msgid "pacreact: notifications disabled: %s\n"
+msgstr ""
+
+#: src/sicon.c
+#, c-format
+msgid ""
+"pacreact: icon_font \"%s\" is not a font file that can be read; using the "
+"theme's icons\n"
+msgstr ""
+
+#: src/sound.c
+msgid ""
+"pacreact: no sound player found (install pw-play or paplay, or set player)\n"
 msgstr ""
 
 #: src/src_audio.c
@@ -239,6 +282,13 @@ msgstr ""
 
 #: src/src_locks.c
 msgid "Num Lock off"
+msgstr ""
+
+#: src/src_locks.c
+#, c-format
+msgid ""
+"pacreact: this kernel cannot filter keyboard events; lock key notices are "
+"off\n"
 msgstr ""
 
 #: src/src_mem.c
@@ -363,6 +413,11 @@ msgstr ""
 msgid "Network back to normal"
 msgstr ""
 
+#: src/src_probe.c
+#, c-format
+msgid "pacreact: probe_host must be an IPv4 address; probe disabled\n"
+msgstr ""
+
 #: src/src_temp.c
 #, c-format
 msgid "CPU temperature critical — %d °C"
@@ -389,12 +444,31 @@ msgstr ""
 
 #: src/src_usb.c
 #, c-format
+msgid ""
+"pacreact: usb: \"%s\" is not one of camera, printer, tablet, storage, audio, "
+"input, other\n"
+msgstr ""
+
+#: src/src_usb.c
+#, c-format
+msgid "pacreact: usb names no kind; announcing all\n"
+msgstr ""
+
+#: src/src_usb.c
+#, c-format
 msgid "%s connected"
 msgstr ""
 
 #: src/src_usb.c
 #, c-format
 msgid "%s disconnected"
+msgstr ""
+
+#: src/text.c
+#, c-format
+msgid ""
+"pacreact: cannot use the font \"%s\" (not a font file that can be read); "
+"using the default\n"
 msgstr ""
 
 #: src/timer.c
@@ -499,4 +573,73 @@ msgstr ""
 #: src/timer.c
 #, c-format
 msgid "bad time \"%s\": use HH:MM or YYYY-MM-DD HH:MM"
+msgstr ""
+
+#: src/util.c
+#, c-format
+msgid "pacreact: %s must be a whole number of %s, not \"%s\"; ignored\n"
+msgstr ""
+
+#: src/util.c
+#, c-format
+msgid "pacreact: %s=%ld is outside %ld to %ld; using %ld\n"
+msgstr ""
+
+#: src/util.c
+#, c-format
+msgid ""
+"pacreact: %s must be a whole number of pixels or a length such as 4mm, "
+"0.2in, 10pt or 5%%, not \"%s\"; ignored\n"
+msgstr ""
+
+#: pacommon/src/config_file.c
+#, c-format
+msgid "%s: %s: cannot be read: %s\n"
+msgstr ""
+
+#: pacommon/src/config_file.c
+msgid "not a regular file"
+msgstr ""
+
+#: pacommon/src/config_file.c
+msgid "too large"
+msgstr ""
+
+#: pacommon/src/config_file.c
+msgid "cannot be read"
+msgstr ""
+
+#: pacommon/src/config_file.c
+#, c-format
+msgid "%s: %s: %s, ignored\n"
+msgstr ""
+
+#: pacommon/src/config_file.c
+#, c-format
+msgid "%s: %s:%d: line too long, ignored\n"
+msgstr ""
+
+#: pacommon/src/config_file.c
+#, c-format
+msgid "%s: %s:%d: line has a NUL byte, ignored\n"
+msgstr ""
+
+#: pacommon/src/config_file.c
+#, c-format
+msgid "%s: %s:%d: expected \"key = value\"\n"
+msgstr ""
+
+#: pacommon/src/config_file.c
+#, c-format
+msgid "%s: %s:%d: ignoring \"%s = %s\"\n"
+msgstr ""
+
+#: pacommon/src/config_file.c
+#, c-format
+msgid "%s: %s: too large, the rest is ignored\n"
+msgstr ""
+
+#: pacommon/src/speech.c
+#, c-format
+msgid "%s: cannot reach the speech server, so nothing will be spoken\n"
 msgstr ""

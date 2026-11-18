@@ -1,13 +1,13 @@
-# pachud
+# pacreact
 
 A tiny daemon that sleeps until something deserves your attention, then shows a small floating HUD.
 
-`pachud` is the companion to [pacpeek](../pacpeek): pacpeek shows system status when you ask for it, pachud speaks up when the system has something to say. It is built for tiling Wayland compositors such as Hyprland, with the same philosophy:
+`pacreact` is the companion to [pacpeek](../pacpeek): pacpeek shows system status when you ask for it, pacreact speaks up when the system has something to say. It is built for tiling Wayland compositors such as Hyprland, with the same philosophy:
 
-* **Asleep by default:** one `epoll` loop, no timers running while idle, zero wakeups. Everything it watches is event-driven, preferably straight from the kernel.
-* **No configuration overhead:** sensible defaults, a few environment variables, no config language.
-* **Minimal dependencies:** `wayland-client` and `cairo`, plus `libsystemd` (sd-bus) for notifications, and FreeType, HarfBuzz and FriBidi for translations. `make NOTIFY=0 I18N=0` drops all of those. No toolkit and no GLib; the status icons are the installed icon theme's, when it has them, and SVG ones are drawn by the optional `rsvg-convert` tool.
-* **Nothing on screen unless needed:** the Wayland surface exists only while a HUD is visible, and clicks pass straight through it, except on notification cards (click one to dismiss it; `PACHUD_CLICK=0` turns that off).
+* **Asleep by default:** one `epoll` loop, and while idle it wakes only for the timers it documents (a 5-minute disk check, a 2-minute temperature check, and the memory fallback). Everything else it watches is event-driven, preferably straight from the kernel.
+* **No configuration overhead:** sensible defaults, a plain config file, no config language.
+* **Minimal dependencies:** `wayland-client` and `cairo`, plus `libsystemd` (sd-bus) for notifications, FreeType, HarfBuzz and FriBidi for translations, and `libspeechd` for [speech](docs/usage.md#speech). `make NOTIFY=0 I18N=0 SPEECH=none` drops all of those. No toolkit and no GLib; the status icons are Nerd Font glyphs where that font is installed and the icon theme's otherwise, and SVG ones are drawn by the optional `rsvg-convert` tool.
+* **Nothing on screen unless needed:** the Wayland surface exists only while a HUD is visible, and clicks pass straight through it, except on notification cards (click one to dismiss it; `click = 0` turns that off).
 
 ## What it reacts to
 
@@ -22,7 +22,7 @@ A tiny daemon that sleeps until something deserves your attention, then shows a 
 | Timers and alarms | one `timerfd` | alert |
 | Desktop notifications | `org.freedesktop.Notifications` on D-Bus | card |
 
-pachud replaces your notification daemon (mako, dunst, ...); only one can own the bus name.
+pacreact replaces your notification daemon (mako, dunst, ...); only one can own the bus name.
 
 ## Quick start
 
@@ -30,10 +30,12 @@ pachud replaces your notification daemon (mako, dunst, ...); only one can own th
 make && sudo make install
 ```
 
+The shared code is the `pacommon` submodule: clone with `--recurse-submodules` (or run `git submodule update --init`), or set `PACOMMON=` to another checkout.
+
 Run it from your compositor, or as a systemd user service:
 
 ```bash
-systemctl --user enable --now pachud.service
+systemctl --user enable --now pacreact.service
 ```
 
 To take over notifications from mako, see [Usage](docs/usage.md#replacing-your-notification-daemon).
@@ -65,16 +67,16 @@ end
 ## Usage
 
 ```
-pachud                                   run the daemon
-pachud toast [-l info|warn|crit] [-t SECONDS] TEXT...
-pachud slider PERCENT LABEL...
-pachud timer 90s|5m|1h30m [LABEL...]
-pachud alarm [-r daily|weekdays|weekends|mon,wed,...] [YYYY-MM-DD] HH:MM [LABEL...]
-pachud snooze [DURATION]
-pachud pause ID | resume ID | extend ID DURATION
-pachud dnd [on [DURATION]|off|toggle|status]
-pachud list | cancel ID|all
-pachud dismiss
+pacreact                                   run the daemon
+pacreact toast [-l info|warn|crit] [-t SECONDS] TEXT...
+pacreact slider PERCENT LABEL...
+pacreact timer 90s|5m|1h30m [LABEL...]
+pacreact alarm [-r daily|weekdays|weekends|mon,wed,...] [YYYY-MM-DD] HH:MM [LABEL...]
+pacreact snooze [DURATION]
+pacreact pause ID | resume ID | extend ID DURATION
+pacreact dnd [on [DURATION]|off|toggle|status]
+pacreact list | cancel ID|all
+pacreact dismiss
 ```
 
 ## Platform
@@ -83,15 +85,31 @@ Linux only, tested on **Arch Linux with Hyprland** (needs the `wlr-layer-shell` 
 
 ## Documentation
 
-- `man pachud` ([source](docs/pachud.1)): every command and variable in one page
-- [Usage](docs/usage.md): commands, environment variables, Hyprland binds, replacing mako
+- `man pacreact` ([source](docs/pacreact.1)): every command and variable in one page
+- [Usage](docs/usage.md): commands, settings, Hyprland binds, replacing mako
 - [Translations](docs/translations.md): languages, fonts, right-to-left, adding a language
 - [Building and installing](docs/building.md): dependencies, options, tests
 - [Design](docs/design.md): how it stays asleep, each event source, limits
+- [Platform support and known limits](docs/platform.md)
+- [Decisions](docs/decisions.md): decisions after the design, and why
+- [Platform](docs/platform.md): what assumes Linux, and what was run
+- [Contributing](CONTRIBUTING.md)
+
+## What it stores
+
+- `$XDG_STATE_HOME/pacreact/` (default `~/.local/state/pacreact/`, mode 0700): `timers`: the timers, alarms and peeks that are waiting, so that they survive a restart; and `alerts`: when each kind of alert was last shown, so that a restart does not repeat it.
+- `$XDG_RUNTIME_DIR/pacreact.sock`: the socket the `pacreact` commands talk to the daemon through. Removed when it ends.
+- The notification history is kept in memory only (at most 64 entries) and is gone when the daemon stops.
+
+Deleting the state folder forgets the timers; nothing else depends on it. The one thing it can send over the network is the opt-in `probe_host` ping, and it asks the CUPS server (normally the local one) about print jobs when printing is watched ([decisions](docs/decisions.md)).
+
+## Size
+
+The binary is 196 KiB stripped (`make`, GCC `-Os`, measured 2026-11-15). Its idle memory and wakeups are measured in [design](docs/design.md).
 
 ## AI Assistance Disclosure
 
-AI tools were used during the development of pachud for:
+The tools were Claude (code generation), Dropstone (review and improvement), and Gemini and ChatGPT (investigation), as [the principles](pacommon/PRINCIPLES.md#ai-assisted-human-owned) describe. They were used during the development of pacreact for:
 
 - Architecture & Ideation: discussing design trade-offs (kernel-first event sources, a single epoll loop, avoiding heavy dependencies).
 - Code Drafting: structuring the Wayland, netlink, PSI and sd-bus code.

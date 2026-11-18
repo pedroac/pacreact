@@ -12,11 +12,8 @@
 #include <sys/timerfd.h>
 #include <time.h>
 #include <unistd.h>
+#include "tunables.h"
 
-#define COOLDOWN_SECS 30
-#define LOW_PCT 10      /* fallback poll: alert below this share of MemAvailable... */
-#define REARM_PCT 15    /* ...and re-arm above this one */
-#define POLL_SECS 10
 
 static long mem_available_mb(long *total_mb) {
     FILE *f = fopen("/proc/meminfo", "r");
@@ -76,7 +73,7 @@ static void on_poll(void *ctx, uint32_t ev) {
     if (!low && avail * 100 < total * LOW_PCT) {
         low = true;
         alert(LEVEL_CRIT);
-    } else if (low && avail * 100 > total * REARM_PCT) {
+    } else if (low && avail * 100 > total * SRC_MEM_REARM_PCT) {
         low = false;
     }
 }
@@ -93,7 +90,7 @@ void mem_init(void) {
     static int fd;
     fd = timerfd_create(CLOCK_MONOTONIC, TFD_CLOEXEC | TFD_NONBLOCK);
     if (fd < 0) return;
-    struct itimerspec its = { .it_value.tv_sec = POLL_SECS, .it_interval.tv_sec = POLL_SECS };
+    struct itimerspec its = { .it_value.tv_sec = SRC_MEM_POLL_SECS, .it_interval.tv_sec = SRC_MEM_POLL_SECS };
     timerfd_settime(fd, 0, &its, NULL);
     loop_add(fd, EPOLLIN, on_poll, &fd);
 }

@@ -12,8 +12,8 @@
 #include <sys/socket.h>
 #include <sys/timerfd.h>
 #include <unistd.h>
+#include "tunables.h"
 
-#define DEBOUNCE_MS 1000  /* link flaps and resume bursts settle before we judge */
 
 static int timer_fd = -1;
 static int last_dev = -1;  /* ifindex of the default route's device, 0 when offline */
@@ -58,8 +58,8 @@ static void on_event(void *ctx, uint32_t ev) {
     (void)ev;
     char buf[8192];
     while (recv(*(int *)ctx, buf, sizeof buf, MSG_DONTWAIT) > 0) {}
-    struct itimerspec its = { .it_value = { .tv_sec = DEBOUNCE_MS / 1000,
-                                            .tv_nsec = (DEBOUNCE_MS % 1000) * 1000000L } };
+    struct itimerspec its = { .it_value = { .tv_sec = SRC_NET_DEBOUNCE_MS / 1000,
+                                            .tv_nsec = (SRC_NET_DEBOUNCE_MS % 1000) * 1000000L } };
     timerfd_settime(timer_fd, 0, &its, NULL);  /* re-arming restarts the debounce */
 }
 

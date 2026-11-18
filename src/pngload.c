@@ -4,9 +4,8 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include "tunables.h"
 
-#define FILE_MAX (4 << 20)
-#define DIM_MAX 2048
 
 typedef struct { int fd; size_t left; } Source;
 

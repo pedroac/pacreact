@@ -4,6 +4,7 @@
 #include "../src/loop.h"
 #include "../src/sound.h"
 #include <assert.h>
+#include "setting.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -163,10 +164,10 @@ static void test_alert_sequence(void) {
 static void test_real_system(void) {
     /* The real mount table and statvfs: this machine's root filesystem must be found */
     memset(filesystems, 0, sizeof filesystems);
-    setenv("PACHUD_DISK_INTERVAL", "0", 1);
-    unsetenv("PACHUD_DISK");
-    unsetenv("PACHUD_DISK_WARN");
-    unsetenv("PACHUD_DISK_CRIT");
+    pac_setting_set("disk_interval", "0");
+    pac_setting_set("disk", NULL);
+    pac_setting_set("disk_warn", NULL);
+    pac_setting_set("disk_crit", NULL);
     registered = 0;
     disk_init();
     assert(registered == 1 && mounts_fd >= 0 && timer_fd < 0);   /* only the mount table: interval 0 */
@@ -175,32 +176,32 @@ static void test_real_system(void) {
     assert(tracked >= 1);
 
     /* With an interval the timer is registered too */
-    setenv("PACHUD_DISK_INTERVAL", "300", 1);
+    pac_setting_set("disk_interval", "300");
     registered = 0;
     disk_init();
     assert(registered == 2 && timer_fd >= 0);
 
     /* Switched off: nothing registered */
-    setenv("PACHUD_DISK", "0", 1);
+    pac_setting_set("disk", "0");
     registered = 0;
     disk_init();
     assert(registered == 0);
-    unsetenv("PACHUD_DISK");
+    pac_setting_set("disk", NULL);
 
     /* Thresholds from the environment, and nonsense falls back */
-    setenv("PACHUD_DISK_WARN", "20", 1);
-    setenv("PACHUD_DISK_CRIT", "8", 1);
+    pac_setting_set("disk_warn", "20");
+    pac_setting_set("disk_crit", "8");
     disk_init();
     assert(warn_pct == 20 && crit_pct == 8);
-    setenv("PACHUD_DISK_WARN", "abc", 1);
-    setenv("PACHUD_DISK_CRIT", "abc", 1);                         /* not a number: the default */
+    pac_setting_set("disk_warn", "abc");
+    pac_setting_set("disk_crit", "abc");                         /* not a number: the default */
     disk_init();
     assert(warn_pct == 10 && crit_pct == 5);
-    setenv("PACHUD_DISK_CRIT", "99", 1);                          /* out of range: the highest allowed, then kept below warn */
+    pac_setting_set("disk_crit", "99");                          /* out of range: the highest allowed, then kept below warn */
     disk_init();
     assert(warn_pct == 10 && crit_pct == 9);
-    setenv("PACHUD_DISK_WARN", "6", 1);
-    setenv("PACHUD_DISK_CRIT", "30", 1);                          /* in range but not below warn: pulled down */
+    pac_setting_set("disk_warn", "6");
+    pac_setting_set("disk_crit", "30");                          /* in range but not below warn: pulled down */
     disk_init();
     assert(warn_pct == 6 && crit_pct == 5);
 }

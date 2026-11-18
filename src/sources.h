@@ -9,10 +9,10 @@ void power_init(void);      /* battery level and AC, from kernel uevents */
 void mem_init(void);        /* memory pressure, from PSI triggers */
 void net_init(void);        /* online/offline, from rtnetlink */
 bool net_online(void);      /* whether the network source currently sees a default route */
-void probe_init(void);      /* opt-in latency probe (PACHUD_PROBE_HOST) */
+void probe_init(void);      /* opt-in latency probe (probe_host) */
 void backlight_init(void);  /* screen brightness, from sysfs notifications */
 void bt_init(void);         /* Bluetooth devices connecting (needs sd-bus; not in NOTIFY=0 builds) */
-void locks_init(void);     /* Caps Lock / Num Lock (opt-in: PACHUD_LOCK_KEYS=1) */
+void locks_init(void);     /* Caps Lock / Num Lock (opt-in: lock_keys = 1) */
 void usb_init(void);        /* USB devices connecting: webcams, printers, tablets, drives (kernel uevents and sysfs) */
 void usb_uevent(const char *msg, size_t len);   /* one kernel uevent, from the shared socket in src_power.c */
 void print_init(void);       /* print jobs and printer problems, from CUPS (needs sd-bus; not in NOTIFY=0 builds) */
@@ -27,8 +27,7 @@ void disk_init(void);       /* low disk space: timer plus mount-table changes */
  * present (+1) or back (-1) since the last answer; 0 for no change. */
 typedef struct { int headphones, headset, mic, lineout; } PortChanges;
 void audio_port_changes(void (*cb)(const PortChanges *));   /* NULL when the server cannot say */
-/* A jack was plugged or unplugged: the server moves the output (and input) to the other port and
- * its remembered volume comes with it. Volume changes in the next moments are learned, not shown. */
+/* A 3.5 mm jack was plugged or unplugged: the output that moves with it needs no message of its own. */
 void audio_jack_plugged(void);
 void audio_init(void);      /* output volume and mute, from `pactl subscribe` */
 

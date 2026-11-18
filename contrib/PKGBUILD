@@ -1,11 +1,11 @@
 # Maintainer: Pedro Amaral Couto
 #
-# Builds pachud from the checkout this file lives in (contrib/PKGBUILD), including
+# Builds pacreact from the checkout this file lives in (contrib/PKGBUILD), including
 # uncommitted changes, so it works before there is a release to download:
 #
 #     cd contrib && makepkg -si
 #
-pkgname=pachud-git
+pkgname=pacreact-git
 pkgver=0.1.0.r2.d77b303
 pkgrel=1
 pkgdesc='Event-driven HUDs and notification daemon for Wayland'
@@ -21,8 +21,8 @@ optdepends=(
     'ttf-dejavu: Arabic and Hebrew text'
     'libpulse: paplay, for alarm sounds (pw-play from pipewire also works)'
 )
-provides=(pachud notification-daemon)
-conflicts=(pachud)
+provides=(pacreact notification-daemon)
+conflicts=(pacreact)
 
 _root() { cd "$startdir/.." && pwd; }
 

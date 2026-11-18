@@ -44,11 +44,11 @@ static const char SUBSCRIBED[] =   /* Create-Printer-Subscriptions: id 42, lease
     "722d757365722d6e616d650007706564726f61632100146e6f746966792d74696d652d696e74657276616c00040000000021001"
     "66e6f746966792d737562736372697074696f6e2d696400040000002a03";
 
-static const char JOBS_ONE[] =     /* Get-Jobs: job 98, held, "pachud test job 2" */
+static const char JOBS_ONE[] =     /* Get-Jobs: job 98, held, "pacreact test job 2" */
     "010100000000000101470012617474726962757465732d6368617273657400057574662d3848001b617474726962757465732d6e61"
     "747572616c2d6c616e67756167650002656e0245000f6a6f622d7072696e7465722d75726900306970703a2f2f6c6f63616c686f73"
     "743a3633312f7072696e746572732f48505f454e56595f343532305f7365726965734200196a6f622d6f726967696e6174696e672d"
-    "757365722d6e616d650007706564726f61634200086a6f622d6e616d6500117061636875642074657374206a6f6220322100066a6f"
+    "757365722d6e616d650007706564726f61634200086a6f622d6e616d65001370616372656163742074657374206a6f6220322100066a6f"
     "622d69640004000000622300096a6f622d737461746500040000000403";
 
 static const char JOBS_NONE[] =    /* Get-Jobs with nothing waiting: just the operation attributes */
@@ -110,7 +110,7 @@ static void test_requests(void) {
     while (iter_next(&it, &a))
         if (!strcmp(a.name, "notify-user-data") && a.tag == T_OCTETS) {
             char want[32];
-            snprintf(want, sizeof want, "pachud:%d", (int)getpid());
+            snprintf(want, sizeof want, "pacreact:%d", (int)getpid());
             marked = a.len == strlen(want) && !memcmp(a.value, want, a.len);
         }
     assert(marked);                                                  /* whose it is: this process's */
@@ -148,7 +148,7 @@ static void test_answers(void) {
     char reply[1024];
     n = unhex(JOBS_ONE, b);
     format_jobs(b, n, reply, sizeof reply);
-    assert(!strcmp(reply, "ok 98 held HP_ENVY_4520_series pachud test job 2"));
+    assert(!strcmp(reply, "ok 98 held HP_ENVY_4520_series pacreact test job 2"));
     n = unhex(JOBS_NONE, b);
     format_jobs(b, n, reply, sizeof reply);
     assert(!strcmp(reply, "ok no print jobs"));
@@ -221,7 +221,7 @@ static pid_t serve(const char *const *answers_hex, int n) {
 }
 
 static void test_cups_socket(void) {
-    snprintf(sock_path, sizeof sock_path, "/tmp/pachud-print-%d.sock", (int)getpid());
+    snprintf(sock_path, sizeof sock_path, "/tmp/pacreact-print-%d.sock", (int)getpid());
     setenv("CUPS_SERVER", sock_path, 1);
     tfd = timerfd_create(CLOCK_MONOTONIC, TFD_CLOEXEC | TFD_NONBLOCK);
     assert(tfd >= 0);
@@ -239,7 +239,7 @@ static void test_cups_socket(void) {
     const char *jobs[] = { JOBS_ONE, JOBS_NONE };
     pid = serve(jobs, 2);
     char reply[1024];
-    assert(print_command("print", "", reply, sizeof reply) && !strcmp(reply, "ok 98 held HP_ENVY_4520_series pachud test job 2"));
+    assert(print_command("print", "", reply, sizeof reply) && !strcmp(reply, "ok 98 held HP_ENVY_4520_series pacreact test job 2"));
     assert(print_command("print", "", reply, sizeof reply) && !strcmp(reply, "ok no print jobs"));
     waitpid(pid, &st, 0);
     assert(WIFEXITED(st) && WEXITSTATUS(st) == 0);
@@ -282,17 +282,17 @@ static const char *subscriptions_answer(int dead_pid) {
     put8(&o, TAG_OPERATION);
     ipp_str(&o, T_CHARSET, "attributes-charset", "utf-8");
     char dead[32], mine[32];
-    snprintf(dead, sizeof dead, "pachud:%d", dead_pid);
-    snprintf(mine, sizeof mine, "pachud:%d", (int)getpid());
+    snprintf(dead, sizeof dead, "pacreact:%d", dead_pid);
+    snprintf(mine, sizeof mine, "pacreact:%d", (int)getpid());
     const struct { int id; const char *data; } subs[] = {
-        { 10, dead },          /* a pachud that is gone: cancelled */
+        { 10, dead },          /* a pacreact that is gone: cancelled */
         { 11, "other" },       /* someone else's */
         { 12, NULL },          /* no user data */
-        { 13, "pachud" },      /* an earlier version's, which cannot be told apart: cancelled */
-        { 14, "pachud-not" },  /* not ours */
+        { 13, "pacreact" },      /* an earlier version's, which cannot be told apart: cancelled */
+        { 14, "pacreact-not" },  /* not ours */
         { 15, mine },          /* this very process */
-        { 16, "pachud:1" },    /* a process that runs (init, belonging to another user): left alone */
-        { 17, "pachud:abc" },  /* not a pid */
+        { 16, "pacreact:1" },    /* a process that runs (init, belonging to another user): left alone */
+        { 17, "pacreact:abc" },  /* not a pid */
     };
     for (size_t i = 0; i < sizeof subs / sizeof *subs; i++) {
         put8(&o, TAG_SUBSCRIPTION);
@@ -305,7 +305,7 @@ static const char *subscriptions_answer(int dead_pid) {
 }
 
 static void test_no_leftovers(void) {
-    snprintf(sock_path, sizeof sock_path, "/tmp/pachud-print-%d.sock", (int)getpid());
+    snprintf(sock_path, sizeof sock_path, "/tmp/pacreact-print-%d.sock", (int)getpid());
     setenv("CUPS_SERVER", sock_path, 1);
     int st;
 
@@ -429,7 +429,7 @@ static void test_job_start(void) {
     job_completed("HP_ENVY_4520_series", 7, JOB_COMPLETED, "none", "Quarterly report.pdf");
     assert(ntoasts == 4 && !strcmp(toasts[3], "Printed — Quarterly report.pdf"));
 
-    /* PACHUD_PRINT=done: no toast for the start, the rest as before */
+    /* print=done: no toast for the start, the rest as before */
     announce_start = false;
     job_state("p", 20, JOB_PROCESSING, "Quiet");
     assert(ntoasts == 4);

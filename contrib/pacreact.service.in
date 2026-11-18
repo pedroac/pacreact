@@ -1,12 +1,12 @@
 [Unit]
-Description=pachud: HUDs and notifications
+Description=pacreact: HUDs and notifications
 PartOf=graphical-session.target
 After=graphical-session.target
 ConditionEnvironment=WAYLAND_DISPLAY
 
 [Service]
 Type=simple
-ExecStart=@BINDIR@/pachud
+ExecStart=@BINDIR@/pacreact
 Restart=on-failure
 # The notification history lives in memory: no core dumps, and no gaining privileges.
 LimitCORE=0

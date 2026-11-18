@@ -1,4 +1,5 @@
 #include "alerts.h"
+#include "setting.h"
 #include "hud.h"
 #include "i18n.h"
 #include "loop.h"
@@ -14,19 +15,13 @@
 #include <sys/statvfs.h>
 #include <sys/timerfd.h>
 #include <unistd.h>
+#include "tunables.h"
 
 /* Low disk space. The kernel has no "this filesystem is filling up" event, so this is the one
  * source that cannot be fully event-driven: a slow timer (default every 5 minutes) checks the
  * filesystems that sit on a block device, and a change in the mount table (a drive plugged in)
- * checks at once. PACHUD_DISK=0 turns it off. */
+ * checks at once. disk = 0 turns it off. */
 
-#define DEFAULT_WARN_PCT 10
-#define DEFAULT_CRIT_PCT 5
-#define CRIT_BYTES (1ULL << 30)     /* with little room left in percent, under 1 GiB is critical */
-#define REARM_MARGIN_PCT 3          /* it must recover this far before it can alert again */
-#define DEFAULT_INTERVAL_S 300
-#define MAX_FS 16
-#define ALERT_MS 8000
 
 static int warn_pct = DEFAULT_WARN_PCT, crit_pct = DEFAULT_CRIT_PCT;
 
@@ -179,7 +174,7 @@ void disk_evaluate(const char *dev, const char *mount, uint64_t avail, uint64_t 
     int pct = (int)free_pct(avail, total);
     if (level == 2) snprintf(msg, sizeof msg, _("Disk almost full — %s: %d%% free (%s)"), mount, pct, size);
     else snprintf(msg, sizeof msg, _("Disk space low — %s: %d%% free (%s)"), mount, pct, size);
-    hud_toast_icon(msg, level == 2 ? LEVEL_CRIT : LEVEL_WARN, ALERT_MS,
+    hud_toast_icon(msg, level == 2 ? LEVEL_CRIT : LEVEL_WARN, SRC_DISK_ALERT_MS,
                    level == 2 ? "drive-harddisk,dialog-error" : "drive-harddisk,dialog-warning");
     sound_play(SOUND_ALERT);
 }
@@ -219,13 +214,13 @@ static void on_timer(void *ctx, uint32_t ev) {
 }
 
 void disk_init(void) {
-    const char *off = getenv("PACHUD_DISK");
+    const char *off = pac_setting("disk");
     if (off && !strcmp(off, "0")) return;
 
-    warn_pct = (int)env_int("PACHUD_DISK_WARN", DEFAULT_WARN_PCT, 2, 95, "percent");
-    crit_pct = (int)env_int("PACHUD_DISK_CRIT", DEFAULT_CRIT_PCT, 1, 94, "percent");
+    warn_pct = (int)setting_int("disk_warn", DEFAULT_WARN_PCT, 2, 95, "percent");
+    crit_pct = (int)setting_int("disk_crit", DEFAULT_CRIT_PCT, 1, 94, "percent");
     if (crit_pct >= warn_pct) crit_pct = warn_pct - 1;
-    long interval = env_int("PACHUD_DISK_INTERVAL", DEFAULT_INTERVAL_S, 0, 86400, "seconds");  /* 0: mount changes only */
+    long interval = setting_int("disk_interval", SRC_DISK_DEFAULT_INTERVAL_S, 0, 86400, "seconds");  /* 0: mount changes only */
 
     mounts_fd = open("/proc/self/mountinfo", O_RDONLY | O_CLOEXEC);
     if (mounts_fd >= 0) loop_add(mounts_fd, EPOLLPRI | EPOLLERR, on_mounts, NULL);

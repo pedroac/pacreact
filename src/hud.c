@@ -1,6 +1,8 @@
 #include "hud.h"
+#include "setting.h"
 #include "i18n.h"
 #include "paint.h"
+#include "speech.h"
 #include "util.h"
 #include <limits.h>
 #include <stddef.h>
@@ -9,14 +11,13 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include "tunables.h"
 
-#define OSD_TIMEOUT_MS 1000
-#define CLOCK_OSD_MS 2500
 
 static long long osd_deadline_ms;
 static bool osd_visible;
 static Display *dpy;
-static bool osd_in_stack;   /* PACHUD_OSD=stack: volume, brightness and the clock join the stack */
+static bool osd_in_stack;   /* osd = stack: volume, brightness and the clock join the stack */
 
 static void hud_osd_hide(void);
 static void on_rescale(void);
@@ -25,7 +26,7 @@ static void on_hover(int area, int x, int y, bool over);
 
 void hud_init(Display *d) {
     dpy = d;
-    const char *osd = getenv("PACHUD_OSD");
+    const char *osd = pac_setting("osd");
     osd_in_stack = osd && !strcmp(osd, "stack");
     if (d) {
         display_on_rescale(d, on_rescale);
@@ -54,12 +55,8 @@ typedef struct {
     uint8_t image[IMAGE_BYTES];  /* last: copies stop before it unless has_image */
 } Item;
 
-#define STACK_MAX 4
-#define DECK_MAX 3
 #define ITEMS_MAX (STACK_MAX + DECK_MAX)
 #define STACK_GAP paint_px(8)
-#define QUEUE_MAX 8
-#define SLIDER_MS 1500
 
 /* Everything on screen, in one array: first the stack's items, newest first, then the deck's, the
  * front one first (the oldest of them). `ndeck` is how many of the last ones are the deck's. */
@@ -93,11 +90,6 @@ static void closed(const Item *it, int reason) {
     if (it->id && closed_cb && reason) closed_cb(it->id, reason);
 }
 
-/* Reading a long notification. The pointer over a card holds it (its timeout waits) and, after a
- * moment, opens it to show more of its body; `pachud expand` does the same from the keyboard, for
- * as long as it is not toggled again. When a card stops being held it stays at least this long. */
-#define HOVER_DELAY_MS 250
-#define HOLD_GRACE_MS 2000
 
 static uint32_t hover_id;      /* the card the pointer is over, or 0 */
 static uint32_t hover_open;    /* the card opened by the hover: the same one, once the delay has passed */
@@ -230,9 +222,46 @@ static void render(void) {
 }
 
 /* The compositor wants a different scale: draw what is on screen again, timers untouched. */
-static void on_rescale(void) { render(); }
+static void on_rescale(void) {
+    paint_set_screen(display_px_per_mm(dpy), display_output_short_side(dpy), display_output_width(dpy));   /* a new scale or screen: sizes in mm again */
+    render();
+}
+
+/* What a person who cannot see the screen is told of an item: what it says, the level first when it is
+ * not plain information (colour alone would not tell them), and for a slider its value. Nothing
+ * is spoken when speech is off or not running (speech.h). */
+static char slider_said[300];       /* what a bar will say once it stops moving */
+static long long slider_say_at;     /* when, or 0 if nothing waits */
+static bool speech_on;              /* speech_open succeeded */
+
+void hud_set_speech(bool on) { speech_on = on; }
+
+static void speak_now(const char *text) {
+    slider_say_at = 0;   /* a message is not cut off by a bar that was waiting */
+    speech_say_as(SPEECH_MESSAGE, text);   /* waits its turn: it does not cut off what is being said */
+}
+
+/* A bar is said only where it stops, so holding a volume key does not become a stream of numbers. */
+static void speak_slider_later(const char *label, int percent) {
+    if (!speech_on) return;
+    snprintf(slider_said, sizeof slider_said, "%s %d%%", label, percent);
+    slider_say_at = now_ms() + SPEECH_SLIDER_SETTLE_MS;
+}
+
+static void speak_item(const Item *it) {
+    char out[sizeof it->text + sizeof it->body + 64];
+    const char *level = it->level == LEVEL_CRIT ? _("Critical") : it->level == LEVEL_WARN ? _("Warning") : "";
+    if (it->slider) {
+        speak_slider_later(it->text, it->percent);
+        return;
+    }
+    snprintf(out, sizeof out, "%s%s%s%s%s", level, *level ? ". " : "", it->text, it->card && *it->body ? ". " : "",
+             it->card ? it->body : "");
+    speak_now(out);
+}
 
 static void stack_insert(int at, const Item *it) {
+    speak_item(it);
     for (int i = nstack; i > at; i--) item_copy(&stack[i], &stack[i - 1]);
     item_copy(&stack[at], it);
     nstack++;
@@ -302,6 +331,7 @@ static void submit(const Item *in) {
         bool expanded = stack[same].expanded;
         item_copy(&stack[same], &add);
         stack[same].expanded = expanded;
+        if (add.slider) speak_item(&add);   /* a volume bar that moves is a change, and is said again */
         render();
         return;
     }
@@ -502,7 +532,6 @@ void hud_action_invoked(uint32_t id) {
     if (it && !it->resident) hud_dismiss_id(id);
 }
 
-#define TOKEN_WAIT_MS 2000   /* the compositor always answers; one that does not must not block clicks */
 static bool token_pending;   /* a click is waiting for its activation token */
 static long long token_since;
 
@@ -608,6 +637,7 @@ int hud_timeout_ms(void) {
     long long open_at = hover_since + HOVER_DELAY_MS;   /* the pointer has lingered: open the card then */
     if (hover_id && !hover_open && (soonest < 0 || open_at < soonest)) soonest = open_at;
     if (osd_visible && (soonest < 0 || osd_deadline_ms < soonest)) soonest = osd_deadline_ms;
+    if (slider_say_at && (soonest < 0 || slider_say_at < soonest)) soonest = slider_say_at;
     if (soonest < 0) return -1;
     long long left = soonest - now_ms();
     return left < 0 ? 0 : (int)left;
@@ -615,6 +645,7 @@ int hud_timeout_ms(void) {
 
 void hud_tick(void) {
     long long now = now_ms();
+    if (slider_say_at && now >= slider_say_at) speak_now(slider_said);
     bool changed = false;
     for (int i = nstack - 1; i >= 0; i--) {
         if (!held(&stack[i]) && now >= stack[i].deadline) {
@@ -638,6 +669,7 @@ void hud_osd_slider(const char *label, int percent, bool dim, OsdAnchor anchor, 
         hud_slider(label, percent, dim, icon);
         return;
     }
+    speak_slider_later(label, percent);
     int w, h;
     paint_slider(NULL, label, percent, dim, icon, PAINT_OSD_W, &w, &h);
     cairo_t *cr;
@@ -656,6 +688,9 @@ void hud_osd_clock(const char *time_text, const char *detail) {
         hud_toast_icon(line, LEVEL_INFO, CLOCK_OSD_MS, "clock,preferences-system-time,appointment-soon");
         return;
     }
+    char said[300];
+    snprintf(said, sizeof said, "%s%s%s", time_text, detail && *detail ? ", " : "", detail ? detail : "");
+    speak_now(said);
     int w, h;
     paint_clock(NULL, time_text, detail, PAINT_OSD_W, &w, &h);
     cairo_t *cr;

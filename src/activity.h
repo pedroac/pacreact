@@ -5,9 +5,9 @@
 #include <stdbool.h>
 
 /* Whether the user is at the computer, from the compositor's idle notifications (ext-idle-notify-v1,
- * which Hyprland, sway and others have). The user is idle after PACHUD_PEEK_IDLE minutes (default 5, 1
+ * which Hyprland, sway and others have). The user is idle after peek_idle minutes (default 5, 1
  * to 120) without touching the keyboard or the pointer, and has had a break once that has lasted
- * PACHUD_PEEK_BREAK minutes (default 15, 1 to 720). Without the protocol nothing is ever reported: the
+ * peek_break minutes (default 15, 1 to 720). Without the protocol nothing is ever reported: the
  * user is taken to be at the computer all the time. */
 
 /* Called when the user goes idle (active false, `secs` is how long they had already been idle) and

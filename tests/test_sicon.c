@@ -172,7 +172,7 @@ static void test_tool(const char *real_path) {
 
 int main(void) {
     alarm(30);   /* a pipe in a theme directory must fail the test, not hang it */
-    snprintf(root, sizeof root, "/tmp/pachud-sicon-XXXXXX");
+    snprintf(root, sizeof root, "/tmp/pacreact-sicon-XXXXXX");
     const char *p = getenv("PATH");
     char real_path[1024];
     snprintf(real_path, sizeof real_path, "%s", p ? p : "/usr/bin:/bin");
@@ -232,6 +232,43 @@ int main(void) {
     assert(pixel(s, 4 + 36, 4 + 20) == 0xFFFF0000u && pixel(s, 4 + 20, 4 + 4) == 0);   /* 40 wide, 20 tall, centred */
     cairo_surface_destroy(s);
     sicon_configure(true, 24);
+
+    /* Glyphs: off until asked for. Without the font, or for a name with no glyph, the theme's icon is used.
+     * With it (only checked where the Nerd Font is installed), the glyph is drawn in the colour asked for,
+     * over what the theme has. */
+    write_png("data/icons/hicolor/22x22/status/audio-volume-high.png", 16, 16, 1, 0, 0);
+    assert(sicon_has("audio-volume-high"));
+    s = drawn("audio-volume-high", GREEN);
+    assert(pixel(s, 16, 16) == 0xFFFF0000u);                          /* the theme's, glyphs being off */
+    cairo_surface_destroy(s);
+    sicon_set_glyphs(true, "/no/such/NerdFont.ttf");
+    s = drawn("audio-volume-high", GREEN);
+    assert(pixel(s, 16, 16) == 0xFFFF0000u);                          /* no such font: the theme's */
+    cairo_surface_destroy(s);
+    sicon_set_glyphs(true, NULL);
+    s = drawn("red-png", GREEN);
+    assert(pixel(s, 16, 16) == 0xFFFF0000u);                          /* no glyph for the name: the theme's */
+    cairo_surface_destroy(s);
+    s = drawn("audio-volume-high", GREEN);
+    bool nerd = pixel(s, 16, 16) != 0xFFFF0000u;
+    if (nerd) {
+        bool green = false, other = false;
+        for (int y = 4; y < 28; y++)
+            for (int x = 4; x < 28; x++) {
+                uint32_t px = pixel(s, x, y);
+                if (px == 0xFF00FF00u) green = true;
+                else if (px >> 24 == 0xFF) other = true;
+            }
+        assert(green && !other);                                      /* the glyph, in the colour asked for */
+        assert(pixel(s, 1, 1) == 0 && pixel(s, 30, 30) == 0);         /* and inside its square */
+    } else {
+        puts("sicon: Symbols Nerd Font not installed, glyph drawing not checked");
+    }
+    cairo_surface_destroy(s);
+    sicon_set_glyphs(false, NULL);
+    s = drawn("audio-volume-high", GREEN);
+    assert(pixel(s, 16, 16) == 0xFFFF0000u);                          /* off again */
+    cairo_surface_destroy(s);
 
     /* Files a theme directory should not hold: a pipe must not block, nor a device be read */
     char fifo[512];

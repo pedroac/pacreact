@@ -1,6 +1,8 @@
 #include "paint.h"
+#include "setting.h"
 #include "sicon.h"
 #include "pngload.h"
+#include "length.h"
 #include "text.h"
 #include "util.h"
 #include <math.h>
@@ -10,46 +12,45 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+#include "tunables.h"
 
 /* Drawing of the HUD's items: toasts, sliders and notification cards. Each function draws one item
  * with its top-left at the origin of cr, or only measures it when cr is NULL; either way it
  * reports the item's size. What is on screen, and when, is hud.c's business. */
 
 /* The lengths and font sizes are those of a 16 px font, passed through paint_px() and paint_font()
- * so they follow PACHUD_FONT_SIZE; the numbers of lines are not lengths and stay as they are. */
+ * so they follow font_size; the numbers of lines are not lengths and stay as they are. */
 #define FONT_SIZE paint_font(16)
 #define PAD paint_px(16)
 #define BAR paint_px(5)
 #define RADIUS paint_px(12)
 #define LINE_GAP paint_px(4)
-#define TOAST_LINES 3
 #define STRIP_SIZE paint_font(14)
 #define CARD_ICON paint_px(40)
 #define ICON_GAP paint_px(12)
-#define CARD_BODY_LINES 4
-#define CARD_BODY_LINES_EXPANDED 20
 #define CARD_BODY_SIZE paint_font(13)
 #define CARD_SUMMARY_SIZE paint_font(15)
-#define ACTION_SIZE paint_font(12)
+#define ACTION_SIZE paint_font(PAINT_SMALLEST_TEXT)
 #define ACTION_GAP paint_px(6)
 #define SLIDER_H paint_px(64)
 #define SLIDER_TOP paint_px(12)
 #define TRACK_H paint_px(6)
 
 static double zoom = 1.0;
-static int width_set;   /* PACHUD_WIDTH, or 0 to follow the zoom */
+static double limit_factor = 1.0;   /* text_size_min and text_size_max: what the zoom is multiplied by to hold the smallest text between them */
+static int width_set;   /* width, or 0 to follow the zoom */
 
 static int clamp(int v, int lo, int hi) { return v < lo ? lo : v > hi ? hi : v; }
 
 static bool icons_on = true;
-static int icon_set;    /* PACHUD_ICON_SIZE, or 0 to follow the zoom */
+static int icon_set;    /* icon_size, or 0 to follow the zoom */
 
 static void apply_icons(void) {
     sicon_configure(icons_on, icon_set ? clamp(icon_set, PAINT_ICON_MIN, PAINT_ICON_MAX) : paint_px(24));
 }
 
 void paint_configure(int font_px, int width_px) {
-    zoom = font_px > 0 ? clamp(font_px, PAINT_FONT_MIN, PAINT_FONT_MAX) / 16.0 : 1.0;
+    zoom = (font_px > 0 ? clamp(font_px, PAINT_FONT_MIN, PAINT_FONT_MAX) / 16.0 : 1.0) * limit_factor;
     width_set = width_px > 0 ? clamp(width_px, PAINT_WIDTH_MIN, PAINT_WIDTH_MAX) : 0;
     apply_icons();   /* the default size of an icon follows the font */
 }
@@ -60,13 +61,48 @@ void paint_configure_icons(bool enabled, int size_px) {
     apply_icons();
 }
 
+static Size font_size_setting, width_setting, icon_size_setting;   /* as written: a length is turned into pixels per screen */
+static bool icons_enabled_setting = true;
+static bool has_text_min, has_text_max;                            /* text_size_min and text_size_max */
+static PacLength text_min, text_max;
+
+/* The text size limits hold whatever font_size says (docs/configuration.md): the smallest text on
+ * the HUD is brought between them, and the HUD, which is drawn in proportion to its font, with it.
+ * The HUD stays as wide as the screen at most, since text that does not fit is worse than small
+ * text (the shared rule, which a tool says it follows). */
+static double limits_factor(double font_px, double px_per_mm, double whole, int screen_w) {
+    if (!has_text_min && !has_text_max) return 1.0;
+    double smallest = PAINT_SMALLEST_TEXT * font_px / 16;
+    double held = pac_length_clamp(smallest, has_text_min ? &text_min : NULL, has_text_max ? &text_max : NULL,
+                                   px_per_mm, whole);
+    double factor = held / smallest;
+    if (screen_w > 0 && factor > 1 && PAINT_ITEM_DESIGN_W * font_px / 16 * factor > screen_w)
+        factor = fmax(1.0, screen_w / (PAINT_ITEM_DESIGN_W * font_px / 16));
+    return factor;
+}
+
+void paint_set_screen(double px_per_mm, double whole, int screen_w) {
+    long font = size_px(&font_size_setting, 16, PAINT_FONT_MIN, PAINT_FONT_MAX, px_per_mm, whole);
+    limit_factor = limits_factor((double)font, px_per_mm, whole, screen_w);
+    paint_configure_icons(icons_enabled_setting,
+                          (int)size_px(&icon_size_setting, 0, PAINT_ICON_MIN, PAINT_ICON_MAX, px_per_mm, whole));
+    paint_configure((int)size_px(&font_size_setting, 0, PAINT_FONT_MIN, PAINT_FONT_MAX, px_per_mm, whole),
+                    (int)size_px(&width_setting, 0, PAINT_WIDTH_MIN, PAINT_WIDTH_MAX, px_per_mm, whole));
+}
+
 void paint_init(void) {
-    const char *contrast = getenv("PACHUD_CONTRAST");
+    const char *contrast = pac_setting("contrast");
     paint_set_contrast(contrast && !strcmp(contrast, "high"));
-    const char *icons = getenv("PACHUD_ICONS");
-    paint_configure_icons(!(icons && !strcmp(icons, "0")), (int)env_int("PACHUD_ICON_SIZE", 0, PAINT_ICON_MIN, PAINT_ICON_MAX, "pixels"));
-    paint_configure((int)env_int("PACHUD_FONT_SIZE", 0, PAINT_FONT_MIN, PAINT_FONT_MAX, "pixels"),
-                    (int)env_int("PACHUD_WIDTH", 0, PAINT_WIDTH_MIN, PAINT_WIDTH_MAX, "pixels"));
+    const char *icons = pac_setting("icons");
+    sicon_set_glyphs(!(icons && !strcmp(icons, "theme")), pac_setting("icon_font"));
+    icons_enabled_setting = !(icons && !strcmp(icons, "0"));
+    icon_size_setting = setting_size("icon_size", PAINT_ICON_MIN, PAINT_ICON_MAX);
+    font_size_setting = setting_size("font_size", PAINT_FONT_MIN, PAINT_FONT_MAX);
+    width_setting = setting_size("width", PAINT_WIDTH_MIN, PAINT_WIDTH_MAX);
+    const char *low = pac_setting("text_size_min"), *high = pac_setting("text_size_max");
+    has_text_min = low && pac_length_parse(low, &text_min);
+    has_text_max = high && pac_length_parse(high, &text_max);
+    paint_set_screen(pac_px_per_mm(0, 0, 1), 0, 0);   /* the screen is not known yet: main.c says, once it is */
 }
 
 int paint_px(int design_px) {
@@ -74,7 +110,7 @@ int paint_px(int design_px) {
     return px < 1 ? 1 : px;
 }
 double paint_font(double design_px) { return design_px * zoom; }
-int paint_item_w(void) { return width_set ? width_set : paint_px(380); }
+int paint_item_w(void) { return width_set ? width_set : paint_px(PAINT_ITEM_DESIGN_W); }
 int paint_osd_w(void) { return paint_px(300); }
 
 /* Layouts are written left to right; in a right-to-left UI language every element is
@@ -285,7 +321,12 @@ static void ellipsize(const char *in, double w, double size, bool bold, char *ou
         while (len > 0 && ((unsigned char)out[len] & 0xC0) == 0x80) len--;
         char t[560];
         snprintf(t, sizeof t, "%.*s…", (int)len, out);
-        if (text_width(t, (int)strlen(t), size, bold) <= w) { snprintf(out, n, "%s", t); return; }
+        if (text_width(t, (int)strlen(t), size, bold) <= w) {
+            size_t keep = strlen(t) < n ? strlen(t) : n - 1;
+            memcpy(out, t, keep);
+            out[keep] = '\0';
+            return;
+        }
     }
     out[0] = '\0';
 }
@@ -413,7 +454,7 @@ void paint_card(cairo_t *cr, const CardPaint *card, int *ow, int *oh) {
     int nl = wrap(body, tw, CARD_BODY_SIZE, lines, card->expanded ? CARD_BODY_LINES_EXPANDED : CARD_BODY_LINES,
                   &truncated);
 
-    /* A hint line for the actions: pachud cannot be clicked, so each is invoked by number */
+    /* A hint line for the actions: pacreact cannot be clicked, so each is invoked by number */
     char actions[256] = "";
     double aasc = 0, aheight = 0, actions_w = 0;
     if (card->nact) {

@@ -47,7 +47,7 @@ static void serve_one_at(int line, int lfd, const char *expect, const char *repl
 #define serve_one(...) serve_one_at(__LINE__, __VA_ARGS__)
 
 int main(void) {
-    snprintf(dir, sizeof dir, "/tmp/pachud-ipc-XXXXXX");
+    snprintf(dir, sizeof dir, "/tmp/pacreact-ipc-XXXXXX");
     assert(mkdtemp(dir));
     setenv("XDG_RUNTIME_DIR", dir, 1);
     umask(0);   /* the socket must be private whatever the umask says */
@@ -62,7 +62,7 @@ int main(void) {
     {
         char path[96];
         struct stat st;
-        snprintf(path, sizeof path, "%s/pachud.sock", dir);
+        snprintf(path, sizeof path, "%s/pacreact.sock", dir);
         assert(stat(path, &st) == 0 && S_ISSOCK(st.st_mode) && (st.st_mode & 0777) == 0600);
     }
 
@@ -97,7 +97,7 @@ int main(void) {
     /* A client that connects and says nothing must not stall the daemon for long. */
     {
         struct sockaddr_un a = { .sun_family = AF_UNIX };
-        snprintf(a.sun_path, sizeof a.sun_path, "%s/pachud.sock", dir);
+        snprintf(a.sun_path, sizeof a.sun_path, "%s/pacreact.sock", dir);
         int silent = socket(AF_UNIX, SOCK_SEQPACKET, 0);
         assert(silent >= 0 && connect(silent, (struct sockaddr *)&a, sizeof a) == 0);
 

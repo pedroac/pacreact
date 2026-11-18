@@ -9,7 +9,7 @@
  * directory), and during a short grace period after start-up an alert that is not worse than
  * one shown in the last 30 minutes is not shown again: the same alert, or a milder one that
  * the earlier one already covered. A worse one always comes through. After the grace period
- * everything behaves as usual. PACHUD_STARTUP_GRACE sets the period in seconds (default 60; 0 turns it off). */
+ * everything behaves as usual. startup_grace sets the period in seconds (default 60; 0 turns it off). */
 
 void alerts_init(void);
 

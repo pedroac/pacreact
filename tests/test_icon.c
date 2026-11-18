@@ -96,7 +96,7 @@ static void test_status(void) {
 }
 
 int main(void) {
-    snprintf(root, sizeof root, "/tmp/pachud-icon-XXXXXX");
+    snprintf(root, sizeof root, "/tmp/pacreact-icon-XXXXXX");
     assert(mkdtemp(root));
     char data[128], home[128], out[512], expect[512];
     snprintf(data, sizeof data, "%s/data", root);

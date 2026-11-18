@@ -1,4 +1,5 @@
 #include "alerts.h"
+#include "setting.h"
 #include "hud.h"
 #include "i18n.h"
 #include "loop.h"
@@ -13,27 +14,20 @@
 #include <sys/epoll.h>
 #include <sys/timerfd.h>
 #include <unistd.h>
+#include "tunables.h"
 
 /* CPU and SSD temperature, from the kernel's hwmon sensors. The kernel only sends thermal events
  * when a trip point is crossed, which many machines never define, so those events are used as a
  * trigger to look at once, and a timer does the rest: slow while everything is cool (every 2
- * minutes), faster as a sensor approaches its warning level. PACHUD_TEMP=0 turns it off;
- * PACHUD_TEMP_INTERVAL sets the slowest interval (0: only react to kernel events). */
+ * minutes), faster as a sensor approaches its warning level. temp = 0 turns it off;
+ * temp_interval sets the slowest interval (0: only react to kernel events). */
 
-#define DEFAULT_INTERVAL_S 120
-#define MIN_INTERVAL_S 10
-#define CPU_DEFAULT_LIMIT 100
-#define CPU_DEFAULT_WARN 85
-#define CPU_DEFAULT_HOT 95
-#define SSD_DEFAULT_LIMIT 80
-#define HYSTERESIS_C 5
-#define ALERT_MS 8000
 
 typedef enum { CLASS_CPU, CLASS_SSD, CLASS_COUNT } SensorClass;
 
 static const char *hwmon_root = "/sys/class/hwmon";
-static long max_interval_s = DEFAULT_INTERVAL_S;
-static int cpu_warn_c = CPU_DEFAULT_WARN, cpu_hot_c = CPU_DEFAULT_HOT;   /* PACHUD_TEMP_WARN / PACHUD_TEMP_CRIT */
+static long max_interval_s = SRC_TEMP_DEFAULT_INTERVAL_S;
+static int cpu_warn_c = CPU_DEFAULT_WARN, cpu_hot_c = CPU_DEFAULT_HOT;   /* temp_warn / temp_crit */
 static int timer_fd = -1;
 static int levels[CLASS_COUNT];   /* 0 fine, 1 high, 2 critical */
 
@@ -42,7 +36,7 @@ static int levels[CLASS_COUNT];   /* 0 fine, 1 high, 2 critical */
 typedef struct { int warn, hot; } Limits;
 
 /* The temperatures (in °C) at which a sensor is "high" and "critical", from the limit the device
- * itself reports. A CPU is high at 85 and critical at 95 (PACHUD_TEMP_WARN and PACHUD_TEMP_CRIT),
+ * itself reports. A CPU is high at 85 and critical at 95 (temp_warn and temp_crit),
  * or 15 and 5 degrees under its own limit if that is lower; an SSD, whose limit is much lower, gets 6 and 2 degrees. */
 Limits temp_limits(SensorClass c, int limit) {
     Limits l;
@@ -152,7 +146,7 @@ static void alert(SensorClass c, int level, int temp) {
         snprintf(msg, sizeof msg, level == 2 ? _("CPU temperature critical — %d °C") : _("CPU temperature high — %d °C"), temp);
     else
         snprintf(msg, sizeof msg, level == 2 ? _("SSD temperature critical — %d °C") : _("SSD temperature high — %d °C"), temp);
-    hud_toast_icon(msg, level == 2 ? LEVEL_CRIT : LEVEL_WARN, ALERT_MS,
+    hud_toast_icon(msg, level == 2 ? LEVEL_CRIT : LEVEL_WARN, SRC_TEMP_ALERT_MS,
                    level == 2 ? "dialog-error,dialog-warning" : "dialog-warning");
     sound_play(SOUND_ALERT);
 }
@@ -191,11 +185,11 @@ void temp_poke(void) {
 }
 
 void temp_init(void) {
-    const char *off = getenv("PACHUD_TEMP");
+    const char *off = pac_setting("temp");
     if (off && !strcmp(off, "0")) return;
-    max_interval_s = env_int("PACHUD_TEMP_INTERVAL", DEFAULT_INTERVAL_S, 0, 3600, "seconds");
-    cpu_warn_c = (int)env_int("PACHUD_TEMP_WARN", CPU_DEFAULT_WARN, 20, 150, "degrees Celsius");
-    cpu_hot_c = (int)env_int("PACHUD_TEMP_CRIT", CPU_DEFAULT_HOT, 20, 150, "degrees Celsius");
+    max_interval_s = setting_int("temp_interval", SRC_TEMP_DEFAULT_INTERVAL_S, 0, 3600, "seconds");
+    cpu_warn_c = (int)setting_int("temp_warn", CPU_DEFAULT_WARN, 20, 150, "degrees Celsius");
+    cpu_hot_c = (int)setting_int("temp_crit", CPU_DEFAULT_HOT, 20, 150, "degrees Celsius");
     if (cpu_hot_c <= cpu_warn_c) cpu_hot_c = cpu_warn_c + 1;
     timer_fd = timerfd_create(CLOCK_MONOTONIC, TFD_CLOEXEC | TFD_NONBLOCK);
     if (timer_fd < 0) return;

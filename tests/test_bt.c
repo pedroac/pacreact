@@ -5,6 +5,7 @@
 #include "../src/loop.h"
 #include "../src/sound.h"
 #include <assert.h>
+#include "setting.h"
 #include <poll.h>
 #include <signal.h>
 #include <stdio.h>
@@ -142,11 +143,11 @@ int main(void) {
     bt_init();
     assert(bus == NULL && registered == 0);
 
-    setenv("PACHUD_BLUETOOTH", "0", 1);
+    pac_setting_set("bluetooth", "0");
     setenv("DBUS_SYSTEM_BUS_ADDRESS", address, 1);
     bt_init();
     assert(bus == NULL && registered == 0);
-    unsetenv("PACHUD_BLUETOOTH");
+    pac_setting_set("bluetooth", NULL);
 
     int cmd[2], ready[2];
     assert(pipe(cmd) == 0 && pipe(ready) == 0);

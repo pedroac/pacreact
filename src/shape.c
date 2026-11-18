@@ -5,8 +5,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "tunables.h"
 
-#define MAX_CHARS 160
 #define SUBPIXEL 64
 
 static hb_font_t *cached_font;
@@ -119,6 +119,8 @@ cairo_glyph_t *shape_text(const char *font_path, int font_index, double px, bool
 
         if (total + (int)glyph_count > capacity) {
             capacity = total + glyph_count + 16;
+            /* The glyph count follows the text (at most MAX_TEXT bytes); the caller frees the
+             * array, so it is not a static block. */
             cairo_glyph_t *grown = realloc(glyphs, capacity * sizeof(*glyphs));
             if (!grown) {
                 free(glyphs);

@@ -1,8 +1,11 @@
 #include "display.h"
+#include "i18n.h"
+#include "setting.h"
 #include "alpha-modifier-v1-client-protocol.h"
 #include "ext-idle-notify-v1-client-protocol.h"
 #include "fractional-scale-v1-client-protocol.h"
 #include "scale.h"
+#include "length.h"
 #include "viewporter-client-protocol.h"
 #include "xdg-activation-v1-client-protocol.h"
 #include "xdg-output-unstable-v1-client-protocol.h"
@@ -16,12 +19,8 @@
 #include <sys/mman.h>
 #include <unistd.h>
 #include <wayland-client.h>
+#include "tunables.h"
 
-#define DEFAULT_MARGIN 16   /* from the screen's edge, in pixels; PACHUD_MARGIN */
-#define MARGIN_MAX 200
-#define DEFAULT_FADE_MS 120
-#define MAX_OUTPUTS 8
-#define DECK_GAP 16   /* the least space between the deck and the stack for them to count as apart */
 
 struct Buf {
     struct wl_buffer *wl;
@@ -36,9 +35,13 @@ typedef struct {
     uint32_t global;            /* registry name, to notice when it goes away */
     struct wl_output *proxy;    /* NULL: slot unused */
     struct zxdg_output_v1 *xdg; /* what tells us the logical size, when the compositor has xdg-output */
-    int logical_w;              /* in logical pixels, 0 until told */
+    int logical_w, logical_h;   /* in logical pixels, 0 until told */
+    int physical_mm, mode_px;   /* wl_output: the panel's width in mm, and the current mode's in pixels; 0 until told */
+    int scale;                  /* wl_output: whole buffer pixels per logical one */
     char name[64];              /* "DP-1", "HDMI-A-1", ... */
 } Output;
+
+static int margin_px(Display *d);
 
 /* A layer surface with what it takes to show buffers: the notification stack and the on-screen
  * display each have one, and differ only in the hooks. */
@@ -66,10 +69,10 @@ struct Display {
     struct zwlr_layer_shell_v1 *layer_shell;
     struct wp_alpha_modifier_v1 *alpha_mgr;  /* optional: without it HUDs just appear and vanish */
 
-    Output outputs[MAX_OUTPUTS];  /* every monitor, so PACHUD_OUTPUT can pick one by name */
-    const char *want_output;      /* PACHUD_OUTPUT, or NULL to let the compositor choose */
+    Output outputs[MAX_OUTPUTS];  /* every monitor, so output can pick one by name */
+    const char *want_output;      /* output, or NULL to let the compositor choose */
     bool warned_output;
-    bool click;                   /* PACHUD_CLICK is not 0 */
+    bool click;                   /* click is not 0 */
     struct wl_seat *seat;
     struct wl_pointer *pointer;
     struct wl_surface *pointer_surface;  /* the surface the pointer is over, if it is ours */
@@ -87,8 +90,9 @@ struct Display {
     struct xdg_activation_token_v1 *token;  /* a request waiting for the compositor's answer */
     void (*token_fn)(const char *token, void *ctx);
     void *token_ctx;
-    int margin;                   /* the distance of the stack, and the deck's top, from the screen's edge */
-    uint32_t anchor;              /* where the notification stack sits: PACHUD_ANCHOR */
+    int margin;                   /* the distance of the stack, and the deck's top, from the screen's edge, in pixels */
+    Size margin_size;             /* the setting: with a unit, `margin` is not used but margin_px() */
+    uint32_t anchor;              /* where the notification stack sits: anchor */
     int align;                    /* 0 left, 1 centre, 2 right: how items line up in the stack */
 
     Surface main;      /* the notification stack */
@@ -96,7 +100,7 @@ struct Display {
     Surface osd;       /* the on-screen display: volume, brightness, device changes */
     OsdAnchor osd_anchor;
     int scale120;        /* what new buffers are rendered at, in 120ths */
-    bool scale_fixed;    /* PACHUD_SCALE: ignore what the compositor prefers */
+    bool scale_fixed;    /* scale: ignore what the compositor prefers */
     struct wp_fractional_scale_manager_v1 *frac_mgr;  /* optional: else whole-number scales */
     struct wp_viewporter *viewporter;
     void (*rescale_cb)(void);
@@ -127,17 +131,18 @@ static void buffer_release(void *data, struct wl_buffer *wl) {
 
 static const struct wl_buffer_listener buffer_listener = { .release = buffer_release };
 
-/* Only the name matters; the other output events have no use here. */
+/* The name, and what a length in mm, in or pt needs: the panel's size, the mode's, and the scale. */
 static void out_geometry(void *data, struct wl_output *o, int32_t x, int32_t y, int32_t pw, int32_t ph,
                          int32_t subpixel, const char *make, const char *model, int32_t transform) {
-    (void)data; (void)o; (void)x; (void)y; (void)pw; (void)ph; (void)subpixel; (void)make;
-    (void)model; (void)transform;
+    (void)o; (void)x; (void)y; (void)ph; (void)subpixel; (void)make; (void)model; (void)transform;
+    ((Output *)data)->physical_mm = pw;   /* along the same side as the mode's width, rotated or not */
 }
 static void out_mode(void *data, struct wl_output *o, uint32_t flags, int32_t w, int32_t h, int32_t r) {
-    (void)data; (void)o; (void)flags; (void)w; (void)h; (void)r;
+    (void)o; (void)h; (void)r;
+    if (flags & WL_OUTPUT_MODE_CURRENT) ((Output *)data)->mode_px = w;
 }
 static void out_done(void *data, struct wl_output *o) { (void)data; (void)o; }
-static void out_scale(void *data, struct wl_output *o, int32_t f) { (void)data; (void)o; (void)f; }
+static void out_scale(void *data, struct wl_output *o, int32_t f) { (void)o; ((Output *)data)->scale = f; }
 static void out_name(void *data, struct wl_output *o, const char *name) {
     (void)o;
     snprintf(((Output *)data)->name, sizeof(((Output *)data)->name), "%s", name);
@@ -155,8 +160,9 @@ static void xdg_position(void *data, struct zxdg_output_v1 *x, int32_t px, int32
     (void)data; (void)x; (void)px; (void)py;
 }
 static void xdg_size(void *data, struct zxdg_output_v1 *x, int32_t w, int32_t h) {
-    (void)x; (void)h;
+    (void)x;
     ((Output *)data)->logical_w = w;
+    ((Output *)data)->logical_h = h;
 }
 static void xdg_done(void *data, struct zxdg_output_v1 *x) { (void)data; (void)x; }
 static void xdg_name(void *data, struct zxdg_output_v1 *x, const char *name) { (void)data; (void)x; (void)name; }
@@ -251,7 +257,8 @@ static void registry_global(void *data, struct wl_registry *reg, uint32_t name,
             d->outputs[i].global = name;
             d->outputs[i].name[0] = '\0';
             d->outputs[i].proxy = wl_registry_bind(reg, name, &wl_output_interface, 4);
-            d->outputs[i].logical_w = 0;
+            d->outputs[i].logical_w = d->outputs[i].logical_h = d->outputs[i].physical_mm = d->outputs[i].mode_px = 0;
+            d->outputs[i].scale = 1;
             wl_output_add_listener(d->outputs[i].proxy, &output_listener, &d->outputs[i]);
             watch_output(d, &d->outputs[i]);
             break;
@@ -289,7 +296,7 @@ static void registry_remove(void *data, struct wl_registry *reg, uint32_t name) 
             wl_output_release(d->outputs[i].proxy);
             d->outputs[i].proxy = NULL;
             d->outputs[i].xdg = NULL;
-            d->outputs[i].logical_w = 0;
+            d->outputs[i].logical_w = d->outputs[i].logical_h = d->outputs[i].physical_mm = d->outputs[i].mode_px = 0;
             d->outputs[i].name[0] = '\0';
             if (d->last_out == i + 1) d->last_out = 0;
         }
@@ -352,7 +359,7 @@ static void frame_done(void *data, struct wl_callback *cb, uint32_t time) {
 #define EDGE_L ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT
 #define EDGE_R ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT
 
-/* PACHUD_ANCHOR: top-right (the default), top-left, top, bottom-right, bottom-left or bottom. */
+/* anchor: top-right (the default), top-left, top, bottom-right, bottom-left or bottom. */
 static void parse_anchor(Display *d, const char *name) {
     static const struct { const char *name; uint32_t edges; int align; } table[] = {
         { "top-right", EDGE_T | EDGE_R, 2 }, { "top-left", EDGE_T | EDGE_L, 0 }, { "top", EDGE_T, 1 },
@@ -369,14 +376,14 @@ static void parse_anchor(Display *d, const char *name) {
             return;
         }
     }
-    fprintf(stderr, "pachud: PACHUD_ANCHOR \"%s\" is not one of top-right, top-left, top, "
-                    "bottom-right, bottom-left, bottom\n", name);
+    fprintf(stderr, _("pacreact: anchor \"%s\" is not one of top-right, top-left, top, "
+                      "bottom-right, bottom-left, bottom\n"), name);
 }
 
 Display *display_open(void) {
     Display *d = calloc(1, sizeof *d);
     if (!d) return NULL;
-    const char *click = getenv("PACHUD_CLICK");
+    const char *click = pac_setting("click");
     d->click = !(click && !strcmp(click, "0"));
     d->wl = wl_display_connect(NULL);
     if (!d->wl) { free(d); return NULL; }
@@ -390,15 +397,16 @@ Display *display_open(void) {
     }
 
     wl_display_roundtrip(d->wl);  /* the output names arrive after the outputs are bound */
-    const char *want = getenv("PACHUD_OUTPUT");
+    const char *want = pac_setting("output");
     d->want_output = want && *want ? want : NULL;
-    parse_anchor(d, getenv("PACHUD_ANCHOR"));
-    d->margin = (int)env_int("PACHUD_MARGIN", DEFAULT_MARGIN, 0, MARGIN_MAX, "pixels");
+    parse_anchor(d, pac_setting("anchor"));
+    d->margin_size = setting_size("margin", 0, MARGIN_MAX);
+    d->margin = d->margin_size.unit ? DEFAULT_MARGIN : (int)size_px(&d->margin_size, DEFAULT_MARGIN, 0, MARGIN_MAX, 0, 0);
 
-    int fixed = parse_scale120(getenv("PACHUD_SCALE"));  /* e.g. 1.5, 2; unset follows the compositor */
+    int fixed = parse_scale120(pac_setting("scale"));  /* e.g. 1.5, 2; unset follows the compositor */
     d->scale120 = fixed ? fixed : SCALE_UNIT;
     d->scale_fixed = fixed != 0;
-    d->fade_ms = (int)env_int("PACHUD_FADE_MS", DEFAULT_FADE_MS, 0, 2000, "milliseconds");  /* 0 turns the fade off */
+    d->fade_ms = (int)setting_int("fade_ms", DEFAULT_FADE_MS, 0, 2000, "milliseconds");  /* 0 turns the fade off */
     if (d->fade_ms == 0 && d->alpha_mgr) {
         wp_alpha_modifier_v1_destroy(d->alpha_mgr);
         d->alpha_mgr = NULL;
@@ -495,7 +503,7 @@ Buf *display_buf(Display *d, int w, int h, cairo_t **cr) {
     int stride = cairo_format_stride_for_width(CAIRO_FORMAT_ARGB32, pw);
     size_t size = (size_t)stride * ph;
 
-    int fd = memfd_create("pachud", MFD_CLOEXEC);
+    int fd = memfd_create("pacreact", MFD_CLOEXEC);
     if (fd < 0) return NULL;
     if (ftruncate(fd, size) < 0) { close(fd); return NULL; }
     void *data = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
@@ -533,7 +541,7 @@ static const struct wp_fractional_scale_v1_listener fractional_listener = {
     .preferred_scale = preferred_scale,
 };
 
-/* The monitor named by PACHUD_OUTPUT, else NULL: the compositor then chooses (usually the
+/* The monitor named by output, else NULL: the compositor then chooses (usually the
  * focused one). An unknown name is reported once, with the names that exist. */
 static struct wl_output *pick_output(Display *d) {
     if (!d->want_output) return NULL;
@@ -542,7 +550,7 @@ static struct wl_output *pick_output(Display *d) {
 
     if (!d->warned_output) {
         d->warned_output = true;
-        fprintf(stderr, "pachud: output \"%s\" not found; available:", d->want_output);
+        fprintf(stderr, _("pacreact: output \"%s\" not found; available:"), d->want_output);
         for (int i = 0; i < MAX_OUTPUTS; i++)
             if (d->outputs[i].proxy && d->outputs[i].name[0]) fprintf(stderr, " %s", d->outputs[i].name);
         fputc('\n', stderr);
@@ -584,7 +592,7 @@ bool display_request_token(Display *d, void (*fn)(const char *token, void *ctx),
     d->token = xdg_activation_v1_get_activation_token(d->activation);
     xdg_activation_token_v1_add_listener(d->token, &token_listener, d);
     xdg_activation_token_v1_set_serial(d->token, d->click_serial, d->seat);
-    xdg_activation_token_v1_set_app_id(d->token, "pachud");
+    xdg_activation_token_v1_set_app_id(d->token, "pacreact");
     xdg_activation_token_v1_set_surface(d->token, clicked);
     xdg_activation_token_v1_commit(d->token);
     d->token_fn = fn;
@@ -639,7 +647,12 @@ static void surface_enter(void *data, struct wl_surface *wl, struct wl_output *o
     Surface *s = data;
     (void)wl;
     for (int i = 0; i < MAX_OUTPUTS; i++)
-        if (s->d->outputs[i].proxy == output) s->d->last_out = i + 1;
+        if (s->d->outputs[i].proxy == output && s->d->last_out != i + 1) {
+            s->d->last_out = i + 1;
+            if (s->d->main.layer) zwlr_layer_surface_v1_set_margin(s->d->main.layer, margin_px(s->d), margin_px(s->d), margin_px(s->d), margin_px(s->d));
+            if (s->d->deck.layer) zwlr_layer_surface_v1_set_margin(s->d->deck.layer, margin_px(s->d), 0, 0, 0);
+            if (s->d->rescale_cb) s->d->rescale_cb();   /* a size in mm is a different number of pixels here */
+        }
 }
 static void surface_leave(void *data, struct wl_surface *wl, struct wl_output *output) {
     (void)data; (void)wl; (void)output;
@@ -719,8 +732,8 @@ static void stack_attach(Surface *s, Buf *b) {
 static void stack_gone(Surface *s) { destroy_surface(s->d); }
 
 static void create_surface(Display *d) {
-    surf_open(d, &d->main, "pachud", d->anchor, stack_attach, stack_gone);
-    zwlr_layer_surface_v1_set_margin(d->main.layer, d->margin, d->margin, d->margin, d->margin);
+    surf_open(d, &d->main, "pacreact", d->anchor, stack_attach, stack_gone);
+    zwlr_layer_surface_v1_set_margin(d->main.layer, margin_px(d), margin_px(d), margin_px(d), margin_px(d));
 
     if (d->alpha_mgr) {  /* start invisible; the first buffer fades in */
         d->alpha = wp_alpha_modifier_v1_get_surface(d->alpha_mgr, d->main.wl);
@@ -781,8 +794,8 @@ static void deck_destroy(Surface *s) {
 void display_deck_present(Display *d, Buf *b, cairo_t *cr) {
     buf_finish(b, cr);
     if (!d->deck.wl) {
-        surf_open(d, &d->deck, "pachud-attention", EDGE_T, deck_attach, deck_destroy);
-        zwlr_layer_surface_v1_set_margin(d->deck.layer, d->margin, 0, 0, 0);
+        surf_open(d, &d->deck, "pacreact-attention", EDGE_T, deck_attach, deck_destroy);
+        zwlr_layer_surface_v1_set_margin(d->deck.layer, margin_px(d), 0, 0, 0);
         apply_click_region(&d->deck);
     }
     surf_show(&d->deck, b, false);
@@ -790,19 +803,47 @@ void display_deck_present(Display *d, Buf *b, cairo_t *cr) {
 
 void display_deck_hide(Display *d) { deck_destroy(&d->deck); }
 
-int display_output_width(Display *d) {
+/* The output the sizes are judged by: the one asked for with `output`, else the one the HUD last
+ * appeared on, else (never shown yet, and no way to know where it will be) the narrowest one
+ * that has told its size, to be careful. NULL if there is none. */
+static const Output *reference_output(Display *d) {
     if (d->want_output) {
         for (int i = 0; i < MAX_OUTPUTS; i++)
-            if (d->outputs[i].proxy && !strcmp(d->outputs[i].name, d->want_output)) return d->outputs[i].logical_w;
-        return 0;
+            if (d->outputs[i].proxy && !strcmp(d->outputs[i].name, d->want_output)) return &d->outputs[i];
+        return NULL;
     }
-    if (d->last_out && d->outputs[d->last_out - 1].proxy) return d->outputs[d->last_out - 1].logical_w;
-    int narrowest = 0;   /* never shown yet, and no way to know where it will be: be careful */
+    if (d->last_out && d->outputs[d->last_out - 1].proxy) return &d->outputs[d->last_out - 1];
+    const Output *narrowest = NULL;
     for (int i = 0; i < MAX_OUTPUTS; i++) {
-        int w = d->outputs[i].proxy ? d->outputs[i].logical_w : 0;
-        if (w > 0 && (!narrowest || w < narrowest)) narrowest = w;
+        const Output *o = &d->outputs[i];
+        if (o->proxy && o->logical_w > 0 && (!narrowest || o->logical_w < narrowest->logical_w)) narrowest = o;
     }
     return narrowest;
+}
+
+int display_output_width(Display *d) {
+    const Output *o = reference_output(d);
+    return o ? o->logical_w : 0;
+}
+
+int display_output_short_side(Display *d) {
+    const Output *o = reference_output(d);
+    if (!o) return 0;
+    return o->logical_h > 0 && o->logical_h < o->logical_w ? o->logical_h : o->logical_w;
+}
+
+double display_px_per_mm(Display *d) {
+    const Output *o = reference_output(d);
+    if (!o) return pac_px_per_mm(0, 0, 1);
+    /* the scale the HUD is drawn at once the compositor has said, until then the output's own */
+    double scale = d->scale120 != SCALE_UNIT ? (double)d->scale120 / SCALE_UNIT : o->scale;
+    return pac_px_per_mm(o->physical_mm, o->mode_px, scale);
+}
+
+/* The margin in logical pixels: for a length with a unit, on the output the sizes are judged by. */
+static int margin_px(Display *d) {
+    if (!d->margin_size.unit) return d->margin;
+    return (int)size_px(&d->margin_size, d->margin, 0, MARGIN_MAX, display_px_per_mm(d), display_output_short_side(d));
 }
 
 bool display_deck_apart(Display *d, int item_width) {
@@ -812,7 +853,7 @@ bool display_deck_apart(Display *d, int item_width) {
     if (w <= 0) return true;                     /* not known: take it to be enough */
     /* The stack in a top corner, the deck in the middle: the deck's far edge, a gap and the stack's
      * near edge must fit, that is two margins, two gaps and three items across the screen */
-    return w >= 3 * item_width + 2 * d->margin + 2 * DECK_GAP;
+    return w >= 3 * item_width + 2 * margin_px(d) + 2 * DECK_GAP;
 }
 
 /* ---- the on-screen display ---- */
@@ -831,7 +872,7 @@ static uint32_t osd_edges(OsdAnchor a) {
 void display_osd_present(Display *d, Buf *b, cairo_t *cr, OsdAnchor anchor) {
     buf_finish(b, cr);
     if (!d->osd.wl) {
-        surf_open(d, &d->osd, "pachud-osd", osd_edges(anchor), osd_attach, surf_destroy);
+        surf_open(d, &d->osd, "pacreact-osd", osd_edges(anchor), osd_attach, surf_destroy);
         d->osd_anchor = anchor;
     }
     bool moved = d->osd_anchor != anchor;

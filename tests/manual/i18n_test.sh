@@ -9,16 +9,16 @@ shot() { grim -g "900,1240 760x160" build/shots/$1.png; }
 export LANG=en_US.UTF-8
 
 for l in de ja ar; do
-    LANGUAGE=$l ./pachud 2>/dev/null &
+    LANGUAGE=$l ./pacreact 2>/dev/null &
     P=$!
     sleep 0.5
-    ./pachud timer 2s tea > /dev/null
+    ./pacreact timer 2s tea > /dev/null
     sleep 2.7
     shot i18n_timer_$l
     case $l in
-        ar) ./pachud slider 40 "مستوى الصوت" ;;
-        ja) ./pachud slider 40 "音量" ;;
-        de) ./pachud slider 40 "Lautstärke" ;;
+        ar) ./pacreact slider 40 "مستوى الصوت" ;;
+        ja) ./pacreact slider 40 "音量" ;;
+        de) ./pacreact slider 40 "Lautstärke" ;;
     esac
     sleep 0.3
     shot i18n_slider_$l
@@ -27,13 +27,13 @@ for l in de ja ar; do
 done
 
 # Content-based fonts: an English UI showing text in other scripts
-./pachud 2>/dev/null &
+./pacreact 2>/dev/null &
 P=$!
 sleep 0.5
-./pachud toast -t 4 "日本語のテスト — 한국어 — 中文"
+./pacreact toast -t 4 "日本語のテスト — 한국어 — 中文"
 sleep 0.4; shot i18n_content_cjk
-./pachud dismiss
-./pachud toast -t 4 "مرحبا بالعالم — wlan0"
+./pacreact dismiss
+./pacreact toast -t 4 "مرحبا بالعالم — wlan0"
 sleep 0.4; shot i18n_content_arabic
 kill $P; wait $P 2>/dev/null
 echo done

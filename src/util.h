@@ -1,6 +1,7 @@
 #ifndef UTIL_H
 #define UTIL_H
 
+#include "length.h"
 #include <stdbool.h>
 #include <stddef.h>
 #include <time.h>
@@ -30,7 +31,28 @@ void data_dirs(char *out, size_t n);
  * the nearest end of it. `unit` ("pixels", "seconds") is for the message. */
 long int_value(const char *name, const char *value, long def, long lo, long hi, const char *unit);
 
-/* int_value() for the environment variable NAME */
-long env_int(const char *name, long def, long lo, long hi, const char *unit);
+/* int_value() for the setting NAME (a key of the settings file) */
+long setting_int(const char *name, long def, long lo, long hi, const char *unit);
+
+/* A size setting: a whole number of pixels as before, or a number with a unit that means the same
+ * on every screen (`3mm`, `0.2in`, `10pt`) or the screen's own (`5%`, of its shorter side). Read once with
+ * setting_size(), which says what is wrong with it, then turned into pixels with size_px() for the
+ * screen it is shown on (as often as that changes). */
+typedef struct {
+    bool set;          /* a usable value was given */
+    bool unit;         /* it has a unit: `len` is the value; else `px` is */
+    long px;
+    PacLength len;
+} Size;
+
+/* The setting NAME as a Size. Unset or empty is not set, quietly; a value that is neither a whole
+ * number nor a length is said on stderr and is not set. A plain number outside lo..hi is brought
+ * to the nearest end of it, as setting_int() does. */
+Size setting_size(const char *name, long lo, long hi);
+
+/* The size in logical pixels, or `def` if it is not set. `px_per_mm` and `whole` are as for
+ * pac_length_px(). A length is brought into lo..hi without a word, since the screen it lands on
+ * may differ from the one it was written for. */
+long size_px(const Size *size, long def, long lo, long hi, double px_per_mm, double whole);
 
 #endif

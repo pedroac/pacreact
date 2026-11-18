@@ -4,13 +4,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include "tunables.h"
 
-#define APP_MAX 64
-#define SUMMARY_MAX 256
-#define BODY_MAX 512
-#define SHOWN_DEFAULT 10
-#define SUMMARY_SHOWN 80   /* bytes of each listed in a line */
-#define BODY_SHOWN 100
 
 typedef struct {
     uint32_t id;

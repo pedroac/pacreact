@@ -15,14 +15,8 @@
 #include <sys/stat.h>
 #include <sys/timerfd.h>
 #include <unistd.h>
+#include "tunables.h"
 
-#define MAX_ENTRIES 32
-#define MAX_SECS (30L * 86400)
-#define LABEL_MAX 128
-#define FIRE_MS 15000
-#define PEEK_MS 4000          /* how long a peek at the time stays */
-#define PEEK_STALE_S 120      /* a peek this late is not shown: the time it was for has gone */
-#define MIN_EVERY_S 60
 
 /* A timer and an alarm are meant to be noticed. A peek is the opposite: the time, shown quietly, as if
  * glancing at a clock: at a time of day (K_PEEK), or after this much time of use (K_USAGE). */
@@ -158,7 +152,7 @@ static void save(void) {
     char path[512], tmp[520];
     state_path(path, sizeof path, true);
     snprintf(tmp, sizeof tmp, "%s.tmp", path);
-    FILE *f = fopen(tmp, "w");
+    FILE *f = state_create(tmp);
     if (!f) return;
     for (int i = 0; i < count; i++) {
         const Entry *e = &entries[i];
@@ -175,7 +169,7 @@ static void save(void) {
 static void load(void) {
     char path[512], line[256 + LABEL_MAX];
     state_path(path, sizeof path, false);
-    FILE *f = fopen(path, "r");
+    FILE *f = state_open_read(path);
     if (!f) return;
     while (count < MAX_ENTRIES && fgets(line, sizeof line, f)) {
         long long when;

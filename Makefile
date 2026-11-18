@@ -1,27 +1,37 @@
+# The code shared by the pac tools (config_file, fontfind, ...)
+PACOMMON ?= pacommon
+ifeq ($(wildcard $(PACOMMON)/pac.mk),)
+$(error pacommon is not at $(PACOMMON): run: git submodule update --init, or set PACOMMON=path/to/pacommon)
+endif
+include $(PACOMMON)/pac.mk
+
 CC ?= gcc
 
 # NOTIFY=0 builds without the notification daemon: no libsystemd (sd-bus).
 NOTIFY ?= 1
+# SPEECH=none builds without speech: no libspeechd (speech-dispatcher). The default, speechd, speaks
+# what the HUD shows (see docs/usage.md); `speech = no` in the settings turns it off at run time.
 # I18N=0 builds an English-only binary: no gettext catalogs, FreeType, HarfBuzz or FriBidi,
 # and no per-language fonts.
 I18N ?= 1
 
-PKGS = wayland-client cairo
+PKGS = wayland-client cairo $(PAC_SPEECH_PKGS)
 ifeq ($(NOTIFY),1)
 PKGS += libsystemd
 endif
 ifeq ($(I18N),1)
 PKGS += freetype2 harfbuzz fribidi
 endif
-CFLAGS ?= -O2 -Wall -Wextra
+CFLAGS ?= -Os -fno-plt -Wall -Wextra -Wshadow -Wvla -Wformat-security
+LDFLAGS ?= -s
 # Hardening: fortified libc calls, stack protector, PIE, full RELRO and immediate binding.
 # Control-flow protection only exists on x86 compilers, so ask the compiler.
 CET_CFLAGS := $(shell echo 'int main(void){return 0;}' | $(CC) -x c - -fcf-protection=full \
                 -o /dev/null 2>/dev/null && echo -fcf-protection=full)
-ALL_CFLAGS := $(CFLAGS) -std=gnu11 -D_GNU_SOURCE -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=3 -fstack-protector-strong \
-              -fstack-clash-protection $(CET_CFLAGS) -fPIE -MMD -MP -Ibuild \
+ALL_CFLAGS := $(CFLAGS) -DSYSCONFDIR='"$(SYSCONFDIR)"' -ffunction-sections -fdata-sections -std=gnu11 -D_GNU_SOURCE -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=3 -fstack-protector-strong \
+              -fstack-clash-protection $(CET_CFLAGS) -fPIE $(PAC_SPEECH_CFLAGS) -MMD -MP -Ibuild -I$(PACOMMON)/src \
               $(shell pkg-config --cflags $(PKGS))
-ALL_LDFLAGS := $(LDFLAGS) -Wl,--as-needed -pie -Wl,-z,relro -Wl,-z,now -Wl,-z,noexecstack
+ALL_LDFLAGS := $(LDFLAGS) -Wl,--as-needed -Wl,--gc-sections -pie -Wl,-z,relro -Wl,-z,now -Wl,-z,noexecstack
 ALL_LIBS := $(LDLIBS) $(shell pkg-config --libs $(PKGS))
 
 WL_PROTOCOLS = $(shell pkg-config --variable=pkgdatadir wayland-protocols)
@@ -44,10 +54,12 @@ SRCS := $(filter-out src/notify.c src/src_bt.c src/src_print.c src/history.c,$(S
 ALL_CFLAGS += -DNO_NOTIFY
 endif
 ifneq ($(I18N),1)
-SRCS := $(filter-out src/shape.c src/utf8.c,$(SRCS))
+SRCS := $(filter-out src/shape.c,$(SRCS))
 endif
-OBJS = $(SRCS:src/%.c=build/%.o) $(PROTO_OBJS)
-TARGET = pachud
+COMMON_SRCS = $(PACOMMON)/src/config_file.c $(PACOMMON)/src/fontfind.c $(PACOMMON)/src/language.c $(PACOMMON)/src/length.c $(PACOMMON)/src/setting.c $(PACOMMON)/src/speech.c $(PACOMMON)/src/utf8.c
+COMMON_OBJS = $(COMMON_SRCS:$(PACOMMON)/src/%.c=build/pacommon_%.o)
+OBJS = $(SRCS:src/%.c=build/%.o) $(PROTO_OBJS) $(COMMON_OBJS)
+TARGET = pacreact
 
 PREFIX ?= /usr/local
 BINDIR ?= $(PREFIX)/bin
@@ -68,6 +80,9 @@ all: $(TARGET) $(MOS)
 $(TARGET): $(OBJS)
 	$(CC) $(ALL_LDFLAGS) $^ -o $@ $(ALL_LIBS)
 
+build/pacommon_%.o: $(PACOMMON)/src/%.c | $(PROTO_HEADERS) build/config.h
+	$(CC) $(ALL_CFLAGS) -Isrc -DPACOMMON_I18N='"i18n.h"' -c $< -o $@
+
 build/%.o: src/%.c | $(PROTO_HEADERS) build/config.h
 	$(CC) $(ALL_CFLAGS) -c $< -o $@
 
@@ -87,7 +102,7 @@ build/locale/%/LC_MESSAGES/$(TARGET).mo: po/%.po
 
 pot:
 	xgettext --from-code=UTF-8 --keyword=_ --keyword=N_ --add-comments=TRANSLATORS: \
-		--add-location=file --package-name=$(TARGET) -o po/$(TARGET).pot $(sort $(SRCS))
+		--add-location=file --package-name=$(TARGET) -o po/$(TARGET).pot $(sort $(SRCS)) $(PACOMMON)/src/config_file.c $(PACOMMON)/src/speech.c
 
 update-po: pot
 	for po in po/*.po; do msgmerge --update --backup=none --add-location=file $$po po/$(TARGET).pot; done
@@ -112,35 +127,45 @@ DBUSDIR ?= $(PREFIX)/share/dbus-1/services
 
 install: all
 	install -Dm755 $(TARGET) $(DESTDIR)$(BINDIR)/$(TARGET)
-	install -Dm644 docs/pachud.1 $(DESTDIR)$(MANDIR)/man1/pachud.1
+	install -Dm644 docs/pacreact.1 $(DESTDIR)$(MANDIR)/man1/pacreact.1
+	install -Dm644 pacreact.conf $(DESTDIR)$(PREFIX)/share/doc/pacreact/pacreact.conf
+	$(call pac_install_keep,pacreact.conf,$(DESTDIR)$(SYSCONFDIR)/pac/pacreact.conf,644)
+	$(pac_install_shared_conf)
 	for lang in $(LINGUAS); do \
 		install -Dm644 build/locale/$$lang/LC_MESSAGES/$(TARGET).mo \
 			$(DESTDIR)$(LOCALEDIR)/$$lang/LC_MESSAGES/$(TARGET).mo; \
 	done
-	sed 's|@BINDIR@|$(BINDIR)|' contrib/pachud.service.in > build/pachud.service
-	install -Dm644 build/pachud.service $(DESTDIR)$(UNITDIR)/pachud.service
+	sed 's|@BINDIR@|$(BINDIR)|' contrib/pacreact.service.in > build/pacreact.service
+	$(call pac_install_keep,build/pacreact.service,$(DESTDIR)$(UNITDIR)/pacreact.service,644)
 ifeq ($(NOTIFY),1)
-	sed 's|@BINDIR@|$(BINDIR)|' contrib/org.pachud.Notifications.service.in \
-		> build/org.pachud.Notifications.service
-	install -Dm644 build/org.pachud.Notifications.service \
-		$(DESTDIR)$(DBUSDIR)/org.pachud.Notifications.service
+	sed 's|@BINDIR@|$(BINDIR)|' contrib/org.pacreact.Notifications.service.in \
+		> build/org.pacreact.Notifications.service
+	$(call pac_install_keep,build/org.pacreact.Notifications.service,$(DESTDIR)$(DBUSDIR)/org.pacreact.Notifications.service,644)
 endif
 
 uninstall:
-	rm -f $(DESTDIR)$(BINDIR)/$(TARGET) $(DESTDIR)$(MANDIR)/man1/pachud.1 $(DESTDIR)$(UNITDIR)/pachud.service \
-		$(DESTDIR)$(DBUSDIR)/org.pachud.Notifications.service
+	rm -f $(DESTDIR)$(BINDIR)/$(TARGET) $(DESTDIR)$(MANDIR)/man1/pacreact.1 $(DESTDIR)$(PREFIX)/share/doc/pacreact/pacreact.conf
+	$(call pac_uninstall_keep,pacreact.conf,$(DESTDIR)$(SYSCONFDIR)/pac/pacreact.conf)
+	$(call pac_uninstall_keep,build/pacreact.service,$(DESTDIR)$(UNITDIR)/pacreact.service)
+	$(call pac_uninstall_keep,build/org.pacreact.Notifications.service,$(DESTDIR)$(DBUSDIR)/org.pacreact.Notifications.service)
 	for lang in $(LINGUAS); do \
 		rm -f $(DESTDIR)$(LOCALEDIR)/$$lang/LC_MESSAGES/$(TARGET).mo; \
 	done
 
 -include $(wildcard build/*.d)
 
-.PHONY: all clean install uninstall pot update-po test FORCE
+
+# The tests again under AddressSanitizer and UBSan.
+sanitize:
+	$(MAKE) clean
+	$(MAKE) test CFLAGS="-g -fsanitize=address,undefined $(CFLAGS)" LDFLAGS="-fsanitize=address,undefined $(LDFLAGS)"
+
+.PHONY: sanitize all clean install uninstall pot update-po test FORCE
 
 # The tests build the logic on its own, with stubs for the display, the HUD and the loop. Some
 # #include the source under test so that its static internals are reachable.
-TEST_CC = $(CC) $(CFLAGS) -D_GNU_SOURCE -Wall -Wextra -Ibuild -Isrc
-TESTS = power timer probe audio activity usb hud ipc sound dnd image icon sicon scale display alerts mem disk temp jack locks util config
+TEST_CC = $(CC) $(CFLAGS) -D_GNU_SOURCE -Wall -Wextra -Ibuild -Isrc -I$(PACOMMON)/src
+TESTS = clock power timer probe audio activity usb hud ipc sound dnd image icon sicon scale display alerts mem disk temp jack locks util config
 ifeq ($(I18N),1)
 TESTS += text
 endif
@@ -148,6 +173,10 @@ ifeq ($(NOTIFY),1)
 TESTS += notify bt history print
 endif
 
+ifeq ($(I18N),1)
+FT_TEST = $(shell pkg-config --cflags --libs freetype2)
+endif
+TEST_SRC_clock = src/util.c
 TEST_SRC_power = src/src_power.c
 TEST_SRC_probe = src/src_probe.c src/util.c
 TEST_SRC_sound = src/sound.c src/util.c
@@ -158,18 +187,18 @@ TEST_SRC_image = src/image.c
 TEST_SRC_icon = src/icon.c src/util.c
 TEST_SRC_disk = src/util.c
 TEST_SRC_util = src/util.c
-TEST_SRC_config = src/config_file.c
+TEST_SRC_config = src/settings_file.c $(PACOMMON)/src/config_file.c
 TEST_SRC_temp = src/util.c
 TEST_SRC_jack = src/evdev.c
 TEST_SRC_locks = src/evdev.c
 TEST_SRC_alerts = src/state.c src/util.c
-TEST_SRC_text = src/shape.c src/utf8.c
+TEST_SRC_text = $(PACOMMON)/src/fontfind.c src/shape.c $(PACOMMON)/src/utf8.c $(PACOMMON)/src/language.c
 TEST_SRC_display = $(PROTO_OBJS) src/util.c
 TEST_SRC_notify = src/notify.c src/image.c src/icon.c src/util.c
-TEST_SRC_hud = src/pngload.c src/sicon.c src/icon.c src/util.c
-TEST_SRC_sicon = src/sicon.c src/icon.c src/pngload.c src/util.c
-TEST_LIBS_hud = $(shell pkg-config --libs cairo) -lm
-TEST_LIBS_sicon = $(shell pkg-config --libs cairo) -lm
+TEST_SRC_hud = $(PACOMMON)/src/fontfind.c src/pngload.c src/sicon.c src/icon.c src/util.c
+TEST_SRC_sicon = $(PACOMMON)/src/fontfind.c src/sicon.c src/icon.c src/pngload.c src/util.c
+TEST_LIBS_hud = $(shell pkg-config --libs cairo) $(FT_TEST) -lm
+TEST_LIBS_sicon = $(shell pkg-config --libs cairo) $(FT_TEST) -lm
 TEST_LIBS_text = $(shell pkg-config --cflags --libs cairo freetype2 harfbuzz fribidi) -lm
 TEST_LIBS_display = $(shell pkg-config --libs wayland-client cairo) -lm
 TEST_LIBS_notify = $(shell pkg-config --libs libsystemd 2>/dev/null)
@@ -180,4 +209,4 @@ test: $(TESTS:%=build/test_%)
 	@set -e; for t in $^; do $$t; done
 
 build/test_%: tests/test_%.c $(wildcard src/*.c src/*.h) | build build/config.h $(PROTO_HEADERS) $(PROTO_OBJS)
-	$(TEST_CC) tests/test_$*.c $(TEST_SRC_$*) -o $@ $(TEST_LIBS_$*)
+	$(TEST_CC) tests/test_$*.c $(TEST_SRC_$*) $(PACOMMON)/src/setting.c $(PACOMMON)/src/length.c -o $@ $(TEST_LIBS_$*) -lm

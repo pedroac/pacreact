@@ -1,4 +1,4 @@
-/* The scale arithmetic: buffer sizes, parsing PACHUD_SCALE, whole-number fallbacks. */
+/* The scale arithmetic: buffer sizes, parsing scale, whole-number fallbacks. */
 #include "../src/scale.h"
 #include <assert.h>
 #include <stdio.h>
@@ -17,7 +17,7 @@ int main(void) {
             assert(scaled_px(logical, s) * SCALE_UNIT >= logical * s &&              /* never smaller... */
                    (scaled_px(logical, s) - 1) * SCALE_UNIT < logical * s);          /* ...and no bigger than needed */
 
-    /* PACHUD_SCALE */
+    /* scale */
     assert(parse_scale120("1") == 120);
     assert(parse_scale120("1.5") == 180);
     assert(parse_scale120("2") == 240);

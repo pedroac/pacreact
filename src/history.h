@@ -4,11 +4,8 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include "tunables.h"
 
-/* The last notifications, in RAM only: a fixed ring that overwrites its oldest entry, so memory
- * never grows and nothing is written to disk. Entries hold text only (no icon pixels). `pachud
- * history` lists them; `pachud history clear` wipes the ring. */
-#define HISTORY_MAX 64
 
 /* EXPIRED, DISMISSED and CLOSED have the NotificationClosed reason codes of the spec as values. */
 typedef enum {

@@ -2,6 +2,7 @@
  * statics; the compositor is stubbed and the boot clock is the test's own. */
 #include "../src/display.h"
 #include <assert.h>
+#include "setting.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -42,8 +43,8 @@ static void on_change(bool active, long secs, bool restart) {
 
 int main(void) {
     /* defaults: idle after 5 minutes, a break is 15 */
-    unsetenv("PACHUD_PEEK_IDLE");
-    unsetenv("PACHUD_PEEK_BREAK");
+    pac_setting_set("peek_idle", NULL);
+    pac_setting_set("peek_break", NULL);
     activity_on_change(on_change);
     activity_init(NULL);
     assert(watched_ms == 5 * 60 * 1000 && activity_break_secs() == 15 * 60);
@@ -74,13 +75,13 @@ int main(void) {
     assert(last_restart);
 
     /* the settings, with the strict reading and the limits of the others */
-    setenv("PACHUD_PEEK_IDLE", "2", 1);
-    setenv("PACHUD_PEEK_BREAK", "30", 1);
+    pac_setting_set("peek_idle", "2");
+    pac_setting_set("peek_break", "30");
     activity_init(NULL);
     assert(watched_ms == 120000 || watched_ms == 5 * 60 * 1000);   /* one watch per display: the first stands */
     assert(activity_break_secs() == 30 * 60);
-    setenv("PACHUD_PEEK_IDLE", "0", 1);                     /* out of range: brought to 1 */
-    setenv("PACHUD_PEEK_BREAK", "abc", 1);                  /* not a number: the default */
+    pac_setting_set("peek_idle", "0");                     /* out of range: brought to 1 */
+    pac_setting_set("peek_break", "abc");                  /* not a number: the default */
     activity_init(NULL);
     assert(activity_break_secs() == 15 * 60);
 

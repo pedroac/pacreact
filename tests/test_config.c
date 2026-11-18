@@ -87,6 +87,20 @@ int main(void) {
     write_file(path, "margin = 5mm\nfont_size = 4MM\nwidth = 50%\nicon_size = 0.2 in\n");
     assert(settings_load_file(path) == 0);
     assert(strcmp(pac_setting("margin"), "5mm") == 0 && strcmp(pac_setting("icon_size"), "0.2 in") == 0);
+    /* reduce_motion is the shared yes or no, kept as yes or no; anything else is refused. */
+    write_file(path, "reduce_motion = YES\n");
+    assert(settings_load_file(path) == 0 && strcmp(pac_setting("reduce_motion"), "yes") == 0);
+    write_file(path, "reduce_motion = off\n");
+    assert(settings_load_file(path) == 0 && strcmp(pac_setting("reduce_motion"), "no") == 0);
+    write_file(path, "reduce_motion = maybe\nreduce_motion =\n");
+    assert(settings_load_file(path) == 2 && strcmp(pac_setting("reduce_motion"), "no") == 0);   /* the old value stays */
+    pac_setting_set("reduce_motion", NULL);
+    /* text_scale is the shared name for the text size: 1 is 16 pixels. NaN and the like are refused. */
+    write_file(path, "text_scale = 1.5\n");
+    assert(settings_load_file(path) == 0 && strcmp(pac_setting("font_size"), "24") == 0);
+    write_file(path, "text_scale = nan\ntext_scale = inf\ntext_scale = 9\ntext_scale = 1.5x\n");
+    assert(settings_load_file(path) == 4);                        /* none is taken */
+    assert(strcmp(pac_setting("font_size"), "24") == 0);
     write_file(path, "margin = 5cm\nwidth = -3mm\nicon_size = 5mm5\nfont_size = 0mm\n");
     assert(settings_load_file(path) == 4);                        /* none of them is a length */
     assert(strcmp(pac_setting("margin"), "5mm") == 0);

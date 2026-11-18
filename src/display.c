@@ -407,6 +407,8 @@ Display *display_open(void) {
     d->scale120 = fixed ? fixed : SCALE_UNIT;
     d->scale_fixed = fixed != 0;
     d->fade_ms = (int)setting_int("fade_ms", DEFAULT_FADE_MS, 0, 2000, "milliseconds");  /* 0 turns the fade off */
+    const char *motion = pac_setting("reduce_motion");   /* yes or no: settings_file.c made it so */
+    if (motion && strcmp(motion, "yes") == 0) d->fade_ms = 0;                           /* wins over fade_ms */
     if (d->fade_ms == 0 && d->alpha_mgr) {
         wp_alpha_modifier_v1_destroy(d->alpha_mgr);
         d->alpha_mgr = NULL;

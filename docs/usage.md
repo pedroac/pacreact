@@ -73,14 +73,14 @@ Settings that are numbers are read strictly: the whole value must be a whole num
 | `text_scale` | `1` | The shared name for the text size, 0.5 to 2.5; `1` is 16 px, and it sets `font_size`. |
 | `width` | follows the font size (380) | The width of the cards, toasts and sliders in the stack, in pixels, 200 to 1200 (or a [length](#lengths-with-a-unit)), on its own. |
 | `text_size_min`, `text_size_max` | unset | The smallest and the largest the smallest text on the HUD may be, as a [length](#lengths-with-a-unit) such as `3mm`: the same size on every screen, whatever `font_size` or `text_scale` say. See [Size and fonts](#size-and-fonts). |
-| `speech` | `yes` | `no` does not speak what the HUD shows, and does not connect to speech-dispatcher. Only in a build with speech. See [Speech](#speech). |
+| `speech` | `yes` | `no` does not speak what the HUD shows, and does not connect to speech-dispatcher. To be heard, speech needs speech-dispatcher and a speech engine such as espeak-ng installed. Only in a build with speech. See [Speech](#speech). |
 | `font` | built in | A font file (`.ttf`, `.otf`) for Latin text instead of the default. |
 | `font_bold` | | The bold file of that font; without it, bold is made from the regular one. |
 | `scale` | follows the compositor | Pin the render scale, 1 to 4 and fractions allowed (`1.5`). Normally unnecessary: pacreact uses the scale the compositor asks for, per monitor. |
 | `click` | on | `0` makes the HUD fully click-through: clicking a notification card then does nothing. |
 | `anchor` | `top-right` | Where the HUD stack sits (the [attention deck](#the-attention-deck) is always at the top centre, except that with `top` it is the stack): `top-right`, `top-left`, `top`, `bottom-right`, `bottom-left` or `bottom`. The stack keeps clear of bars and docks. |
 | `output` | unset | Show HUDs on this monitor (`DP-1`, `HDMI-A-1`, ... as in `hyprctl monitors`). Unset lets the compositor choose, usually the focused one. An unknown name is reported once on stderr with the names that exist, and the compositor's choice is used. |
-| `fade_ms` | 120 | Fade in/out duration in milliseconds; `0` turns the fade off. |
+| `fade_ms` | 120 | Fade in/out duration in milliseconds; `0` turns the fade off. `reduce_motion = yes` (shared, `pac.conf`) turns it off too, whatever this says. |
 | `probe_host` | unset | IPv4 address to ping for the slowdown alert. Unset means the probe does not exist. |
 | `probe_interval` | 30 | Seconds between probes (5-3600). |
 | `startup_grace` | 60 | Seconds after start-up during which an alert that is not worse than one shown in the last 30 minutes is not shown again. `0` turns it off. See [Alerts at start-up](#alerts-at-start-up). |

@@ -49,3 +49,9 @@ The design of pacreact, with its measurements, is in [design.md](design.md). Dec
 - **Decided:** `utf8_decode` and `pac_set_language` are `pacommon`'s (`utf8.c`, `language.c`). pacreact's own `utf8.c/h` and `i18n.c` are gone; `i18n.h` keeps only the gettext macros. The `i18n.c` of the entry above no longer exists: with `I18N=0` nothing of gettext is linked by it, and `utf8.c` is now always built (it is 20 lines, and `-Wl,--gc-sections` drops it if unused).
 - **Why:** the same code was in pacpeek and pacgreet; one tested copy is easier to keep right (`pacommon/docs/decisions.md`, 2026-11-18).
 - **When:** 2026-11-18
+
+## `text_scale` from pacommon, and a test of the colors
+
+- **Decided:** `text_scale` is read by `pac_text_scale_parse` (the same fix as in pacpeek and pacmenu); `test_config.c` now checks it. The background of `Palette` (`paint.c`) is a field (`bg`) instead of numbers inside `paint_bg`, so that a test can read it: `test_hud.c` checks both palettes with pacommon's `pac_contrast` and `pac_palette_meanings_apart` (principle 33): text 4.5:1, bars and accents 3:1, warning and critical apart for protanopia, deuteranopia and tritanopia. The values already passed (text 8.6 to 16:1 normal, 21:1 high; accents 5.8 to 15.2:1), so no color changed. Checked that the test fails when a color is darkened.
+- **Not checked:** the background is drawn at `bg_alpha` (0.94 normal) over the desktop, so the contrast on the screen depends on what is behind it; the test uses the opaque color.
+- **When:** 2026-11-18

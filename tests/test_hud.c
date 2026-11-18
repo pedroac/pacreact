@@ -23,6 +23,7 @@ static int fake_clock_gettime(clockid_t c, struct timespec *ts) {
 #include "../src/display.h"
 #include "../src/sicon.h"
 #include "speech.h"
+#include "palette.h"
 #include "../src/text.h"
 
 static int hides;
@@ -1667,8 +1668,41 @@ static void test_osd_stack_and_contrast(void) {
     paint_set_contrast(false);
 }
 
+/* The colors are readable and tell warnings from errors, as principle 33 asks (paint.c has its own
+ * palettes, so pacommon's checks do not cover them): text at 4.5:1 and graphics at 3:1 against the
+ * background, and warning and critical apart for protanopia, deuteranopia and tritanopia. */
+static PacColor rgb(const double c[3]) { return (PacColor){ c[0], c[1], c[2] }; }
+
+static void check_colors(const Palette *p, const char *which) {
+    PacColor bg = rgb(p->bg);
+    const double *text[] = { p->text, p->title, p->soft, p->faint };
+    const char *text_name[] = { "text", "title", "soft", "faint" };
+    for (int i = 0; i < 4; i++)
+        if (pac_contrast(rgb(text[i]), bg) < 4.5) { fprintf(stderr, "%s %s: contrast %.2f, needs 4.5\n", which, text_name[i], pac_contrast(rgb(text[i]), bg)); abort(); }
+    if (pac_contrast(rgb(p->dim), bg) < 3.0) { fprintf(stderr, "%s dim: contrast too low\n", which); abort(); }
+    for (int l = 0; l < 3; l++)
+        if (pac_contrast(rgb(p->accent[l]), bg) < 3.0) { fprintf(stderr, "%s accent %d: contrast %.2f, needs 3\n", which, l, pac_contrast(rgb(p->accent[l]), bg)); abort(); }
+    PacPalette meanings = PAC_PALETTE_NORMAL;
+    meanings.warn = rgb(p->accent[LEVEL_WARN]);
+    meanings.error = rgb(p->accent[LEVEL_CRIT]);
+    char why[160];
+    if (!pac_palette_meanings_apart(&meanings, why, sizeof why)) { fprintf(stderr, "%s: %s\n", which, why); abort(); }
+}
+
+static void test_colors(void) {
+    check_colors(&normal_colors, "normal");
+    check_colors(&high_colors, "high");
+    /* High contrast is black and white and dims nothing. */
+    assert(high_colors.bg_alpha == 1.0 && pac_contrast(rgb(high_colors.text), rgb(high_colors.bg)) > 20.9);
+    /* The check itself can fail: text the color of the background is refused by the rule it uses. */
+    Palette bad = normal_colors;
+    memcpy(bad.text, bad.bg, sizeof bad.text);
+    assert(pac_contrast(rgb(bad.text), rgb(bad.bg)) < 4.5);
+}
+
 int main(void) {
     hud_init(NULL);
+    test_colors();
     test_osd_stack_and_contrast();
     test_clock_paint();
     test_item_widths();

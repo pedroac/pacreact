@@ -17,7 +17,7 @@ static const char *const known[] = {
     "alarm_sound", "alert_sound", "anchor", "bluetooth", "click", "clock_every", "contrast", "disk", "disk_crit",
     "disk_interval", "disk_warn", "fade_ms", "font", "font_bold", "font_size", "icons", "icon_font",
     "icon_size", "jacks", "jacks_debug", "language", "lock_keys", "margin", "notify_sound", "osd", "output", "peek_break",
-    "peek_idle", "player", "print", "print_debug", "probe_host", "probe_interval", "scale", "sound",
+    "peek_idle", "player", "print", "print_debug", "probe_host", "probe_interval", "reduce_motion", "scale", "sound",
     "sound_devices", "sound_network", "sound_power", "sound_volume", "speech", "startup_grace", "temp", "temp_crit",
     "temp_interval", "temp_warn", "text_scale", "text_size_max", "text_size_min", "usb", "width",
 };
@@ -93,20 +93,19 @@ static bool apply(const char *key, const char *value) {
     name[i] = '\0';
     /* text_scale is the shared name for the text size; font_size is in pixels, and 16 is 1. */
     if (strcmp(name, "text_scale") == 0) {
-        char *end;
-        double scale = strtod(value, &end);
-        if (!*value || *end || !(scale >= 0.5 && scale <= 2.5)) return false;
+        double scale;
+        if (!pac_text_scale_parse(value, &scale)) return false;
         char px[16];
         snprintf(px, sizeof px, "%d", (int)(scale * 16 + 0.5));
         return pac_setting_set("font_size", px);
     }
     /* The shared keys of docs/configuration.md that pacreact has: the smallest text between two
-     * lengths, and speech (yes or no, in any case, as every tool reads it). */
+     * lengths, and speech and reduce_motion (yes or no, in any case, as every tool reads it). */
     if (strcmp(name, "text_size_min") == 0 || strcmp(name, "text_size_max") == 0) {
         PacLength length;
         return pac_length_parse(value, &length) && pac_setting_set(name, value);
     }
-    if (strcmp(name, "speech") == 0) {
+    if (strcmp(name, "speech") == 0 || strcmp(name, "reduce_motion") == 0) {
         bool on;
         return pac_config_bool(value, &on) && pac_setting_set(name, on ? "yes" : "no");
     }

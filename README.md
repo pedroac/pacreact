@@ -2,11 +2,13 @@
 
 A tiny daemon that sleeps until something deserves your attention, then shows a small floating HUD.
 
-`pacreact` is the companion to [pacpeek](../pacpeek): pacpeek shows system status when you ask for it, pacreact speaks up when the system has something to say. It is built for tiling Wayland compositors such as Hyprland, with the same philosophy:
+![Screenshot: OSD and notification](docs/screenshot.png)
+
+![Screenshot: critical notification](docs/screenshot_2.png)
 
 * **Asleep by default:** one `epoll` loop, and while idle it wakes only for the timers it documents (a 5-minute disk check, a 2-minute temperature check, and the memory fallback). Everything else it watches is event-driven, preferably straight from the kernel.
 * **No configuration overhead:** sensible defaults, a plain config file, no config language.
-* **Minimal dependencies:** `wayland-client` and `cairo`, plus `libsystemd` (sd-bus) for notifications, FreeType, HarfBuzz and FriBidi for translations, and `libspeechd` for [speech](docs/usage.md#speech). `make NOTIFY=0 I18N=0 SPEECH=none` drops all of those. No toolkit and no GLib; the status icons are Nerd Font glyphs where that font is installed and the icon theme's otherwise, and SVG ones are drawn by the optional `rsvg-convert` tool.
+* **Minimal dependencies:** `wayland-client` and `cairo`, plus `libsystemd` (sd-bus) for notifications, and FreeType, HarfBuzz and FriBidi for translations. `make NOTIFY=0 I18N=0` drops all of those. No toolkit and no GLib; the status icons are Nerd Font glyphs where that font is installed and the icon theme's otherwise, and SVG ones are drawn by the optional `rsvg-convert` tool.
 * **Nothing on screen unless needed:** the Wayland surface exists only while a HUD is visible, and clicks pass straight through it, except on notification cards (click one to dismiss it; `click = 0` turns that off).
 
 ## What it reacts to

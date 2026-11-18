@@ -6,7 +6,7 @@ pacreact (a notification and alert daemon) is Linux only. The project started on
 
 | Distribution | Compositor | Run by | Date |
 |---|---|---|---|
-| Arch Linux | the author's setup | the author | not recorded |
+| Arch Linux | the author's setup | the author, daily, as their only notification daemon and OSD | not recorded |
 | Debian, Ubuntu or Fedora | | | **not tried** |
 | Alpine (musl) | | | **not tried** |
 

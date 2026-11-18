@@ -132,19 +132,20 @@ static void round_rect(cairo_t *cr, double x, double y, double w, double h, doub
  * accents, with nothing dimmed: the same layout, readable in more conditions. */
 typedef struct {
     double bg_alpha, track_alpha;
+    double bg[3];
     double text[3], title[3], soft[3], faint[3], dim[3];
     double accent[3][3];
 } Palette;
 
 static const Palette normal_colors = {
-    .bg_alpha = 0.94, .track_alpha = 0.15,
+    .bg_alpha = 0.94, .track_alpha = 0.15, .bg = { 0.09, 0.09, 0.11 },
     .text = { 0.93, 0.93, 0.95 }, .title = { 0.95, 0.95, 0.97 }, .soft = { 0.75, 0.75, 0.80 },
     .faint = { 0.70, 0.70, 0.75 }, .dim = { 0.55, 0.55, 0.60 },
     .accent = { [LEVEL_INFO] = { 0.40, 0.65, 1.00 }, [LEVEL_WARN] = { 1.00, 0.75, 0.25 },
                 [LEVEL_CRIT] = { 1.00, 0.35, 0.35 } },
 };
 static const Palette high_colors = {
-    .bg_alpha = 1.0, .track_alpha = 0.40,
+    .bg_alpha = 1.0, .track_alpha = 0.40, .bg = { 0, 0, 0 },
     .text = { 1, 1, 1 }, .title = { 1, 1, 1 }, .soft = { 1, 1, 1 }, .faint = { 1, 1, 1 },
     .dim = { 0.80, 0.80, 0.80 },
     .accent = { [LEVEL_INFO] = { 0.35, 0.85, 1.00 }, [LEVEL_WARN] = { 1.00, 0.85, 0.00 },
@@ -160,8 +161,7 @@ static void accent(Level level, double rgb[3]) {
 
 static void paint_bg(cairo_t *cr, int w, int h) {
     round_rect(cr, 0, 0, w, h, RADIUS);
-    if (pal == &high_colors) cairo_set_source_rgba(cr, 0, 0, 0, pal->bg_alpha);
-    else cairo_set_source_rgba(cr, 0.09, 0.09, 0.11, pal->bg_alpha);
+    cairo_set_source_rgba(cr, pal->bg[0], pal->bg[1], pal->bg[2], pal->bg_alpha);
     cairo_fill_preserve(cr);
     cairo_clip(cr);
 }

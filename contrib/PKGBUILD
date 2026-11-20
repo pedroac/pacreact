@@ -1,5 +1,7 @@
 # Maintainer: Pedro Amaral Couto
 #
+# Needs pacreactd (build and install ../../pacreactd/contrib first): it does the watching, pacreact shows what it says.
+#
 # Builds pacreact from the checkout this file lives in (contrib/PKGBUILD), including
 # uncommitted changes, so it works before there is a release to download:
 #
@@ -11,11 +13,10 @@ pkgrel=1
 pkgdesc='Event-driven HUDs and notification daemon for Wayland'
 arch=(x86_64 aarch64)
 license=(MIT)
-depends=(wayland cairo systemd-libs freetype2 harfbuzz fribidi)
+depends=(wayland cairo systemd-libs freetype2 harfbuzz fribidi pacreactd)
 optdepends=('librsvg: rsvg-convert draws the SVG status icons themes ship')
 makedepends=(wayland-protocols pkgconf gettext git)
 optdepends=(
-    'pipewire-pulse: volume and microphone HUDs (any PulseAudio-compatible server works)'
     'noto-fonts: Latin, Cyrillic and Indic/Thai text'
     'noto-fonts-cjk: Chinese, Japanese and Korean text'
     'ttf-dejavu: Arabic and Hebrew text'

@@ -93,6 +93,22 @@ void ipc_reply(int cfd, const char *msg) {
     close(cfd);
 }
 
+int ipc_watch(void) {
+    int fd = connect_daemon();
+    if (fd < 0) return -1;
+    if (send(fd, "watch", 5, MSG_NOSIGNAL) < 0) { close(fd); return -1; }
+    char line[256];
+    ssize_t len;
+    while ((len = recv(fd, line, sizeof line - 1, 0)) > 0) {
+        if (line[0] == '\n') continue;   /* the daemon looking for watchers that left */
+        line[len] = '\0';
+        puts(line);
+        fflush(stdout);
+    }
+    close(fd);
+    return 0;
+}
+
 int ipc_send(const char *msg) {
     int fd = connect_daemon();
     if (fd < 0) return -1;

@@ -111,7 +111,8 @@ minutes.
 This needs the compositor's idle notifications; without them it counts the time since the daemon started.
 .TP
 .B print
-List the print jobs that have not finished: id, state, queue and name.
+List the print jobs that have not finished: id, state, queue and name (it runs
+.BR "pacreactd print" ).
 Asks CUPS when run.
 .TP
 .B time
@@ -156,6 +157,39 @@ Meant for status bars, in the way of
 .B makoctl list
 and
 .BR "dunstctl count displayed" .
+.TP
+.B watch
+Stay running and print one line for each change of what a status bar shows, and one for each when it starts:
+.B displays N
+(how many monitors there are).
+.BR keyboard ,
+.BR mouse ,
+.BR gamepad ,
+.BR storage ,
+.B tablet
+and
+.B printer
+(each
+.B on
+or
+.BR off ,
+for a USB device of that kind that is not built in; a laptop always has its own keyboard and mouse), and
+.BI "displays " N
+(how many monitors there are).
+A webcam counts as on while a program of the user has its device open.
+Meant for status bars.
+.TP
+.B jacks
+Print what is plugged into the audio jacks: any of
+.BR headset ,
+.BR headphones ,
+.B microphone
+and
+.BR lineout ,
+or
+.B none.
+A headset is headphones with a microphone, or headphones in a socket that takes both.
+Meant for status bars.
 .TP
 .BR history " [\fIN\fR | " clear ]
 List the last notifications, newest first: when, what happened to it (on screen, expired, dismissed,
@@ -263,13 +297,6 @@ The shared setting
 .B reduce_motion = yes
 does too, whatever this says.
 .TP
-.B probe_host
-An IPv4 address to ping for the network slowdown alert.
-Without it no probe is made.
-.TP
-.B probe_interval
-Seconds between probes, 5 to 3600 (default 30).
-.TP
 .B startup_grace
 Seconds after start-up during which a memory or battery alert that is not worse than one shown in the
 last 30 minutes is not shown again (default 60;
@@ -297,27 +324,12 @@ turns the printing toasts (a job printing, finished or failed, a printer out of 
 .B done
 leaves out the one for a job starting to print.
 .TP
-.B print_debug
-.B 1
-prints what CUPS and the system bus said, on standard error.
-.TP
 .B usb
 .B 0
 turns the toasts for USB devices (webcams, printers, drawing tablets, drives, headsets, keyboards and mice) off.
 A comma separated list of kinds
 .RB ( camera ", " printer ", " tablet ", " storage ", " audio ", " input ", " other )
 announces only those.
-.TP
-.B jacks
-.B 0
-turns the audio-jack toasts (headphones, headset, microphone, line out) off.
-.B generic
-makes every headphone or microphone jack plug say "Audio device connected" or "Audio device disconnected",
-for hardware that reports one connector as two jacks.
-.TP
-.B jacks_debug
-.B 1
-prints each jack switch event, card port change, volume reading and decision, with timestamps, on standard error.
 .TP
 .B sound
 .B 0

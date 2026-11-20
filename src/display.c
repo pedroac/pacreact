@@ -11,6 +11,8 @@
 #include "xdg-output-unstable-v1-client-protocol.h"
 #include "wlr-layer-shell-unstable-v1-client-protocol.h"
 #include "util.h"
+#include "watch.h"
+#include "sources.h"
 #include <errno.h>
 #include <linux/input-event-codes.h>
 #include <stdio.h>
@@ -141,7 +143,9 @@ static void out_mode(void *data, struct wl_output *o, uint32_t flags, int32_t w,
     (void)o; (void)h; (void)r;
     if (flags & WL_OUTPUT_MODE_CURRENT) ((Output *)data)->mode_px = w;
 }
-static void out_done(void *data, struct wl_output *o) { (void)data; (void)o; }
+static Display *monitors_display;                    /* whose outputs are told to the daemon: set when the first one comes */
+static void publish_displays(const Display *d);
+static void out_done(void *data, struct wl_output *o) { (void)data; (void)o; if (monitors_display) publish_displays(monitors_display); }   /* its name is there now */
 static void out_scale(void *data, struct wl_output *o, int32_t f) { (void)o; ((Output *)data)->scale = f; }
 static void out_name(void *data, struct wl_output *o, const char *name) {
     (void)o;
@@ -242,6 +246,34 @@ static void seat_caps(void *data, struct wl_seat *seat, uint32_t caps) {
 }
 static const struct wl_seat_listener seat_listener = { .capabilities = seat_caps };
 
+/* The monitors there are, for `pacreact watch` (their number) and for the daemon: each is a device, monitor.mN (N is the number the
+ * compositor gave the output, which it does not give again), called as the output is (DP-1), with its size once that is known. */
+static char told[MAX_OUTPUTS][24];                   /* the keys said, so that one that went can be taken back */
+static void publish_displays(const Display *d) {
+    int n = 0;
+    char text[16], now[MAX_OUTPUTS][24] = {{0}};
+    for (int i = 0; i < MAX_OUTPUTS; i++) {
+        const Output *o = &d->outputs[i];
+        if (!o->proxy) continue;
+        n++;
+        char value[64];
+        snprintf(now[i], sizeof now[i], "monitor.m%u", o->global);
+        int len = snprintf(value, sizeof value, "%.40s", o->name[0] ? o->name : "Monitor");
+        if (o->logical_w > 0 && o->logical_h > 0 && len < (int)sizeof value - 16)
+            snprintf(value + len, sizeof value - (size_t)len, "\tsize=%dx%d", o->logical_w, o->logical_h);
+        daemon_publish(now[i], value);
+    }
+    for (int i = 0; i < MAX_OUTPUTS; i++) {   /* one that went */
+        if (!told[i][0]) continue;
+        bool still = false;
+        for (int j = 0; j < MAX_OUTPUTS; j++) still |= !strcmp(told[i], now[j]);
+        if (!still) daemon_publish(told[i], NULL);
+    }
+    memcpy(told, now, sizeof told);
+    snprintf(text, sizeof text, "%d", n);
+    watch_set("displays", text);
+}
+
 static void registry_global(void *data, struct wl_registry *reg, uint32_t name,
                             const char *iface, uint32_t version) {
     Display *d = data;
@@ -261,6 +293,8 @@ static void registry_global(void *data, struct wl_registry *reg, uint32_t name,
             d->outputs[i].scale = 1;
             wl_output_add_listener(d->outputs[i].proxy, &output_listener, &d->outputs[i]);
             watch_output(d, &d->outputs[i]);
+            monitors_display = d;
+            publish_displays(d);
             break;
         }
         return;
@@ -299,6 +333,7 @@ static void registry_remove(void *data, struct wl_registry *reg, uint32_t name) 
             d->outputs[i].logical_w = d->outputs[i].logical_h = d->outputs[i].physical_mm = d->outputs[i].mode_px = 0;
             d->outputs[i].name[0] = '\0';
             if (d->last_out == i + 1) d->last_out = 0;
+            publish_displays(d);
         }
     }
 }

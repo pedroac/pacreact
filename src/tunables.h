@@ -307,226 +307,73 @@
 #define SPEECH_SLIDER_SETTLE_MS 500
 #endif
 
-/* ---- src_audio.c ---- */
-/* Max frame. The reason for this default is not written down yet. */
-#ifndef MAX_FRAME
-#define MAX_FRAME 60000
-#endif
-/* Coalesces a volume drag into few redraws */
-#ifndef SRC_AUDIO_DEBOUNCE_MS
-#define SRC_AUDIO_DEBOUNCE_MS 40
-#endif
-/* Reconnect min s (seconds). The reason for this default is not written down yet. */
-#ifndef RECONNECT_MIN_S
-#define RECONNECT_MIN_S 5
-#endif
-/* The server may be absent; don't hammer */
-#ifndef RECONNECT_MAX_S
-#define RECONNECT_MAX_S 300
-#endif
-/* A jack event and the server's answer to it are this close */
-#ifndef JACK_MS
-#define JACK_MS 1000
-#endif
-/* The server moves the port first and applies that port's volume a moment later */
-#ifndef SRC_AUDIO_SETTLE_MS
-#define SRC_AUDIO_SETTLE_MS 500
-#endif
-/* Max ports. The reason for this default is not written down yet. */
-#ifndef MAX_PORTS
-#define MAX_PORTS 64
-#endif
-
-/* ---- src_bt.c ---- */
+/* ---- src_daemon.c: Bluetooth ---- */
 /* Toast ms (milliseconds). The reason for this default is not written down yet. */
 #ifndef SRC_BT_TOAST_MS
 #define SRC_BT_TOAST_MS 3000
 #endif
 
-/* ---- src_disk.c ---- */
-/* Default warn pct (percent). The reason for this default is not written down yet. */
-#ifndef DEFAULT_WARN_PCT
-#define DEFAULT_WARN_PCT 10
-#endif
-/* Default crit pct (percent). The reason for this default is not written down yet. */
-#ifndef DEFAULT_CRIT_PCT
-#define DEFAULT_CRIT_PCT 5
-#endif
-/* With little room left in percent, under 1 GiB is critical */
-#ifndef CRIT_BYTES
-#define CRIT_BYTES (1ULL << 30)
-#endif
-/* It must recover this far before it can alert again */
-#ifndef REARM_MARGIN_PCT
-#define REARM_MARGIN_PCT 3
-#endif
-/* Default interval s (seconds). The reason for this default is not written down yet. */
-#ifndef SRC_DISK_DEFAULT_INTERVAL_S
-#define SRC_DISK_DEFAULT_INTERVAL_S 300
-#endif
-/* Max fs. The reason for this default is not written down yet. */
-#ifndef MAX_FS
-#define MAX_FS 16
-#endif
+/* ---- src_daemon.c: disk space ---- */
 /* Alert ms (milliseconds). The reason for this default is not written down yet. */
 #ifndef SRC_DISK_ALERT_MS
 #define SRC_DISK_ALERT_MS 8000
 #endif
 
-/* ---- src_jack.c ---- */
-/* Max jacks. The reason for this default is not written down yet. */
-#ifndef MAX_JACKS
-#define MAX_JACKS 16
+/* ---- watch.c ---- */
+/* How many programs can watch at once (a status bar; a few more to try things), how many named values there are
+ * ("jacks", "camera", "printer"), and how long a name and a value can be. */
+#ifndef MAX_WATCHERS
+#define MAX_WATCHERS 4
 #endif
+#ifndef MAX_WATCH_VALUES
+#define MAX_WATCH_VALUES 12
+#endif
+#ifndef WATCH_NAME_LEN
+#define WATCH_NAME_LEN 16
+#endif
+#ifndef WATCH_VALUE_LEN
+#define WATCH_VALUE_LEN 32
+#endif
+
+/* ---- src_daemon.c: the message of a plug ---- */
 /* Toast ms (milliseconds). The reason for this default is not written down yet. */
 #ifndef SRC_JACK_TOAST_MS
 #define SRC_JACK_TOAST_MS 2500
 #endif
-/* Max pins. The reason for this default is not written down yet. */
-#ifndef MAX_PINS
-#define MAX_PINS 32
-#endif
 
-/* ---- src_locks.c ---- */
-/* Max keyboards. The reason for this default is not written down yet. */
-#ifndef MAX_KEYBOARDS
-#define MAX_KEYBOARDS 8
-#endif
+/* ---- src_daemon.c: the lock keys ---- */
 /* Toast ms (milliseconds). The reason for this default is not written down yet. */
 #ifndef SRC_LOCKS_TOAST_MS
 #define SRC_LOCKS_TOAST_MS 1500
 #endif
 
-/* ---- src_mem.c ---- */
-/* Cooldown secs (seconds). The reason for this default is not written down yet. */
+/* ---- src_daemon.c ---- */
+/* Seconds before another memory alert of the same or a milder level; a worse one comes through. */
 #ifndef COOLDOWN_SECS
 #define COOLDOWN_SECS 30
 #endif
-/* Fallback poll: alert below this share of MemAvailable... */
-#ifndef LOW_PCT
-#define LOW_PCT 10
-#endif
-/* ...and re-arm above this one */
-#ifndef SRC_MEM_REARM_PCT
-#define SRC_MEM_REARM_PCT 15
-#endif
-/* Poll secs (seconds). The reason for this default is not written down yet. */
-#ifndef SRC_MEM_POLL_SECS
-#define SRC_MEM_POLL_SECS 10
-#endif
-
-/* ---- src_net.c ---- */
-/* Link flaps and resume bursts settle before we judge */
-#ifndef SRC_NET_DEBOUNCE_MS
-#define SRC_NET_DEBOUNCE_MS 1000
-#endif
-
-/* ---- src_power.c ---- */
-/* Warn pct (percent). The reason for this default is not written down yet. */
-#ifndef WARN_PCT
-#define WARN_PCT 15
-#endif
-/* Crit pct (percent). The reason for this default is not written down yet. */
-#ifndef CRIT_PCT
-#define CRIT_PCT 5
-#endif
-/* Rearm pct (percent). The reason for this default is not written down yet. */
-#ifndef SRC_POWER_REARM_PCT
-#define SRC_POWER_REARM_PCT 20
-#endif
-/* Fallback for drivers that don't emit uevents on capacity changes */
-#ifndef SRC_POWER_POLL_SECS
-#define SRC_POWER_POLL_SECS 60
-#endif
-/* Alert ms (milliseconds). The reason for this default is not written down yet. */
+/* How long a toast of the battery or of the temperature stays (milliseconds) */
 #ifndef SRC_POWER_ALERT_MS
 #define SRC_POWER_ALERT_MS 8000
 #endif
+#ifndef SRC_TEMP_ALERT_MS
+#define SRC_TEMP_ALERT_MS 8000
+#endif
 
-/* ---- src_print.c ---- */
+/* ---- src_daemon.c: the devices followed (usb, bluetooth, jacks) ---- */
+#ifndef MAX_DEVICES_SEEN
+#define MAX_DEVICES_SEEN 48
+#endif
+
+/* ---- src_daemon.c: the filesystems followed ---- */
+#ifndef MAX_DISKS
+#define MAX_DISKS 16
+#endif
+
+/* ---- src_daemon.c: the message of printing ---- */
 /* Toast ms (milliseconds). The reason for this default is not written down yet. */
 #ifndef SRC_PRINT_TOAST_MS
 #define SRC_PRINT_TOAST_MS 4000
-#endif
-/* Lease s (seconds). The reason for this default is not written down yet. */
-#ifndef LEASE_S
-#define LEASE_S 86400
-#endif
-/* Retry min s (seconds). The reason for this default is not written down yet. */
-#ifndef RETRY_MIN_S
-#define RETRY_MIN_S 60
-#endif
-/* Retry max s (seconds). The reason for this default is not written down yet. */
-#ifndef RETRY_MAX_S
-#define RETRY_MAX_S 3600
-#endif
-/* Http timeout s (seconds). The reason for this default is not written down yet. */
-#ifndef HTTP_TIMEOUT_S
-#define HTTP_TIMEOUT_S 2
-#endif
-/* Max printers. The reason for this default is not written down yet. */
-#ifndef MAX_PRINTERS
-#define MAX_PRINTERS 8
-#endif
-/* Name max shown. The reason for this default is not written down yet. */
-#ifndef NAME_MAX_SHOWN
-#define NAME_MAX_SHOWN 80
-#endif
-
-/* ---- src_probe.c ---- */
-/* Default interval s (seconds). The reason for this default is not written down yet. */
-#ifndef SRC_PROBE_DEFAULT_INTERVAL_S
-#define SRC_PROBE_DEFAULT_INTERVAL_S 30
-#endif
-/* Timeout ms (milliseconds). The reason for this default is not written down yet. */
-#ifndef TIMEOUT_MS
-#define TIMEOUT_MS 2000
-#endif
-/* Slow ms (milliseconds). The reason for this default is not written down yet. */
-#ifndef SLOW_MS
-#define SLOW_MS 400
-#endif
-/* Consecutive bad probes before alerting */
-#ifndef BAD_TO_ALERT
-#define BAD_TO_ALERT 2
-#endif
-/* Consecutive good probes before saying it recovered */
-#ifndef GOOD_TO_CLEAR
-#define GOOD_TO_CLEAR 2
-#endif
-
-/* ---- src_temp.c ---- */
-/* Default interval s (seconds). The reason for this default is not written down yet. */
-#ifndef SRC_TEMP_DEFAULT_INTERVAL_S
-#define SRC_TEMP_DEFAULT_INTERVAL_S 120
-#endif
-/* Min interval s (seconds). The reason for this default is not written down yet. */
-#ifndef MIN_INTERVAL_S
-#define MIN_INTERVAL_S 10
-#endif
-/* Cpu default limit. The reason for this default is not written down yet. */
-#ifndef CPU_DEFAULT_LIMIT
-#define CPU_DEFAULT_LIMIT 100
-#endif
-/* Cpu default warn. The reason for this default is not written down yet. */
-#ifndef CPU_DEFAULT_WARN
-#define CPU_DEFAULT_WARN 85
-#endif
-/* Cpu default hot. The reason for this default is not written down yet. */
-#ifndef CPU_DEFAULT_HOT
-#define CPU_DEFAULT_HOT 95
-#endif
-/* Ssd default limit. The reason for this default is not written down yet. */
-#ifndef SSD_DEFAULT_LIMIT
-#define SSD_DEFAULT_LIMIT 80
-#endif
-/* Hysteresis c (degrees Celsius). The reason for this default is not written down yet. */
-#ifndef HYSTERESIS_C
-#define HYSTERESIS_C 5
-#endif
-/* Alert ms (milliseconds). The reason for this default is not written down yet. */
-#ifndef SRC_TEMP_ALERT_MS
-#define SRC_TEMP_ALERT_MS 8000
 #endif
 
 /* ---- sound.c ---- */
@@ -536,15 +383,7 @@
 #define SOUND_PLAYER_DEADLINE_S 5
 #endif
 
-/* ---- src_usb.c ---- */
-/* Max devices. The reason for this default is not written down yet. */
-#ifndef MAX_DEVICES
-#define MAX_DEVICES 64
-#endif
-/* Names and interfaces appear after the device does; a re-enumeration is a remove and an add */
-#ifndef SRC_USB_SETTLE_MS
-#define SRC_USB_SETTLE_MS 800
-#endif
+/* ---- src_daemon.c: the message of a USB device ---- */
 /* Toast ms (milliseconds). The reason for this default is not written down yet. */
 #ifndef SRC_USB_TOAST_MS
 #define SRC_USB_TOAST_MS 3000
@@ -648,58 +487,15 @@ _Static_assert(SVG_WAIT_MS > 0, "SVG_WAIT_MS must be positive");
 _Static_assert(SVG_OUT_MAX > 0, "SVG_OUT_MAX must be positive");
 _Static_assert(MIN_GAP_MS > 0, "MIN_GAP_MS must be positive");
 _Static_assert(SPEECH_SLIDER_SETTLE_MS > 0, "SPEECH_SLIDER_SETTLE_MS must be positive");
-_Static_assert(MAX_FRAME > 0, "MAX_FRAME must be positive");
-_Static_assert(SRC_AUDIO_DEBOUNCE_MS > 0, "SRC_AUDIO_DEBOUNCE_MS must be positive");
-_Static_assert(RECONNECT_MIN_S > 0, "RECONNECT_MIN_S must be positive");
-_Static_assert(RECONNECT_MAX_S > 0, "RECONNECT_MAX_S must be positive");
-_Static_assert(JACK_MS > 0, "JACK_MS must be positive");
-_Static_assert(SRC_AUDIO_SETTLE_MS > 0, "SRC_AUDIO_SETTLE_MS must be positive");
-_Static_assert(MAX_PORTS > 0, "MAX_PORTS must be positive");
 _Static_assert(SRC_BT_TOAST_MS > 0, "SRC_BT_TOAST_MS must be positive");
-_Static_assert(DEFAULT_WARN_PCT > 0, "DEFAULT_WARN_PCT must be positive");
-_Static_assert(DEFAULT_CRIT_PCT > 0, "DEFAULT_CRIT_PCT must be positive");
-_Static_assert(CRIT_BYTES > 0, "CRIT_BYTES must be positive");
-_Static_assert(REARM_MARGIN_PCT > 0, "REARM_MARGIN_PCT must be positive");
-_Static_assert(SRC_DISK_DEFAULT_INTERVAL_S > 0, "SRC_DISK_DEFAULT_INTERVAL_S must be positive");
-_Static_assert(MAX_FS > 0, "MAX_FS must be positive");
 _Static_assert(SRC_DISK_ALERT_MS > 0, "SRC_DISK_ALERT_MS must be positive");
-_Static_assert(MAX_JACKS > 0, "MAX_JACKS must be positive");
+_Static_assert(MAX_WATCHERS > 0 && MAX_WATCH_VALUES > 0, "the watch limits must be positive");
 _Static_assert(SRC_JACK_TOAST_MS > 0, "SRC_JACK_TOAST_MS must be positive");
-_Static_assert(MAX_PINS > 0, "MAX_PINS must be positive");
-_Static_assert(MAX_KEYBOARDS > 0, "MAX_KEYBOARDS must be positive");
 _Static_assert(SRC_LOCKS_TOAST_MS > 0, "SRC_LOCKS_TOAST_MS must be positive");
 _Static_assert(COOLDOWN_SECS > 0, "COOLDOWN_SECS must be positive");
-_Static_assert(LOW_PCT > 0, "LOW_PCT must be positive");
-_Static_assert(SRC_MEM_REARM_PCT > 0, "SRC_MEM_REARM_PCT must be positive");
-_Static_assert(SRC_MEM_POLL_SECS > 0, "SRC_MEM_POLL_SECS must be positive");
-_Static_assert(SRC_NET_DEBOUNCE_MS > 0, "SRC_NET_DEBOUNCE_MS must be positive");
-_Static_assert(WARN_PCT > 0, "WARN_PCT must be positive");
-_Static_assert(CRIT_PCT > 0, "CRIT_PCT must be positive");
-_Static_assert(SRC_POWER_REARM_PCT > 0, "SRC_POWER_REARM_PCT must be positive");
-_Static_assert(SRC_POWER_POLL_SECS > 0, "SRC_POWER_POLL_SECS must be positive");
 _Static_assert(SRC_POWER_ALERT_MS > 0, "SRC_POWER_ALERT_MS must be positive");
 _Static_assert(SRC_PRINT_TOAST_MS > 0, "SRC_PRINT_TOAST_MS must be positive");
-_Static_assert(LEASE_S > 0, "LEASE_S must be positive");
-_Static_assert(RETRY_MIN_S > 0, "RETRY_MIN_S must be positive");
-_Static_assert(RETRY_MAX_S > 0, "RETRY_MAX_S must be positive");
-_Static_assert(HTTP_TIMEOUT_S > 0, "HTTP_TIMEOUT_S must be positive");
-_Static_assert(MAX_PRINTERS > 0, "MAX_PRINTERS must be positive");
-_Static_assert(NAME_MAX_SHOWN > 0, "NAME_MAX_SHOWN must be positive");
-_Static_assert(SRC_PROBE_DEFAULT_INTERVAL_S > 0, "SRC_PROBE_DEFAULT_INTERVAL_S must be positive");
-_Static_assert(TIMEOUT_MS > 0, "TIMEOUT_MS must be positive");
-_Static_assert(SLOW_MS > 0, "SLOW_MS must be positive");
-_Static_assert(BAD_TO_ALERT > 0, "BAD_TO_ALERT must be positive");
-_Static_assert(GOOD_TO_CLEAR > 0, "GOOD_TO_CLEAR must be positive");
-_Static_assert(SRC_TEMP_DEFAULT_INTERVAL_S > 0, "SRC_TEMP_DEFAULT_INTERVAL_S must be positive");
-_Static_assert(MIN_INTERVAL_S > 0, "MIN_INTERVAL_S must be positive");
-_Static_assert(CPU_DEFAULT_LIMIT > 0, "CPU_DEFAULT_LIMIT must be positive");
-_Static_assert(CPU_DEFAULT_WARN > 0, "CPU_DEFAULT_WARN must be positive");
-_Static_assert(CPU_DEFAULT_HOT > 0, "CPU_DEFAULT_HOT must be positive");
-_Static_assert(SSD_DEFAULT_LIMIT > 0, "SSD_DEFAULT_LIMIT must be positive");
-_Static_assert(HYSTERESIS_C > 0, "HYSTERESIS_C must be positive");
 _Static_assert(SRC_TEMP_ALERT_MS > 0, "SRC_TEMP_ALERT_MS must be positive");
-_Static_assert(MAX_DEVICES > 0, "MAX_DEVICES must be positive");
-_Static_assert(SRC_USB_SETTLE_MS > 0, "SRC_USB_SETTLE_MS must be positive");
 _Static_assert(SRC_USB_TOAST_MS > 0, "SRC_USB_TOAST_MS must be positive");
 _Static_assert(SOUND_PLAYER_DEADLINE_S > 0, "SOUND_PLAYER_DEADLINE_S must be positive");
 _Static_assert(MAX_TEXT > 0, "MAX_TEXT must be positive");

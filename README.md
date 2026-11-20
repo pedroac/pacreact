@@ -6,7 +6,7 @@ A tiny daemon that sleeps until something deserves your attention, then shows a 
 
 ![Screenshot: critical notification](docs/screenshot_2.png)
 
-* **Asleep by default:** one `epoll` loop, and while idle it wakes only for the timers it documents (a 5-minute disk check, a 2-minute temperature check, and the memory fallback). Everything else it watches is event-driven, preferably straight from the kernel.
+* **Asleep by default:** one `epoll` loop, and while idle it wakes only for the timers and alarms you set. It watches nothing itself: [pacreactd](../pacreactd) does, event-driven and straight from the kernel where it can, and tells it.
 * **No configuration overhead:** sensible defaults, a plain config file, no config language.
 * **Minimal dependencies:** `wayland-client` and `cairo`, plus `libsystemd` (sd-bus) for notifications, and FreeType, HarfBuzz and FriBidi for translations. `make NOTIFY=0 I18N=0` drops all of those. No toolkit and no GLib; the status icons are Nerd Font glyphs where that font is installed and the icon theme's otherwise, and SVG ones are drawn by the optional `rsvg-convert` tool.
 * **Nothing on screen unless needed:** the Wayland surface exists only while a HUD is visible, and clicks pass straight through it, except on notification cards (click one to dismiss it; `click = 0` turns that off).
@@ -15,16 +15,22 @@ A tiny daemon that sleeps until something deserves your attention, then shows a 
 
 | Event | Source | Shown as |
 |---|---|---|
-| Volume, mute; microphone level, mute | PulseAudio native protocol (PulseAudio / PipeWire) | slider |
-| Brightness | sysfs notification on `/sys/class/backlight` | slider |
-| Battery low / critical, charger plugged | kernel uevents (`NETLINK_KOBJECT_UEVENT`) | alert |
-| Memory pressure | kernel PSI triggers (`/proc/pressure/memory`) | alert |
+| Volume, mute; microphone level, mute | [pacreactd](../pacreactd) (PulseAudio native protocol, PulseAudio / PipeWire) | slider |
+| Print job started, done or failed; a printer out of paper, jammed, low on ink, offline | pacreactd (CUPS) | toast |
+| USB device connected or removed (drive, tablet, printer, scanner, camera, headset, keyboard...) | pacreactd (kernel uevents, sysfs) | toast |
+| Headphones, headset, microphone or line out plugged | pacreactd (kernel jack switches, the sound server's ports) | toast |
+| Brightness | [pacreactd](../pacreactd) (sysfs notification on `/sys/class/backlight`) | slider |
+| Battery low / critical, charger plugged | [pacreactd](../pacreactd) (kernel uevents, sysfs) | alert |
+| Memory pressure | pacreactd (kernel PSI triggers) | alert |
+| CPU and SSD temperature | pacreactd (hwmon) | alert |
 | Online / offline | rtnetlink | toast |
-| Network slowdown (opt-in) | ICMP probe | alert |
+| Network slowdown (opt-in) | pacreactd (ICMP probe) | alert |
 | Timers and alarms | one `timerfd` | alert |
 | Desktop notifications | `org.freedesktop.Notifications` on D-Bus | card |
 
 pacreact replaces your notification daemon (mako, dunst, ...); only one can own the bus name.
+
+The battery, the charger, memory, the temperature, the network, the volume, the audio jacks, the webcam, USB devices, printing, the screen, disk space, Bluetooth, the lock keys and the network probe are watched by [pacreactd](../pacreactd), which pacreact listens to; without it those alerts, bars and messages do not appear (everything else works). Their settings (`temp`, `temp_warn`, `temp_crit`, `temp_interval`, `jacks`, `jacks_debug`, `camera`, `print_debug`, `disk`, `disk_warn`, `disk_crit`, `disk_interval`, `bluetooth`, `lock_keys`, `probe_host`, `probe_interval`) moved to `pacreactd.conf`.
 
 ## Quick start
 
@@ -34,7 +40,7 @@ make && sudo make install
 
 The shared code is the `pacommon` submodule: clone with `--recurse-submodules` (or run `git submodule update --init`), or set `PACOMMON=` to another checkout.
 
-Run it from your compositor, or as a systemd user service:
+Install [pacreactd](../pacreactd) first (the package depends on it): it does the watching. Run pacreact from your compositor, or as a systemd user service (which starts pacreactd's socket too):
 
 ```bash
 systemctl --user enable --now pacreact.service

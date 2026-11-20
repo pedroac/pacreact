@@ -13,5 +13,8 @@ void ipc_reply(int cfd, const char *msg);
 /* Client side: sends msg and waits for the reply. Returns 0 on "ok", 1 on an error reply
  * (printed to stderr), -1 if no daemon is reachable. */
 int ipc_send(const char *msg);
+/* Client side: asks to watch and prints each line the daemon sends until it goes away. Returns 0 then, -1 if no daemon
+ * is reachable. */
+int ipc_watch(void);
 
 #endif

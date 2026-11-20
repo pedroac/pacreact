@@ -14,7 +14,7 @@
 | `pacreact alarm [-r RECUR] [YYYY-MM-DD] HH:MM [LABEL...]` | The next such wall-clock time, today or tomorrow. With `-r` it repeats: `daily`, `weekdays`, `weekends`, or days such as `mon,wed,fri`. With a date (`pacreact alarm 2026-12-25 07:30 …`) it fires once at that moment; a dated alarm cannot repeat. A recurring alarm stays in `pacreact list` (shown as `[weekdays]`) and is rescheduled after it fires; occurrences missed while the daemon was down fire once. |
 | `pacreact peek [-r RECUR] HH:MM [LABEL...]` | Show the time quietly at that time of day, like glancing at a clock: a small toast, no sound. Repeats with `-r` like an alarm. See [Peeking at the time](#peeking-at-the-time). |
 | `pacreact peek every DURATION [LABEL...]` | Show the time after that much time at the computer, again and again: `30m`, `1h`. At least `1m`. |
-| `pacreact print` | The print jobs that have not finished, one per line: id, state (`waiting`, `held`, `printing`, `stopped`), queue and name. Asks CUPS when run. |
+| `pacreact print` | The print jobs that have not finished, one per line: id, state (`waiting`, `held`, `printing`, `stopped`), queue and name. Runs `pacreactd print`, which asks CUPS when run. |
 | `pacreact time` | Show the time and the date in the middle of the screen for a moment. For a key. |
 | `pacreact list` | Pending timers, alarms and peeks with their ids and time left. |
 | `pacreact snooze [DURATION]` | Re-arm the timer or alarm that last went off as a new one-shot (default 5m, same label). A snoozed recurring alarm still comes back on its schedule. |
@@ -26,6 +26,8 @@
 | `pacreact dnd [on [DURATION]\|off\|toggle\|status]` | Do not disturb: see below. |
 | `pacreact expand` | Show more of the front card of the attention deck (else the newest card), or less again: see [Reading long notifications](#reading-long-notifications). |
 | `pacreact count` | How many notification cards are on screen or waiting for room, for a status bar's bell. Toasts and sliders do not count. |
+| `pacreact watch` | Stays running and prints one line for each change of what pacreact still watches for a status bar: `displays 2`. Everything else a bar shows comes from [pacreactd](../../pacreactd/docs/protocol.md) (`pacreactd watch`). See [For a status bar](#for-a-status-bar). |
+| `pacreact jacks` | What is plugged into the audio jacks, as words: `headset`, `headphones`, `microphone`, `lineout` or `none`. For a status bar's microphone icon: see [Audio jacks](#audio-jacks). |
 | `pacreact history [N\|clear]` | The last notifications, newest first (10 by default, up to 64), or wipe them: see [History](#history). |
 
 Timers and alarms survive restarts: they are stored in `$XDG_STATE_HOME/pacreact/timers` (default `~/.local/state/pacreact/timers`). Ones that came due while the daemon was not running fire when it starts.
@@ -81,27 +83,12 @@ Settings that are numbers are read strictly: the whole value must be a whole num
 | `anchor` | `top-right` | Where the HUD stack sits (the [attention deck](#the-attention-deck) is always at the top centre, except that with `top` it is the stack): `top-right`, `top-left`, `top`, `bottom-right`, `bottom-left` or `bottom`. The stack keeps clear of bars and docks. |
 | `output` | unset | Show HUDs on this monitor (`DP-1`, `HDMI-A-1`, ... as in `hyprctl monitors`). Unset lets the compositor choose, usually the focused one. An unknown name is reported once on stderr with the names that exist, and the compositor's choice is used. |
 | `fade_ms` | 120 | Fade in/out duration in milliseconds; `0` turns the fade off. `reduce_motion = yes` (shared, `pac.conf`) turns it off too, whatever this says. |
-| `probe_host` | unset | IPv4 address to ping for the slowdown alert. Unset means the probe does not exist. |
-| `probe_interval` | 30 | Seconds between probes (5-3600). |
 | `startup_grace` | 60 | Seconds after start-up during which an alert that is not worse than one shown in the last 30 minutes is not shown again. `0` turns it off. See [Alerts at start-up](#alerts-at-start-up). |
 | `clock_every` | `30` | Minutes between the times the clock shows itself in the middle of the screen, counted from the hour: `30` is at :00 and :30, `15` at :00, :15, :30 and :45. 1 to 60; `0` turns it off. Not shown while do-not-disturb is on, and gone after a moment. With `osd = stack` it is a toast. |
 | `peek_idle` | `5` | Minutes without touching the keyboard or the pointer after which you count as away from the computer, 1 to 120. Only for [peeks after use](#peeking-at-the-time). |
 | `peek_break` | `15` | Minutes away that count as a break: the use counted so far starts over, 1 to 720. |
 | `print` | on | `0` turns the printing toasts off; `done` leaves out the one for a job starting to print. See [Printing](#printing). |
-| `print_debug` | off | `1` prints what CUPS and the bus said, on standard error. For bug reports. |
-| `usb` | all | `0` turns the USB device toasts off. A comma separated list of kinds (`camera`, `printer`, `tablet`, `storage`, `audio`, `input`, `other`) announces only those. See [USB devices](#usb-devices). |
-| `bluetooth` | on | `0` turns the Bluetooth device toasts off. |
-| `lock_keys` | off | `1` watches the keyboards for Caps Lock and Num Lock, with a kernel filter that lets only LED events through. |
-| `jacks` | auto | `0` turns the audio-jack toasts off. `generic` makes every headphone or microphone jack plug say "Audio device connected" or "Audio device disconnected". See [Audio jacks](#audio-jacks). |
-| `jacks_debug` | off | `1` prints each jack switch event, port change, volume reading (with the device and port it came from) and decision, with timestamps, on standard error. For bug reports. |
-| `disk` | on | `0` turns the disk-space alerts off. |
-| `disk_warn` | `10` | Free space, in percent, that warns (2 to 95). |
-| `disk_crit` | `5` | Free space, in percent, that is critical (1 to 94). |
-| `disk_interval` | `300` | Seconds between disk checks; `0` checks only when the mount table changes. |
-| `temp` | on | `0` turns the temperature alerts off. |
-| `temp_warn` | `85` | Degrees Celsius that warns (20 to 150). |
-| `temp_crit` | `95` | Degrees Celsius that is critical (20 to 150). |
-| `temp_interval` | `120` | Slowest seconds between temperature checks; `0` reacts only to kernel events. |
+| `usb` | all | `0` turns the USB device toasts off. A comma separated list of kinds (`camera`, `printer`, `tablet`, `storage`, `audio`, `input`, `other`; a scanner is announced with `printer`) announces only those. See [USB devices](#usb-devices). |
 | `sound` | on | `0` turns all sound off. |
 | `player` | `pw-play`, else `paplay` | Program started with the sound file as its only argument. |
 | `alarm_sound` | `alarm-clock-elapsed` | Sound for timers and alarms: an absolute file path or a freedesktop sound-theme name. Empty or `0` is silent. |
@@ -114,11 +101,10 @@ Settings that are numbers are read strictly: the whole value must be a whole num
 
 Timers are saved under `$XDG_STATE_HOME` (`~/.local/state`).
 
-## Thresholds (compiled in)
+## Thresholds
 
-- Battery: warning at 15%, critical at 5%, re-armed above 20% or when charging.
-- Memory: PSI trigger `some` 500 ms of 2 s (warning), `full` 250 ms of 2 s (critical), 30 s cooldown. Without PSI it polls `MemAvailable` every 10 s and alerts below 10%.
-- Network: after the default route changes, it waits 1 s before reporting. The probe alerts after two consecutive replies slower than 400 ms or missing, and reports recovery after two good ones.
+The battery, memory and temperature are watched by [pacreactd](../../pacreactd/docs/protocol.md), which decides when each is a warning or critical (battery: 15% and 5%, re-armed above 20% or when charging; memory: PSI trigger `some` 500 ms of 2 s, `full` 250 ms of 2 s, or `MemAvailable` below 10% without PSI; temperature: `temp_warn` and `temp_crit` in `pacreactd.conf`). pacreact shows what it says, and holds back a memory alert for 30 s after the last one unless it is worse. If pacreactd is not running, pacreact tries again every 5 s, then every 60 s at most, and those alerts do not appear.
+- Network, disk space, the temperature and the other thresholds: pacreactd's (`pacreactd.conf`, `docs/protocol.md` there). pacreact shows what it says.
 
 ## Alerts at start-up
 
@@ -158,11 +144,14 @@ pacreact tells you what a printer does when you are not looking at it:
 
 `pacreact print` lists the jobs that have not finished, for a key or a status bar. It asks CUPS when you run it, so it costs nothing in between.
 
-CUPS announces these on the system bus, but only to a program that has asked. pacreact asks over CUPS's socket (`/run/cups/cups.sock`, or the path in `CUPS_SERVER`) the way GNOME's print notifications do, marks its request with its process id, renews it before its 24 hour lease runs out, and gives it back when it stops. If it was killed without that, the next start cancels the leftover, and only one whose process no longer runs, so CUPS does not send everything twice (a pacreact that is running keeps its own). While nothing prints, nothing wakes the daemon. If CUPS is not installed, pacreact does nothing; if it starts later, pacreact keeps trying with longer and longer pauses. Where CUPS starts on demand, pacreact's first question starts it; `print = 0` avoids that. A job's name is whatever the program called it, so it is shown on one line, cut if long. `print_debug = 1` prints what CUPS and the bus said, on standard error.
+CUPS announces these on the system bus, but only to a program that has asked. pacreactd asks over CUPS's socket (`/run/cups/cups.sock`, or the path in `CUPS_SERVER`) the way GNOME's print notifications do, marks its request with its process id, renews it before its 24 hour lease runs out, and gives it back when it stops. If it was killed without that, the next start cancels the leftover, and only one whose process no longer runs, so CUPS does not send everything twice (a pacreact that is running keeps its own). While nothing prints, nothing wakes the daemon. If CUPS is not installed, pacreact does nothing; if it starts later, pacreact keeps trying with longer and longer pauses. Where CUPS starts on demand, pacreact's first question starts it; `print = 0` avoids that. A job's name is whatever the program called it, so it is shown on one line, cut if long. `print_debug = 1` prints what CUPS and the bus said, on standard error.
 
 Scanning has no such announcements: nothing outside the scanning program is told when a scan starts or ends, so there is nothing to show. A scanner being plugged in is reported with the other [USB devices](#usb-devices).
 
 ## USB devices
+
+pacreactd watches the devices and says what each is (its `usb = 0` turns that off); pacreact announces them, and its `usb` setting chooses which kinds.
+
 
 Plugging a USB device in or out gives a toast with its name and an icon for what it is: a webcam, a printer, a drawing tablet, a USB drive, a headset, a keyboard or mouse, a phone. For example `HP ENVY 4520 series connected`, `Wacom Intuos BT M disconnected`. The name is the one the device reports about itself (its maker, if the product name does not already say it), shown with any control characters replaced, since a device chooses its own strings.
 
@@ -267,13 +256,23 @@ It is on when built with `SPEECH=speechd` (the default) and `speech-dispatcher` 
 
 ## Audio jacks
 
-Plugging something into a 3.5 mm jack gives a toast: headphones, a headset, a microphone or line out, connected or disconnected. The kernel only says that a jack changed, not what is in it, so pacreact also asks the sound server which card ports changed (headphones, headset or microphone) and names the toast from that: headphones and a microphone together are a headset. If the jack changed and no port did, the hardware is not saying what it is, and the toast says "Audio device connected" or "Audio device disconnected". Without a sound server it uses the jack's own name. HDMI and DisplayPort audio are not announced.
+pacreactd decides what a plug was (its settings `jacks` and `jacks_debug` are in `pacreactd.conf`: `0` turns jacks off, `generic` says only "Audio device connected" or "Audio device disconnected", and `jacks_debug` prints every switch event and decision, with timestamps, for bug reports); pacreact shows it. Plugging something into a 3.5 mm jack gives a toast: headphones, a headset, a microphone or line out, connected or disconnected. The kernel only says that a jack changed, not what is in it, so pacreact also asks the sound server which card ports changed (headphones, headset or microphone) and names the toast from that: headphones and a microphone together are a headset. If the jack changed and no port did, the hardware is not saying what it is, and the toast says "Audio device connected" or "Audio device disconnected". Without a sound server it uses the jack's own name. HDMI and DisplayPort audio are not announced.
 
 Plugging a jack or a device in or out usually moves the default output, and each output and port has a volume of its own, so the level the sound server reports afterwards differs from the one before. That is not you changing the volume, so no volume bar appears for it, and nothing appears for about half a second after, while the server finishes setting the level. A different default output, other than through a jack, gets a message instead (`Audio output: WH-1000XM4`); the jack's own toast already says the rest. Pressing a volume key in that half second still changes the volume but may show no bar.
 
 Some codecs report one connector as two jacks, or let one contact lag behind the other: a headset's removal may release only the microphone contact, and a speaker plugged in right after then changes nothing the kernel can report, so it gets no toast until it is pulled out. That is the hardware, and pacreact cannot see past it. pacreact treats a headphone-out and a microphone-in pin that share a panel position as one socket, which it reads from the codec's pin configuration in `/sys/class/sound/hwC*D*` when it starts (or, failing that, once a plug has been seen to change both contacts together), and calls a microphone change that happens while the headphone contact is engaged the headset. `jacks = generic` skips all naming for machines where it cannot be trusted. With `jacks_debug = 1` pacreact prints what each switch and port did, which is what a bug report needs.
 
 If the headphone contact of a combo jack lags like that, the fix is in the kernel's audio driver, not in pacreact. Check `/proc/asound/card*/codec#*` for the codec, and the kernel's HD-Audio documentation for a headset-mode model for it. On one Realtek ALC671 board, `options snd-hda-intel model=alc662-headset` in a file under `/etc/modprobe.d/` made the headphone contact release with the plug and the second plug get its own event. That is a single report from one machine, not a recommendation: a model replaces the driver's own settings for the board, so check that the microphone and the output switching still work. To try one without rebooting, stop the PipeWire services, write the model name to `/sys/class/sound/hwC0D0/modelname` (the number is your card and codec), write `1` to `reconfig` in the same directory, and start the services again; a reboot undoes it.
+
+## For a status bar
+
+`pacreact watch` prints a line each time one of these changes, and once for each when it starts, so a bar has no need to ask again and again. It reports only what pacreact itself still watches:
+
+| Line | Meaning |
+|---|---|
+| `displays N` | How many monitors the compositor has. A bar can show the current display always, and tell more than one apart. |
+
+A status bar should read [pacreactd](../../pacreactd/docs/protocol.md) instead: it has the cameras (`camera.ID`), the devices (`usb.ID`, `input.ID`, `bt.ID`, `jack.ID`, `printer.ID`, `monitor.ID`), every output and input of the sound server (`audio.ID`), the network and the battery as keys, and tells a program that connects what is true now. `pacreact watch` keeps what only pacreact knows: the monitors, from the compositor.
 
 ## Sound
 

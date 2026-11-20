@@ -3,7 +3,6 @@
 #include "setting.h"
 #include "length.h"
 #include "tunables.h"
-#include <arpa/inet.h>
 #include <ctype.h>
 #include <errno.h>
 #include <stdbool.h>
@@ -14,12 +13,10 @@
 
 /* The settings the file may set: the ones the daemon reads with pac_setting(). */
 static const char *const known[] = {
-    "alarm_sound", "alert_sound", "anchor", "bluetooth", "click", "clock_every", "contrast", "disk", "disk_crit",
-    "disk_interval", "disk_warn", "fade_ms", "font", "font_bold", "font_size", "icons", "icon_font",
-    "icon_size", "jacks", "jacks_debug", "language", "lock_keys", "margin", "notify_sound", "osd", "output", "peek_break",
-    "peek_idle", "player", "print", "print_debug", "probe_host", "probe_interval", "reduce_motion", "scale", "sound",
-    "sound_devices", "sound_network", "sound_power", "sound_volume", "speech", "startup_grace", "temp", "temp_crit",
-    "temp_interval", "temp_warn", "text_scale", "text_size_max", "text_size_min", "usb", "width",
+    "alarm_sound", "alert_sound", "anchor", "click", "clock_every", "contrast", "fade_ms", "font", "font_bold", "font_size", "icons", "icon_font",
+    "icon_size", "language", "margin", "notify_sound", "osd", "output", "peek_break",
+    "peek_idle", "player", "print", "reduce_motion", "scale", "sound",
+    "sound_devices", "sound_network", "sound_power", "sound_volume", "speech", "startup_grace", "text_scale", "text_size_max", "text_size_min", "usb", "width",
 };
 
 /* The integer settings, with the range each is read with (see the call sites). Checking here
@@ -34,13 +31,6 @@ static const struct { const char *key; long lo, hi; } ranges[] = {
     { "icon_size", PAINT_ICON_MIN, PAINT_ICON_MAX },
     { "font_size", PAINT_FONT_MIN, PAINT_FONT_MAX },
     { "width", PAINT_WIDTH_MIN, PAINT_WIDTH_MAX },
-    { "disk_warn", 2, 95 },
-    { "disk_crit", 1, 94 },
-    { "disk_interval", 0, 86400 },
-    { "temp_interval", 0, 3600 },
-    { "temp_warn", 20, 150 },
-    { "temp_crit", 20, 150 },
-    { "probe_interval", 5, 3600 },
 };
 
 /* The settings that are sizes: a number of pixels, or a length with a unit (util.h, Size). */
@@ -132,15 +122,8 @@ static bool apply(const char *key, const char *value) {
     if (strcmp(name, "print") == 0)
         return (!*value || !strcmp(value, "1") || !strcmp(value, "done") || !strcmp(value, "0")) &&
                pac_setting_set(name, value);
-    if (strcmp(name, "jacks") == 0)
-        return (!*value || !strcmp(value, "auto") || !strcmp(value, "generic") || !strcmp(value, "0")) &&
-               pac_setting_set(name, value);
     if (strcmp(name, "sound") == 0 || strcmp(name, "click") == 0)
         return (!*value || !strcmp(value, "1") || !strcmp(value, "0")) && pac_setting_set(name, value);
-    if (strcmp(name, "probe_host") == 0) {
-        struct in_addr addr;
-        return (!*value || inet_pton(AF_INET, value, &addr) == 1) && pac_setting_set(name, value);
-    }
     if (strcmp(name, "usb") == 0) return usb_ok(value) && pac_setting_set(name, value);
     for (i = 0; i < sizeof known / sizeof *known; i++)
         if (strcmp(name, known[i]) == 0)

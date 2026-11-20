@@ -20,6 +20,7 @@
 #include "sources.h"
 #include "timer.h"
 #include "version.h"
+#include "watch.h"
 #include <stdbool.h>
 #include <sys/epoll.h>
 #include <signal.h>
@@ -49,8 +50,10 @@ static const char usage_text[] =
     "       pacreact dnd [on [DURATION]|off|toggle|status]\n"
     "       pacreact action [N]                  invoke action N of the notification on screen\n"
     "       pacreact history [N|clear]           the last notifications (kept in memory only)\n"
-    "       pacreact print                       the print jobs that have not finished\n"
+    "       pacreact print                       the print jobs that have not finished (runs pacreactd print)\n"
     "       pacreact count                       notifications on screen or waiting (for a status bar)\n"
+    "       pacreact watch                       print each change of the monitors, for a status bar (see pacreactd watch)\n"
+    "       pacreact jacks                       what is plugged into the audio jacks (for a status bar)\n"
     "       pacreact expand                      show more of the newest notification, or less again\n";
 
 static int usage(void) {
@@ -209,6 +212,12 @@ static void handle(char *msg, char *reply, size_t n) {
         snprintf(reply, n, "ok %d", hud_card_count());
         return;
     }
+    if (cmd && !strcmp(cmd, "jacks")) {
+        char plugged[48];
+        jack_describe(plugged, sizeof plugged);
+        snprintf(reply, n, "ok%s", plugged);
+        return;
+    }
     if (cmd && !strcmp(cmd, "action")) {
 #ifndef NO_NOTIFY
         char *which = strtok_r(NULL, "\t", &save);
@@ -233,14 +242,6 @@ static void handle(char *msg, char *reply, size_t n) {
         return;
     }
 #endif
-#ifndef NO_NOTIFY
-    if (cmd && print_command(cmd, save ? save : (char *)"", reply, n)) return;
-#else
-    if (cmd && !strcmp(cmd, "print")) {
-        snprintf(reply, n, "%s", _("this build has no notification support"));
-        return;
-    }
-#endif
     if (cmd && timer_command(cmd, save ? save : (char *)"", reply, n)) return;
     snprintf(reply, n, "%s", _("unknown command"));
 }
@@ -258,6 +259,10 @@ static void on_ipc(void *ctx, uint32_t ev) {
     char buf[1100], reply[4096];
     int cfd = ipc_accept(*(int *)ctx, buf, sizeof buf);
     if (cfd < 0) return;
+    if (!strcmp(buf, "watch")) {   /* kept open: the answer is every change from now on */
+        if (watch_add(cfd) < 0) { ipc_reply(cfd, _("too many programs are watching")); }
+        return;
+    }
     handle(buf, reply, sizeof reply);
     ipc_reply(cfd, reply);
 }
@@ -301,21 +306,7 @@ static int run_daemon(void) {
     loop_add(display_fd(dpy), EPOLLIN, on_wayland, NULL);
     loop_add(lfd, EPOLLIN, on_ipc, &lfd);
     loop_add(sfd, EPOLLIN, on_signal, NULL);
-    power_init();
-    mem_init();
-    net_init();
-    probe_init();
-    disk_init();
-    temp_init();
-    jack_init();
-    usb_init();
-    locks_init();
-#ifndef NO_NOTIFY
-    bt_init();
-    print_init();
-#endif
-    backlight_init();
-    audio_init();
+    daemon_init();
 #ifndef NO_NOTIFY
     notify_init();
 #endif
@@ -329,14 +320,14 @@ static int run_daemon(void) {
     while (!quit) {
         if (display_before_poll(dpy) < 0) break;
         int r = loop_wait(hud_timeout_ms());
+        char count[16];   /* what the bell of a status bar shows: told when it changes, which is only after something woke us */
+        snprintf(count, sizeof count, "%d", hud_card_count());
+        daemon_publish("notifications.count", count);
         if (display_after_poll(dpy, wl_readable) < 0 || r < 0) break;
         wl_readable = false;
         hud_tick();
     }
 
-#ifndef NO_NOTIFY
-    print_shutdown();
-#endif
     speech_close();
     display_close(dpy);
     text_finish();
@@ -353,6 +344,11 @@ int main(int argc, char **argv) {
         puts("pacreact " PACREACT_VERSION);
         return 0;
     }
+    if (!strcmp(argv[1], "watch")) {
+        if (ipc_watch() >= 0) return 0;
+        fputs(_("pacreact: daemon not running\n"), stderr);
+        return 1;
+    }
     if (!strcmp(argv[1], "toast")) return client_toast(argc, argv);
     if (!strcmp(argv[1], "slider")) return client_slider(argc, argv);
     if (!strcmp(argv[1], "alarm")) return client_alarm(argc, argv);
@@ -363,8 +359,12 @@ int main(int argc, char **argv) {
     if (!strcmp(argv[1], "extend")) return client_generic(argc, argv, 2);
     if (!strcmp(argv[1], "list") || !strcmp(argv[1], "dismiss") || !strcmp(argv[1], "dnd") ||
         !strcmp(argv[1], "snooze") || !strcmp(argv[1], "action") || !strcmp(argv[1], "history") ||
-        !strcmp(argv[1], "count") || !strcmp(argv[1], "expand") || !strcmp(argv[1], "time") ||
-        !strcmp(argv[1], "print"))
+        !strcmp(argv[1], "count") || !strcmp(argv[1], "jacks") || !strcmp(argv[1], "expand") || !strcmp(argv[1], "time"))
         return client_generic(argc, argv, 0);
+    if (!strcmp(argv[1], "print")) {   /* the queue is asked of CUPS by pacreactd, which has the code for it */
+        execlp("pacreactd", "pacreactd", "print", (char *)NULL);
+        fputs(_("pacreact: print needs pacreactd, which was not found\n"), stderr);
+        return 1;
+    }
     return usage();
 }

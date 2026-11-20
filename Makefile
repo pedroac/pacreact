@@ -50,13 +50,13 @@ PROTO_OBJS = $(PROTO_NAMES:%=build/%-client-protocol.o)
 
 SRCS = $(wildcard src/*.c)
 ifneq ($(NOTIFY),1)
-SRCS := $(filter-out src/notify.c src/src_bt.c src/src_print.c src/history.c,$(SRCS))
+SRCS := $(filter-out src/notify.c src/history.c,$(SRCS))
 ALL_CFLAGS += -DNO_NOTIFY
 endif
 ifneq ($(I18N),1)
 SRCS := $(filter-out src/shape.c,$(SRCS))
 endif
-COMMON_SRCS = $(PACOMMON)/src/config_file.c $(PACOMMON)/src/fontfind.c $(PACOMMON)/src/language.c $(PACOMMON)/src/length.c $(PACOMMON)/src/setting.c $(PACOMMON)/src/speech.c $(PACOMMON)/src/utf8.c
+COMMON_SRCS = $(PACOMMON)/src/config_file.c $(PACOMMON)/src/daemon_value.c $(PACOMMON)/src/fontfind.c $(PACOMMON)/src/language.c $(PACOMMON)/src/length.c $(PACOMMON)/src/setting.c $(PACOMMON)/src/speech.c $(PACOMMON)/src/utf8.c
 COMMON_OBJS = $(COMMON_SRCS:$(PACOMMON)/src/%.c=build/pacommon_%.o)
 OBJS = $(SRCS:src/%.c=build/%.o) $(PROTO_OBJS) $(COMMON_OBJS)
 TARGET = pacreact
@@ -165,35 +165,31 @@ sanitize:
 # The tests build the logic on its own, with stubs for the display, the HUD and the loop. Some
 # #include the source under test so that its static internals are reachable.
 TEST_CC = $(CC) $(CFLAGS) -D_GNU_SOURCE -Wall -Wextra -Ibuild -Isrc -I$(PACOMMON)/src
-TESTS = clock power timer probe audio activity usb hud ipc sound dnd image icon sicon scale display alerts mem disk temp jack locks util config
+TESTS = clock timer activity hud ipc sound dnd image icon sicon scale display alerts daemon util config watch
 ifeq ($(I18N),1)
 TESTS += text
 endif
 ifeq ($(NOTIFY),1)
-TESTS += notify bt history print
+TESTS += notify history
 endif
 
 ifeq ($(I18N),1)
 FT_TEST = $(shell pkg-config --cflags --libs freetype2)
 endif
 TEST_SRC_clock = src/util.c
-TEST_SRC_power = src/src_power.c
-TEST_SRC_probe = src/src_probe.c src/util.c
 TEST_SRC_sound = src/sound.c src/util.c
 TEST_SRC_timer = src/state.c
 TEST_SRC_activity = src/util.c
 TEST_SRC_dnd = src/timer.c src/state.c
 TEST_SRC_image = src/image.c
 TEST_SRC_icon = src/icon.c src/util.c
-TEST_SRC_disk = src/util.c
 TEST_SRC_util = src/util.c
 TEST_SRC_config = src/settings_file.c $(PACOMMON)/src/config_file.c
-TEST_SRC_temp = src/util.c
-TEST_SRC_jack = src/evdev.c
-TEST_SRC_locks = src/evdev.c
+TEST_SRC_watch = src/watch.c
+TEST_SRC_daemon = src/watch.c $(PACOMMON)/src/daemon_value.c
 TEST_SRC_alerts = src/state.c src/util.c
 TEST_SRC_text = $(PACOMMON)/src/fontfind.c src/shape.c $(PACOMMON)/src/utf8.c $(PACOMMON)/src/language.c
-TEST_SRC_display = $(PROTO_OBJS) src/util.c
+TEST_SRC_display = $(PROTO_OBJS) src/util.c src/watch.c
 TEST_SRC_notify = src/notify.c src/image.c src/icon.c src/util.c
 TEST_SRC_hud = $(PACOMMON)/src/palette.c $(PACOMMON)/src/fontfind.c src/pngload.c src/sicon.c src/icon.c src/util.c
 TEST_SRC_sicon = $(PACOMMON)/src/fontfind.c src/sicon.c src/icon.c src/pngload.c src/util.c
@@ -202,8 +198,6 @@ TEST_LIBS_sicon = $(shell pkg-config --libs cairo) $(FT_TEST) -lm
 TEST_LIBS_text = $(shell pkg-config --cflags --libs cairo freetype2 harfbuzz fribidi) -lm
 TEST_LIBS_display = $(shell pkg-config --libs wayland-client cairo) -lm
 TEST_LIBS_notify = $(shell pkg-config --libs libsystemd 2>/dev/null)
-TEST_LIBS_bt = $(shell pkg-config --libs libsystemd 2>/dev/null)
-TEST_LIBS_print = $(shell pkg-config --libs libsystemd 2>/dev/null)
 
 test: $(TESTS:%=build/test_%)
 	@set -e; for t in $^; do $$t; done

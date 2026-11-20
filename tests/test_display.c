@@ -5,6 +5,26 @@
 #include "setting.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+
+/* What the daemon is told of the monitors: a device each, taken back when it goes */
+static char said_key[8][24], said_value[8][64];
+void daemon_publish(const char *key, const char *value) {
+    int i = 0, free_slot = -1;
+    for (int j = 0; j < 8; j++) {
+        if (!strcmp(said_key[j], key)) i = j + 1;
+        else if (!said_key[j][0] && free_slot < 0) free_slot = j;
+    }
+    i = i ? i - 1 : free_slot;
+    assert(i >= 0);
+    if (!value) { said_key[i][0] = '\0'; return; }
+    snprintf(said_key[i], sizeof said_key[0], "%s", key);
+    snprintf(said_value[i], sizeof said_value[0], "%s", value);
+}
+static const char *said(const char *key) {
+    for (int i = 0; i < 8; i++) if (!strcmp(said_key[i], key)) return said_value[i];
+    return NULL;
+}
 
 #include "../src/display.c"
 
@@ -152,7 +172,30 @@ static void test_deck_apart(void) {
     free(d);
 }
 
+static void test_monitors(void) {
+    Display *d = fresh();
+    memset(said_key, 0, sizeof said_key);
+    memset(told, 0, sizeof told);
+    d->outputs[0].proxy = (struct wl_output *)d; d->outputs[0].global = 42;
+    d->outputs[1].proxy = (struct wl_output *)d; d->outputs[1].global = 57;
+    snprintf(d->outputs[0].name, sizeof d->outputs[0].name, "DP-1");
+    publish_displays(d);
+    assert(!strcmp(said("monitor.m42"), "DP-1") && !strcmp(said("monitor.m57"), "Monitor"));   /* the second has no name yet */
+    d->outputs[0].logical_w = 1920; d->outputs[0].logical_h = 1080;
+    snprintf(d->outputs[1].name, sizeof d->outputs[1].name, "HDMI-A-1");
+    publish_displays(d);
+    assert(!strcmp(said("monitor.m42"), "DP-1\tsize=1920x1080") && !strcmp(said("monitor.m57"), "HDMI-A-1"));
+    d->outputs[0].proxy = NULL;                                  /* unplugged: it goes, the other stays */
+    publish_displays(d);
+    assert(!said("monitor.m42") && said("monitor.m57"));
+    d->outputs[1].proxy = NULL;
+    publish_displays(d);
+    assert(!said("monitor.m57"));
+    free(d);
+}
+
 int main(void) {
+    test_monitors();
     Display *d = fresh();
     struct wl_surface *surface = (struct wl_surface *)d;   /* only compared with NULL below */
 
